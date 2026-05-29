@@ -64,11 +64,19 @@
       color: var(--text);
     }
 
-    /* SPEC §1: Body scrollt, min-height: 100dvh, padding-bottom für safe-area */
+    /* SPEC §1: Body scrollt, min-height: 100dvh.
+       padding-bottom NUR in PWA-Standalone (für Home-Indicator-Abstand).
+       Im Browser-Modus rendert Safari seine UI selbst — da würde unser
+       Padding nur eine sinnlose Lücke erzeugen. */
     body {
       min-height: 100dvh;
-      padding-bottom: env(safe-area-inset-bottom, 0px);
     }
+    @media (display-mode: standalone) {
+      body { padding-bottom: env(safe-area-inset-bottom, 0px); }
+    }
+    /* iOS Safari-PWA erkennt manche Versionen das media-query nicht zuverlässig.
+       Fallback via navigator.standalone-Klasse (JS setzt sie beim Mount). */
+    body.is-standalone { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
     /* Wenn Modal offen: Hintergrund-Scroll blockieren */
     body.modal-open {
@@ -127,8 +135,31 @@
 
     /* Pillen-Leiste: horizontaler Scroll soll vertikalem Scroll nicht in die
        Quere kommen. touch-action: pan-x sagt iOS "diese Geste ist horizontal".
-       overscroll-behavior-x: contain verhindert Pull-to-Refresh-Trigger. */
+       overscroll-behavior-x: contain verhindert Pull-to-Refresh-Trigger.
+       scroll-snap rastet sanft an Pillen-Anfängen ein. */
     .kategorie-scroller {
+      display: flex; gap: 6px;
+      overflow-x: auto; overflow-y: hidden;
+      padding: 0 14px;
+      scrollbar-width: thin;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+    }
+    .kategorie-scroller::-webkit-scrollbar { display: none; }
+    .kategorie-scroller > * {
+      scroll-snap-align: start;
+      touch-action: pan-x;
+    }
+
+    /* Test-Modal: schwebt nur wenn Benutzer den 🧪-Button im Header tippt */
+    .test-modal-row {
+      display: flex; justify-content: space-between;
+      padding: 4px 0; font-size: 11px;
+      font-family: ui-monospace, monospace;
+    }
       display: flex; gap: 6px;
       overflow-x: auto; overflow-y: hidden;
       padding: 0 14px;
@@ -226,7 +257,7 @@
     }
 
     // ── Body-Klassen-Synchronisation (Pattern + Layout + Modal) ─────────────
-    function useBodyClass(pattern, layout, modalOpen) {
+    function useBodyClass(pattern, layout, modalOpen, standalone) {
       useLayoutEffect(() => {
         const b = document.body;
         b.classList.remove("pattern-body", "pattern-inner");
@@ -234,7 +265,8 @@
         b.classList.remove("layout-mobile", "layout-desktop");
         b.classList.add(`layout-${layout}`);
         b.classList.toggle("modal-open", modalOpen);
-      }, [pattern, layout, modalOpen]);
+        b.classList.toggle("is-standalone", standalone);
+      }, [pattern, layout, modalOpen, standalone]);
     }
 
     // ── Header-Höhe als CSS-Var setzen (für sticky Sidebar) ─────────────────
@@ -257,12 +289,13 @@
       const [layoutOverride, setLayoutOverride] = useState("auto"); // auto | mobile | desktop
       const [showDiag, setShowDiag] = useState(true);
       const [modalOpen, setModalOpen] = useState(false);
+      const [testOpen, setTestOpen] = useState(false);     // Test-Tools Modal
       const headerRef = useRef(null);
 
       const autoLayout = d.innerWidth >= 900 ? "desktop" : "mobile";
       const layout = layoutOverride === "auto" ? autoLayout : layoutOverride;
 
-      useBodyClass(pattern, layout, modalOpen);
+      useBodyClass(pattern, layout, modalOpen, d.standalone);
       useHeaderHeight(headerRef);
 
       // Inner-Pattern braucht eine flex column als ScrollHost-Wrapper
@@ -280,16 +313,8 @@
 
       return (
         <RootWrap>
-          <Header ref={headerRef}/>
+          <Header ref={headerRef} onTestOpen={() => setTestOpen(true)}/>
           <ContentArea>
-            <ControlBar
-              pattern={pattern} setPattern={setPattern}
-              layoutOverride={layoutOverride} setLayoutOverride={setLayoutOverride}
-              autoLayout={autoLayout}
-              showDiag={showDiag} setShowDiag={setShowDiag}
-              onOpenModal={() => setModalOpen(true)}
-            />
-            {showDiag && <DiagPanel d={d}/>}
             <div id="main">
               {layout === "desktop" && (
                 <div className="sidebar-cell">
@@ -299,23 +324,34 @@
               <ContentScreen/>
             </div>
           </ContentArea>
+          {testOpen && (
+            <TestModal
+              onClose={() => setTestOpen(false)}
+              pattern={pattern} setPattern={setPattern}
+              layoutOverride={layoutOverride} setLayoutOverride={setLayoutOverride}
+              autoLayout={autoLayout}
+              showDiag={showDiag} setShowDiag={setShowDiag}
+              onOpenModal={() => { setTestOpen(false); setModalOpen(true); }}
+              d={d}
+            />
+          )}
           {modalOpen && <Modal onClose={() => setModalOpen(false)}/>}
         </RootWrap>
       );
     }
 
     // ── Top-Level Header (echte AllesDa-Geometrie) ──────────────────────────
-    const Header = React.forwardRef((_, ref) => (
+    const Header = React.forwardRef(({ onTestOpen }, ref) => (
       <header ref={ref} style={{
         position: "sticky", top: 0, zIndex: 100,
         background: "var(--card)",
         borderBottom: "1px solid var(--border)",
         paddingTop: "env(safe-area-inset-top, 0px)",
       }}>
-        {/* Zeile 1: Logo · Filter-Dropdown · Dunkelmodus · Avatar */}
+        {/* Zeile 1: Logo · Filter-Dropdown · Dunkelmodus · 🧪 · Avatar */}
         <div style={{
-          display: "grid", gridTemplateColumns: "auto 1fr auto auto",
-          alignItems: "center", gap: 10, padding: "10px 14px",
+          display: "grid", gridTemplateColumns: "auto 1fr auto auto auto",
+          alignItems: "center", gap: 8, padding: "10px 14px",
         }}>
           <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
             <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.03em" }}>
@@ -332,6 +368,7 @@
             textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>Alle Objekte ▾</div>
           <button style={btnIcon}>🌙</button>
+          <button style={btnIcon} onClick={onTestOpen} title="Shell-Test öffnen">🧪</button>
           <div style={{
             width: 32, height: 32, borderRadius: "50%",
             background: "var(--accent)", color: "#fff",
@@ -374,59 +411,98 @@
       );
     }
 
-    // ── Control-Bar (Test-Steuerung) ────────────────────────────────────────
-    function ControlBar({ pattern, setPattern, layoutOverride, setLayoutOverride,
-        autoLayout, showDiag, setShowDiag, onOpenModal }) {
+    // ── Test-Modal: Setup + Diagnose, geöffnet via 🧪-Button im Header ──────
+    function TestModal({ onClose, pattern, setPattern, layoutOverride, setLayoutOverride,
+        autoLayout, showDiag, setShowDiag, onOpenModal, d }) {
       const Btn = ({ active, onClick, children }) => (
         <button onClick={onClick} style={{
-          padding: "4px 10px", fontSize: 11, fontWeight: 600,
+          padding: "6px 12px", fontSize: 12, fontWeight: 600,
           border: "1px solid var(--border)",
           background: active ? "var(--accent)" : "var(--card)",
           color: active ? "#fff" : "var(--text)",
           borderRadius: 6, cursor: "pointer",
         }}>{children}</button>
       );
-      return (
-        <div style={{
-          background: "#FFFBEB", borderBottom: "1px solid #FCD34D",
-          padding: "6px 12px",
-          display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center",
-        }}>
-          <span style={{ fontSize: 10, color: "var(--sub)" }}>Scroll:</span>
-          <Btn active={pattern === "body"} onClick={() => setPattern("body")}>body</Btn>
-          <Btn active={pattern === "inner"} onClick={() => setPattern("inner")}>inner</Btn>
-          <span style={{ fontSize: 10, color: "var(--sub)", marginLeft: 6 }}>Layout:</span>
-          <Btn active={layoutOverride === "auto"} onClick={() => setLayoutOverride("auto")}>auto ({autoLayout})</Btn>
-          <Btn active={layoutOverride === "mobile"} onClick={() => setLayoutOverride("mobile")}>mobile</Btn>
-          <Btn active={layoutOverride === "desktop"} onClick={() => setLayoutOverride("desktop")}>desktop</Btn>
-          <Btn active={showDiag} onClick={() => setShowDiag(v => !v)}>diag</Btn>
-          <Btn active={false} onClick={onOpenModal}>Modal</Btn>
-        </div>
-      );
-    }
-
-    // ── Diagnose-Panel ──────────────────────────────────────────────────────
-    function DiagPanel({ d }) {
       const Row = ({ label, value, hint }) => (
-        <div style={{ display: "flex", justifyContent: "space-between",
-          padding: "2px 12px", fontSize: 11, fontFamily: "ui-monospace, monospace" }}>
+        <div className="test-modal-row">
           <span style={{ color: "var(--sub)" }}>{label}</span>
           <span><strong>{value}</strong>{hint && <span style={{ color: "var(--muted)" }}> {hint}</span>}</span>
         </div>
       );
+      const Section = ({ title, children }) => (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)",
+            textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+            {title}
+          </div>
+          {children}
+        </div>
+      );
       return (
-        <div style={{
-          background: "#FEF3C7", borderBottom: "1px solid #FCD34D",
-          padding: "6px 0",
+        <div onClick={onClose} style={{
+          position: "fixed", inset: 0, zIndex: 250,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "max(20px, env(safe-area-inset-top, 0px)) 16px " +
+            "max(20px, env(safe-area-inset-bottom, 0px)) 16px",
         }}>
-          <Row label="standalone (PWA)" value={String(d.standalone)}/>
-          <Row label="innerWidth × innerHeight" value={`${d.innerWidth} × ${d.innerHeight}`} hint="px"/>
-          <Row label="visualViewport.height" value={d.visualVH ?? "—"} hint="px"/>
-          <Row label="100dvh / 100lvh" value={`${d.dvh} / ${d.lvh}`} hint="px"/>
-          <Row label="100svh / 100vh" value={`${d.svh} / ${d.vh}`} hint="px"/>
-          <Row label="safe-area top/bottom" value={`${d.safeTop} / ${d.safeBottom}`} hint="px"/>
-          <Row label="safe-area left/right" value={`${d.safeLeft} / ${d.safeRight}`} hint="px"/>
-          <Row label="scrollY" value={d.scrollY} hint="px"/>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: "var(--card)", borderRadius: 12,
+            padding: 18, maxWidth: 460, width: "100%",
+            maxHeight: "80dvh", overflowY: "auto",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between",
+              alignItems: "center", marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+                🧪 Shell-Test {d.standalone && <span style={{
+                  fontSize: 10, padding: "2px 6px", background: "var(--accent)",
+                  color: "#fff", borderRadius: 4, marginLeft: 6,
+                }}>PWA</span>}
+              </h3>
+              <button onClick={onClose} style={{
+                width: 28, height: 28, borderRadius: "50%",
+                border: "1px solid var(--border)", background: "var(--card)",
+                fontSize: 14, cursor: "pointer",
+              }}>✕</button>
+            </div>
+
+            <Section title="Scroll-Pattern">
+              <div style={{ display: "flex", gap: 6 }}>
+                <Btn active={pattern === "body"} onClick={() => setPattern("body")}>body</Btn>
+                <Btn active={pattern === "inner"} onClick={() => setPattern("inner")}>inner</Btn>
+              </div>
+            </Section>
+
+            <Section title="Layout">
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <Btn active={layoutOverride === "auto"} onClick={() => setLayoutOverride("auto")}>auto ({autoLayout})</Btn>
+                <Btn active={layoutOverride === "mobile"} onClick={() => setLayoutOverride("mobile")}>mobile</Btn>
+                <Btn active={layoutOverride === "desktop"} onClick={() => setLayoutOverride("desktop")}>desktop</Btn>
+              </div>
+            </Section>
+
+            <Section title="Aktionen">
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <Btn active={false} onClick={onOpenModal}>Modal-Test öffnen</Btn>
+                <Btn active={showDiag} onClick={() => setShowDiag(v => !v)}>
+                  Diag {showDiag ? "an" : "aus"}
+                </Btn>
+              </div>
+            </Section>
+
+            {showDiag && (
+              <Section title="Diagnose (live)">
+                <Row label="standalone (PWA)" value={String(d.standalone)}/>
+                <Row label="innerW × innerH" value={`${d.innerWidth} × ${d.innerHeight}`} hint="px"/>
+                <Row label="visualViewport.h" value={d.visualVH ?? "—"} hint="px"/>
+                <Row label="100dvh / 100lvh" value={`${d.dvh} / ${d.lvh}`} hint="px"/>
+                <Row label="100svh / 100vh" value={`${d.svh} / ${d.vh}`} hint="px"/>
+                <Row label="safe top/bottom" value={`${d.safeTop} / ${d.safeBottom}`} hint="px"/>
+                <Row label="safe left/right" value={`${d.safeLeft} / ${d.safeRight}`} hint="px"/>
+                <Row label="scrollY" value={d.scrollY} hint="px"/>
+              </Section>
+            )}
+          </div>
         </div>
       );
     }
