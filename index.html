@@ -2,75 +2,125 @@
 <html lang="de">
 <head>
   <meta charset="utf-8"/>
-  <!-- viewport-fit=cover ist Pflicht, damit env(safe-area-inset-*) ≠ 0 wird auf iPhone -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-  <title>AllesDa · Rahmen-Shell</title>
+  <title>AllesDa · Rahmen-Shell v2</title>
 
   <!--
     ═══════════════════════════════════════════════════════════════════════════
-    AllesDa · Mobile-Rahmen Test-Shell
+    AllesDa · Mobile-Rahmen Test-Shell v2
     ═══════════════════════════════════════════════════════════════════════════
 
-    Zweck:
-      Ein minimaler Layout-Rahmen, isoliert vom Rest der App, um das
-      Mobile-Verhalten in allen vier Modi durchprobieren zu können — bevor
-      wir Code in allesda_v3.jsx anfassen.
+    Erweiterte Shell zum Validieren der MOBILE-RAHMEN-SPEC.md Punkte 5 & 7:
 
-    Was prüfen wir hier:
-      · Wie verhalten sich 100dvh / 100lvh / 100svh / 100vh auf iOS Safari?
-      · Was passiert bei Body-Scroll vs. Inner-Scroll mit der Safari-Toolbar?
-      · Klappt die URL-Bar bei Body-Scroll ein? Bei Inner-Scroll auch?
-      · Reicht der App-Hintergrund bis zum Display-Rand?
-      · Ist die letzte Listenposition erreichbar (nicht hinter der Toolbar)?
-      · Wie groß ist env(safe-area-inset-bottom) tatsächlich pro Modus?
+      ✓ Body-Scroll als Default-Pattern (mit Switch zum Vergleich)
+      ✓ Header: position: sticky + safe-area-inset-top padding
+      ✓ KategorieKacheln: edge-to-edge horizontal scroll
+      ✓ Zweite Sticky-Ebene: StickySectionHeader (unter Top-Header gestapelt)
+      ✓ Master-Detail auf Desktop: sticky Sidebar + Body-Scroll
+      ✓ Modal mit Body-Scroll-Lock
+      ✓ Verbesserte safe-area Messung (height statt position)
 
-    Spec (Stand der Diskussion — beim Testen iterieren):
+    Was du beim Testen prüfen sollst:
 
-      A) iOS Safari Browser, Bars sichtbar
-         · App-Hintergrund reicht bis unter beide Safari-Bars
-         · Header sitzt oben, sticky, NICHT hinter Statusbar
-         · Letzte Liste-Position ist über der unteren Bar erreichbar
-         · Pull-to-Refresh: Safari-Default akzeptabel
+      MOBIL:
+        · Header bleibt oben, klappt nicht weg
+        · Section-Header bleibt unter Top-Header sticky (kein Stack-Bruch)
+        · KategorieKacheln scrollen edge-to-edge (kein weißer Rand seitlich)
+        · Letzte Liste-Position erreichbar (kein Inhalt hinter Toolbar)
+        · Modal: Hintergrund scrollt nicht mit, beim Schließen Position erhalten
+        · iPhone PWA: safe-area-top wird jetzt korrekt gemessen
+        · Pull-Down am Listen-Ende: Rubber-Band fühlt sich nativ an
 
-      B) iOS Safari Browser, Bars eingeklappt
-         · Header bleibt sticky
-         · Mehr sichtbarer Inhalt — kein Sprung beim Bar-Einklappen
-         · Hintergrund weiterhin bis zum Display-Rand
-
-      C) iOS PWA Standalone (ohne Browser-Chrome)
-         · Header sitzt unterhalb der Statusbar (safe-area-top)
-         · Unten safe-area-bottom für Home-Indicator
-         · Eigener Pull-to-Refresh möglich, da kein Safari mehr da
-
-      D) Desktop (Safari/Chrome)
-         · Master-Detail-Layout (kein Bezug zu Toolbar/Safe-Area)
-         · Hintergrund füllt das Browser-Fenster
-         · Scrollbalken sichtbar oder dezent
-
-    Bedienung:
-      · Oben rechts: Höhen-Modus (dvh/lvh/svh/vh) — Outer-Container
-      · Oben rechts: Scroll-Pattern (Body/Inner) — Wo scrollt's
-      · Diagnose-Panel zeigt live alle Viewport-Werte
+      DESKTOP:
+        · Sidebar bleibt sichtbar, wenn Detail-Inhalt lang ist
+        · Master-Detail wirkt nicht "zerrissen"
+        · Sticky-Header reicht über volle Breite
     ═══════════════════════════════════════════════════════════════════════════
   -->
 
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; font-family: -apple-system, system-ui, sans-serif;
-      -webkit-font-smoothing: antialiased; background: #FFEAA7; }
-    /* gelbes Body-Background = Hintergrund AUSSERHALB des App-Containers
-       → wenn du gelb siehst, läuft der App-Container nicht bis dort */
+    :root {
+      --bg: #ECEEF3;
+      --card: #FFFFFF;
+      --surface: #F4F6FA;
+      --border: #D8DCE8;
+      --text: #0F1022;
+      --sub: #4A5072;
+      --muted: #737896;
+      --accent: #0E7490;
+      --kontakte: #8B5CF6;
+      --warn: #F97316;
+      --gridGap: 8px;
+    }
 
-    #root { min-height: 100%; }
+    html, body {
+      margin: 0; padding: 0;
+      font-family: -apple-system, system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--bg);
+      color: var(--text);
+    }
 
-    /* Visuelle Marker für Container-Grenzen */
-    .frame-edge { outline: 3px solid #E74C3C; outline-offset: -3px; }
-    /* roter Rand = das ist die echte Außenkante des App-Containers */
+    /* SPEC §1: Body scrollt, min-height: 100dvh, padding-bottom für safe-area */
+    body {
+      min-height: 100dvh;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* Wenn Modal offen: Hintergrund-Scroll blockieren */
+    body.modal-open {
+      overflow: hidden;
+      /* `position: fixed` und `top: -scrollY` würde sauberer sein, aber bei
+         sticky-Header bricht das aktuell. Für Test-Shell reicht overflow:hidden */
+    }
+
+    /* Visueller Marker: rote Outline am Body-Rand, damit man sieht
+       wo der echte Layout-Rand ist */
+    body { outline: 3px solid #E74C3C; outline-offset: -3px; }
+
+    /* Modus "inner" (Vergleichs-Pattern aus alter Architektur) */
+    body.pattern-inner {
+      min-height: 0;
+      height: 100dvh;
+      overflow: hidden;
+      padding-bottom: 0;
+    }
+    body.pattern-inner #scrollHost {
+      flex: 1; min-height: 0;
+      overflow-y: auto;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Layout: Mobile = Block, Desktop = Master-Detail-Grid */
+    .layout-mobile #main { display: block; }
+    .layout-desktop #main {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+    }
+
+    /* Sidebar (nur Desktop) */
+    .sidebar {
+      position: sticky;
+      top: var(--headerH, 100px);
+      align-self: start;          /* damit sticky funktioniert in Grid */
+      max-height: calc(100dvh - var(--headerH, 100px));
+      overflow-y: auto;
+      padding: 14px 12px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+    }
+    .layout-mobile .sidebar { display: none; }
+
+    /* Tippbar genug auf Touch-Geräten */
+    button { font-family: inherit; font-size: inherit; }
   </style>
 </head>
-<body>
+<body class="layout-mobile pattern-body">
   <div id="root"></div>
 
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -78,12 +128,11 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel" data-presets="react">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useLayoutEffect, useRef } = React;
 
-    // ── Live-Diagnose: alle viewport-relevanten Werte ───────────────────────
+    // ── Diagnose: alle Viewport-relevanten Werte ────────────────────────────
     function useDiagnose() {
       const [d, setD] = useState(() => measure());
-
       useEffect(() => {
         const update = () => setD(measure());
         window.addEventListener("resize", update);
@@ -92,7 +141,7 @@
           window.visualViewport.addEventListener("resize", update);
           window.visualViewport.addEventListener("scroll", update);
         }
-        const id = setInterval(update, 500); // damit URL-Bar-Klappen sichtbar wird
+        const id = setInterval(update, 500);
         return () => {
           window.removeEventListener("resize", update);
           window.removeEventListener("scroll", update);
@@ -103,12 +152,11 @@
           clearInterval(id);
         };
       }, []);
-
       return d;
     }
 
     function measure() {
-      // Hilfs-Element, um CSS-Höhen in Pixel zu kriegen
+      // Hilfs-Element für CSS-Größen → Pixel
       const probe = document.getElementById("probe") || (() => {
         const p = document.createElement("div");
         p.id = "probe";
@@ -122,13 +170,16 @@
         return probe.getBoundingClientRect().height;
       };
 
+      // SPEC: verbesserte safe-area Messung — Element-HÖHE auf env() setzen,
+      // dann auslesen. Robuster als position-basierte Messung.
       const sat = (side) => {
         const el = document.createElement("div");
-        el.style.cssText = `position:fixed;${side}:env(safe-area-inset-${side});width:0;height:0;`;
+        el.style.cssText = `position:absolute;left:-9999px;top:0;width:0;` +
+          `height:env(safe-area-inset-${side}, 0px);`;
         document.body.appendChild(el);
-        const v = el.getBoundingClientRect()[side === "bottom" ? "top" : side];
+        const h = el.getBoundingClientRect().height;
         document.body.removeChild(el);
-        return Math.round(side === "bottom" ? window.innerHeight - v : v);
+        return Math.round(h);
       };
 
       const vv = window.visualViewport;
@@ -137,8 +188,7 @@
 
       return {
         innerHeight: window.innerHeight,
-        outerHeight: window.outerHeight,
-        screenHeight: window.screen.height,
+        innerWidth: window.innerWidth,
         visualVH: vv ? Math.round(vv.height) : null,
         dvh: Math.round(px("100dvh")),
         lvh: Math.round(px("100lvh")),
@@ -146,176 +196,384 @@
         vh:  Math.round(px("100vh")),
         safeTop: sat("top"),
         safeBottom: sat("bottom"),
+        safeLeft: sat("left"),
+        safeRight: sat("right"),
         standalone: isStandalone,
+        scrollY: window.scrollY,
       };
+    }
+
+    // ── Body-Klassen-Synchronisation (Pattern + Layout + Modal) ─────────────
+    function useBodyClass(pattern, layout, modalOpen) {
+      useLayoutEffect(() => {
+        const b = document.body;
+        b.classList.remove("pattern-body", "pattern-inner");
+        b.classList.add(`pattern-${pattern}`);
+        b.classList.remove("layout-mobile", "layout-desktop");
+        b.classList.add(`layout-${layout}`);
+        b.classList.toggle("modal-open", modalOpen);
+      }, [pattern, layout, modalOpen]);
+    }
+
+    // ── Header-Höhe als CSS-Var setzen (für sticky Sidebar) ─────────────────
+    function useHeaderHeight(headerRef) {
+      useLayoutEffect(() => {
+        if (!headerRef.current) return;
+        const ro = new ResizeObserver(() => {
+          const h = headerRef.current.offsetHeight;
+          document.documentElement.style.setProperty("--headerH", `${h}px`);
+        });
+        ro.observe(headerRef.current);
+        return () => ro.disconnect();
+      }, []);
     }
 
     // ── App ─────────────────────────────────────────────────────────────────
     function App() {
       const d = useDiagnose();
-      const [modus, setModus] = useState("dvh");      // dvh | lvh | svh | vh
-      const [pattern, setPattern] = useState("inner"); // inner | body
+      const [pattern, setPattern] = useState("body");      // body | inner
+      const [layoutOverride, setLayoutOverride] = useState("auto"); // auto | mobile | desktop
       const [showDiag, setShowDiag] = useState(true);
+      const [modalOpen, setModalOpen] = useState(false);
+      const headerRef = useRef(null);
 
-      // Outer-Container-Höhe je nach Modus
-      const outerHeight = `100${modus}`;
+      const autoLayout = d.innerWidth >= 900 ? "desktop" : "mobile";
+      const layout = layoutOverride === "auto" ? autoLayout : layoutOverride;
 
-      // Dummy-Liste
-      const items = Array.from({ length: 30 }, (_, i) => i + 1);
+      useBodyClass(pattern, layout, modalOpen);
+      useHeaderHeight(headerRef);
 
-      // ─── Pattern A: Inner-Scroll (wie aktuell in allesda_v3.jsx) ─────────
-      // Outer ist fix auf 100xyzh, overflow hidden. Scroll passiert in einem
-      // inneren Container. → Safari-Bars klappen NICHT ein (Body bewegt sich nicht).
-      if (pattern === "inner") {
-        return (
-          <div className="frame-edge" style={{
-            height: outerHeight,
-            overflow: "hidden",
-            background: "#F4F6FA",
-            display: "flex",
-            flexDirection: "column",
-          }}>
-            <Header modus={modus} setModus={setModus}
+      // Inner-Pattern braucht eine flex column als ScrollHost-Wrapper
+      const RootWrap = ({ children }) => pattern === "inner" ? (
+        <div style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
+          {children}
+        </div>
+      ) : children;
+
+      const ContentArea = ({ children }) => pattern === "inner" ? (
+        <div id="scrollHost" style={{ display: "flex", flexDirection: "column" }}>
+          {children}
+        </div>
+      ) : children;
+
+      return (
+        <RootWrap>
+          <Header ref={headerRef}/>
+          <ContentArea>
+            <ControlBar
               pattern={pattern} setPattern={setPattern}
-              showDiag={showDiag} setShowDiag={setShowDiag}/>
-            {showDiag && <DiagnosePanel d={d}/>}
-            <div style={{
-              flex: 1, minHeight: 0,
-              overflowY: "auto",
-              WebkitOverflowScrolling: "touch",
-            }}>
-              <Liste items={items}/>
-              <UnterRandMarker/>
+              layoutOverride={layoutOverride} setLayoutOverride={setLayoutOverride}
+              autoLayout={autoLayout}
+              showDiag={showDiag} setShowDiag={setShowDiag}
+              onOpenModal={() => setModalOpen(true)}
+            />
+            {showDiag && <DiagPanel d={d}/>}
+            <div id="main">
+              {layout === "desktop" && <Sidebar/>}
+              <ContentScreen/>
             </div>
-          </div>
-        );
-      }
-
-      // ─── Pattern B: Body-Scroll ──────────────────────────────────────────
-      // Outer hat min-height, kein overflow. Body scrollt. Safari-Bars klappen ein.
-      return (
-        <div className="frame-edge" style={{
-          minHeight: outerHeight,
-          background: "#F4F6FA",
-          display: "flex",
-          flexDirection: "column",
-        }}>
-          <div style={{ position: "sticky", top: 0, zIndex: 10 }}>
-            <Header modus={modus} setModus={setModus}
-              pattern={pattern} setPattern={setPattern}
-              showDiag={showDiag} setShowDiag={setShowDiag}/>
-            {showDiag && <DiagnosePanel d={d}/>}
-          </div>
-          <Liste items={items}/>
-          <UnterRandMarker/>
-        </div>
+          </ContentArea>
+          {modalOpen && <Modal onClose={() => setModalOpen(false)}/>}
+        </RootWrap>
       );
     }
 
-    // ── Header mit Mode-Switches ────────────────────────────────────────────
-    function Header({ modus, setModus, pattern, setPattern, showDiag, setShowDiag }) {
-      const Btn = ({ active, onClick, children }) => (
-        <button onClick={onClick} style={{
-          padding: "4px 10px", fontSize: 12, fontWeight: 600,
-          border: "1px solid #D8DCE8",
-          background: active ? "#0E7490" : "#FFFFFF",
-          color: active ? "#FFFFFF" : "#0F1022",
-          borderRadius: 6, cursor: "pointer",
-        }}>{children}</button>
-      );
+    // ── Top-Level Header (echte AllesDa-Geometrie) ──────────────────────────
+    const Header = React.forwardRef((_, ref) => (
+      <header ref={ref} style={{
+        position: "sticky", top: 0, zIndex: 100,
+        background: "var(--card)",
+        borderBottom: "1px solid var(--border)",
+        paddingTop: "env(safe-area-inset-top, 0px)",
+      }}>
+        {/* Zeile 1: Logo · Filter-Dropdown · Dunkelmodus · Avatar */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "auto 1fr auto auto",
+          alignItems: "center", gap: 10, padding: "10px 14px",
+        }}>
+          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
+            <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.03em" }}>
+              <span style={{ color: "var(--text)" }}>Alles</span>
+              <span style={{ color: "var(--accent)" }}>Da</span>
+            </span>
+            <span style={{ fontSize: 9, color: "var(--muted)", marginTop: 2,
+              letterSpacing: "0.05em" }}>shell-v2</span>
+          </div>
+          <div style={{
+            padding: "6px 12px", border: "1px solid var(--border)",
+            borderRadius: 8, background: "var(--surface)",
+            fontSize: 13, color: "var(--text)", overflow: "hidden",
+            textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>Alle Objekte ▾</div>
+          <button style={btnIcon}>🌙</button>
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: "var(--accent)", color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 11, fontWeight: 700,
+          }}>BW</div>
+        </div>
 
+        {/* Zeile 2: KategorieKacheln, horizontal scroll, edge-to-edge */}
+        <div style={{ borderTop: "1px solid var(--border)", padding: "8px 0" }}>
+          <KategorieKacheln/>
+        </div>
+      </header>
+    ));
+
+    function KategorieKacheln() {
+      const items = [
+        { icon: "🏢", label: "Objekte", color: "#06B6D4" },
+        { icon: "👥", label: "Kontakte", color: "#8B5CF6" },
+        { icon: "📅", label: "ETV", color: "#F59E0B" },
+        { icon: "🎫", label: "Tickets", color: "#EC4899" },
+        { icon: "💰", label: "Finanzen", color: "#10B981" },
+        { icon: "⚙", label: "Technik", color: "#0EA5E9" },
+      ];
       return (
         <div style={{
-          background: "#FFFFFF",
-          borderBottom: "1px solid #D8DCE8",
-          padding: "8px 12px",
-          paddingTop: "calc(8px + env(safe-area-inset-top, 0px))",
+          display: "flex", gap: 6, overflowX: "auto", overflowY: "hidden",
+          padding: "0 14px", scrollbarWidth: "thin",
+          WebkitOverflowScrolling: "touch",
         }}>
-          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>
-            <span style={{ color: "#0F1022" }}>Alles</span>
-            <span style={{ color: "#0E7490" }}>Da</span>
-            <span style={{ fontSize: 10, color: "#737896", marginLeft: 6 }}>shell</span>
-          </div>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 10, color: "#737896", marginRight: 4 }}>Höhe:</span>
-            {["dvh", "lvh", "svh", "vh"].map(m => (
-              <Btn key={m} active={modus === m} onClick={() => setModus(m)}>{m}</Btn>
-            ))}
-            <span style={{ fontSize: 10, color: "#737896", margin: "0 4px 0 8px" }}>Scroll:</span>
-            <Btn active={pattern === "inner"} onClick={() => setPattern("inner")}>inner</Btn>
-            <Btn active={pattern === "body"} onClick={() => setPattern("body")}>body</Btn>
-            <Btn active={showDiag} onClick={() => setShowDiag(v => !v)}>diag</Btn>
-          </div>
-        </div>
-      );
-    }
-
-    // ── Live-Diagnose-Anzeige ───────────────────────────────────────────────
-    function DiagnosePanel({ d }) {
-      const Row = ({ label, value, hint }) => (
-        <div style={{ display: "flex", justifyContent: "space-between",
-          padding: "2px 0", fontSize: 11, fontFamily: "monospace" }}>
-          <span style={{ color: "#4A5072" }}>{label}</span>
-          <span><strong>{value}</strong>{hint && <span style={{ color: "#737896" }}> {hint}</span>}</span>
-        </div>
-      );
-      return (
-        <div style={{
-          background: "#FFFBEB", borderBottom: "1px solid #FCD34D",
-          padding: "6px 12px",
-        }}>
-          <Row label="standalone (PWA)" value={String(d.standalone)}/>
-          <Row label="innerHeight" value={d.innerHeight} hint="px"/>
-          <Row label="visualViewport" value={d.visualVH ?? "—"} hint="px"/>
-          <Row label="100dvh" value={d.dvh} hint="px"/>
-          <Row label="100lvh" value={d.lvh} hint="px"/>
-          <Row label="100svh" value={d.svh} hint="px"/>
-          <Row label="100vh" value={d.vh} hint="px"/>
-          <Row label="safe-area top/bottom" value={`${d.safeTop} / ${d.safeBottom}`} hint="px"/>
-        </div>
-      );
-    }
-
-    // ── Dummy-Liste zum Scrollen ────────────────────────────────────────────
-    function Liste({ items }) {
-      return (
-        <div style={{ padding: "12px" }}>
-          {items.map(i => (
-            <div key={i} style={{
-              background: "#FFFFFF",
-              border: "1px solid #D8DCE8",
-              borderRadius: 8,
-              padding: "12px 14px",
-              marginBottom: 8,
-              fontSize: 14, color: "#0F1022",
+          {items.map(it => (
+            <div key={it.label} style={{
+              flex: "0 0 auto",
+              padding: "6px 10px", borderRadius: 10,
+              background: it.color + "15", border: `1px solid ${it.color}40`,
+              display: "flex", alignItems: "center", gap: 6,
+              fontSize: 13, fontWeight: 600, color: "var(--text)",
             }}>
-              <strong>Eintrag #{i}</strong>
-              <div style={{ fontSize: 11, color: "#737896", marginTop: 2 }}>
-                Dummy-Inhalt zum Scrollen
-              </div>
+              <span style={{ fontSize: 16 }}>{it.icon}</span>
+              {it.label}
             </div>
           ))}
         </div>
       );
     }
 
-    // ── Marker am Ende: zeigt, wo die Liste aufhört ─────────────────────────
-    function UnterRandMarker() {
+    // ── Control-Bar (Test-Steuerung) ────────────────────────────────────────
+    function ControlBar({ pattern, setPattern, layoutOverride, setLayoutOverride,
+        autoLayout, showDiag, setShowDiag, onOpenModal }) {
+      const Btn = ({ active, onClick, children }) => (
+        <button onClick={onClick} style={{
+          padding: "4px 10px", fontSize: 11, fontWeight: 600,
+          border: "1px solid var(--border)",
+          background: active ? "var(--accent)" : "var(--card)",
+          color: active ? "#fff" : "var(--text)",
+          borderRadius: 6, cursor: "pointer",
+        }}>{children}</button>
+      );
       return (
         <div style={{
-          background: "#E74C3C", color: "#FFFFFF",
+          position: "sticky", top: "var(--headerH, 100px)", zIndex: 50,
+          background: "#FFFBEB", borderBottom: "1px solid #FCD34D",
+          padding: "6px 12px",
+          display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center",
+        }}>
+          <span style={{ fontSize: 10, color: "var(--sub)" }}>Scroll:</span>
+          <Btn active={pattern === "body"} onClick={() => setPattern("body")}>body</Btn>
+          <Btn active={pattern === "inner"} onClick={() => setPattern("inner")}>inner</Btn>
+          <span style={{ fontSize: 10, color: "var(--sub)", marginLeft: 6 }}>Layout:</span>
+          <Btn active={layoutOverride === "auto"} onClick={() => setLayoutOverride("auto")}>auto ({autoLayout})</Btn>
+          <Btn active={layoutOverride === "mobile"} onClick={() => setLayoutOverride("mobile")}>mobile</Btn>
+          <Btn active={layoutOverride === "desktop"} onClick={() => setLayoutOverride("desktop")}>desktop</Btn>
+          <Btn active={showDiag} onClick={() => setShowDiag(v => !v)}>diag</Btn>
+          <Btn active={false} onClick={onOpenModal}>Modal</Btn>
+        </div>
+      );
+    }
+
+    // ── Diagnose-Panel ──────────────────────────────────────────────────────
+    function DiagPanel({ d }) {
+      const Row = ({ label, value, hint }) => (
+        <div style={{ display: "flex", justifyContent: "space-between",
+          padding: "2px 12px", fontSize: 11, fontFamily: "ui-monospace, monospace" }}>
+          <span style={{ color: "var(--sub)" }}>{label}</span>
+          <span><strong>{value}</strong>{hint && <span style={{ color: "var(--muted)" }}> {hint}</span>}</span>
+        </div>
+      );
+      return (
+        <div style={{
+          background: "#FEF3C7", borderBottom: "1px solid #FCD34D",
+          padding: "6px 0",
+        }}>
+          <Row label="standalone (PWA)" value={String(d.standalone)}/>
+          <Row label="innerWidth × innerHeight" value={`${d.innerWidth} × ${d.innerHeight}`} hint="px"/>
+          <Row label="visualViewport.height" value={d.visualVH ?? "—"} hint="px"/>
+          <Row label="100dvh / 100lvh" value={`${d.dvh} / ${d.lvh}`} hint="px"/>
+          <Row label="100svh / 100vh" value={`${d.svh} / ${d.vh}`} hint="px"/>
+          <Row label="safe-area top/bottom" value={`${d.safeTop} / ${d.safeBottom}`} hint="px"/>
+          <Row label="safe-area left/right" value={`${d.safeLeft} / ${d.safeRight}`} hint="px"/>
+          <Row label="scrollY" value={d.scrollY} hint="px"/>
+        </div>
+      );
+    }
+
+    // ── Sidebar (Desktop) ───────────────────────────────────────────────────
+    function Sidebar() {
+      const kacheln = [
+        { icon: "🏢", label: "Objekte", count: 47 },
+        { icon: "👥", label: "Kontakte", count: 312 },
+        { icon: "📅", label: "ETV", count: 8 },
+        { icon: "🎫", label: "Tickets", count: 23 },
+        { icon: "💰", label: "Finanzen", count: 0 },
+        { icon: "⚙", label: "Technik", count: 0 },
+      ];
+      return (
+        <aside className="sidebar">
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)",
+            textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+            Dashboard
+          </div>
+          {kacheln.map(k => (
+            <div key={k.label} style={{
+              padding: "10px 12px", marginBottom: 6,
+              background: "var(--card)", border: "1px solid var(--border)",
+              borderRadius: 8, display: "flex", alignItems: "center", gap: 10,
+              fontSize: 13, color: "var(--text)", cursor: "pointer",
+            }}>
+              <span style={{ fontSize: 18 }}>{k.icon}</span>
+              <span style={{ flex: 1, fontWeight: 600 }}>{k.label}</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>{k.count}</span>
+            </div>
+          ))}
+        </aside>
+      );
+    }
+
+    // ── Content-Screen mit Sticky-Section-Header (zweite Sticky-Ebene) ──────
+    function ContentScreen() {
+      // Auf Mobil: Section-Header klebt unter dem Top-Header
+      // Auf Desktop: gleich (oben in der Detail-Spalte)
+      return (
+        <div style={{ padding: "0 12px" }}>
+          <StickySectionHeader title="Objekte" count={30}/>
+          <Liste/>
+          <EndeMarker/>
+        </div>
+      );
+    }
+
+    function StickySectionHeader({ title, count }) {
+      return (
+        <div style={{
+          position: "sticky",
+          top: `calc(var(--headerH, 100px) + 36px)`, // Header + ControlBar
+          zIndex: 30,
+          background: "var(--bg)",
+          padding: "12px 0 8px 0",
+          margin: "0 -12px",                          // an Body-Rand ziehen
+          paddingLeft: 12, paddingRight: 12,
+          borderBottom: "1px solid var(--border)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{title}</h2>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>{count} Einträge</div>
+          </div>
+          <button style={{
+            padding: "8px 14px", background: "var(--accent)", color: "#fff",
+            border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            cursor: "pointer",
+          }}>+ Neu</button>
+        </div>
+      );
+    }
+
+    function Liste() {
+      const items = Array.from({ length: 30 }, (_, i) => i + 1);
+      return (
+        <div style={{ paddingTop: 8 }}>
+          {items.map(i => (
+            <div key={i} style={{
+              background: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 10,
+              padding: "12px 14px",
+              marginBottom: 8,
+              display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 8,
+                background: "var(--accent)20",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 14, fontWeight: 700, color: "var(--accent)",
+              }}>{(i + "").padStart(2, "0")}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Objekt #{i}</div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                  Dummy-Adresse · WEG · {Math.floor(Math.random() * 30) + 5} Einheiten
+                </div>
+              </div>
+              <span style={{ fontSize: 18, color: "var(--muted)" }}>›</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function EndeMarker() {
+      return (
+        <div style={{
+          background: "#E74C3C", color: "#fff",
           padding: "10px 12px", textAlign: "center",
-          fontSize: 11, fontWeight: 700,
-          letterSpacing: "0.05em",
+          fontSize: 11, fontWeight: 700, letterSpacing: "0.05em",
+          borderRadius: 8, marginTop: 12,
         }}>
           ↓ ENDE DES INHALTS ↓
           <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85, marginTop: 2 }}>
-            wenn diese Zeile hinter der Safari-Toolbar verschwindet:
-            Inhalt unten nicht erreichbar
+            erreichbar = okay · hinter Toolbar/Home-Indicator versteckt = Bug
           </div>
         </div>
       );
     }
+
+    // ── Modal (Body-Scroll-Lock Test) ───────────────────────────────────────
+    function Modal({ onClose }) {
+      // Beim Mount: scroll-Position merken und body fixieren wäre die saubere Lösung.
+      // Hier reicht overflow:hidden via .modal-open Klasse (siehe CSS).
+      return (
+        <div onClick={onClose} style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "max(20px, env(safe-area-inset-top, 0px)) 20px " +
+            "max(20px, env(safe-area-inset-bottom, 0px)) 20px",
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: "var(--card)", borderRadius: 12,
+            padding: 20, maxWidth: 400, width: "100%",
+            maxHeight: "80dvh", overflowY: "auto",
+          }}>
+            <h3 style={{ margin: "0 0 12px 0", fontSize: 18 }}>Modal-Beispiel</h3>
+            <p style={{ fontSize: 13, lineHeight: 1.5, color: "var(--sub)" }}>
+              Wenn dieses Modal offen ist, sollte der Hintergrund nicht scrollen.
+              Beim Schließen sollte die alte Scroll-Position erhalten bleiben.
+            </p>
+            <p style={{ fontSize: 13, lineHeight: 1.5, color: "var(--sub)" }}>
+              Auf iOS Safari ist das tricky — die saubere Lösung ist
+              <code style={{ background: "var(--surface)", padding: "1px 5px", borderRadius: 4 }}>
+                body{`{position:fixed;top:-scrollY}`}
+              </code>, hier reicht erstmal <code style={{ background: "var(--surface)", padding: "1px 5px", borderRadius: 4 }}>overflow:hidden</code>.
+            </p>
+            <button onClick={onClose} style={{
+              marginTop: 12, padding: "8px 16px", background: "var(--accent)",
+              color: "#fff", border: "none", borderRadius: 8,
+              fontSize: 13, fontWeight: 600, cursor: "pointer",
+            }}>Schließen</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── gemeinsame Inline-Styles ────────────────────────────────────────────
+    const btnIcon = {
+      width: 32, height: 32, borderRadius: "50%",
+      background: "var(--card)", border: "1px solid var(--border)",
+      cursor: "pointer", fontSize: 14,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    };
 
     ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
   </script>
