@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <!-- viewport-fit=cover ist Pflicht, damit env(safe-area-inset-*) ≠ 0 wird auf iPhone -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <title>AllesDa · Rahmen-Shell</title>
+
+  <!--
+    ═══════════════════════════════════════════════════════════════════════════
+    AllesDa · Mobile-Rahmen Test-Shell
+    ═══════════════════════════════════════════════════════════════════════════
+
+    Zweck:
+      Ein minimaler Layout-Rahmen, isoliert vom Rest der App, um das
+      Mobile-Verhalten in allen vier Modi durchprobieren zu können — bevor
+      wir Code in allesda_v3.jsx anfassen.
+
+    Was prüfen wir hier:
+      · Wie verhalten sich 100dvh / 100lvh / 100svh / 100vh auf iOS Safari?
+      · Was passiert bei Body-Scroll vs. Inner-Scroll mit der Safari-Toolbar?
+      · Klappt die URL-Bar bei Body-Scroll ein? Bei Inner-Scroll auch?
+      · Reicht der App-Hintergrund bis zum Display-Rand?
+      · Ist die letzte Listenposition erreichbar (nicht hinter der Toolbar)?
+      · Wie groß ist env(safe-area-inset-bottom) tatsächlich pro Modus?
+
+    Spec (Stand der Diskussion — beim Testen iterieren):
+
+      A) iOS Safari Browser, Bars sichtbar
+         · App-Hintergrund reicht bis unter beide Safari-Bars
+         · Header sitzt oben, sticky, NICHT hinter Statusbar
+         · Letzte Liste-Position ist über der unteren Bar erreichbar
+         · Pull-to-Refresh: Safari-Default akzeptabel
+
+      B) iOS Safari Browser, Bars eingeklappt
+         · Header bleibt sticky
+         · Mehr sichtbarer Inhalt — kein Sprung beim Bar-Einklappen
+         · Hintergrund weiterhin bis zum Display-Rand
+
+      C) iOS PWA Standalone (ohne Browser-Chrome)
+         · Header sitzt unterhalb der Statusbar (safe-area-top)
+         · Unten safe-area-bottom für Home-Indicator
+         · Eigener Pull-to-Refresh möglich, da kein Safari mehr da
+
+      D) Desktop (Safari/Chrome)
+         · Master-Detail-Layout (kein Bezug zu Toolbar/Safe-Area)
+         · Hintergrund füllt das Browser-Fenster
+         · Scrollbalken sichtbar oder dezent
+
+    Bedienung:
+      · Oben rechts: Höhen-Modus (dvh/lvh/svh/vh) — Outer-Container
+      · Oben rechts: Scroll-Pattern (Body/Inner) — Wo scrollt's
+      · Diagnose-Panel zeigt live alle Viewport-Werte
+    ═══════════════════════════════════════════════════════════════════════════
+  -->
+
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; font-family: -apple-system, system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased; background: #FFEAA7; }
+    /* gelbes Body-Background = Hintergrund AUSSERHALB des App-Containers
+       → wenn du gelb siehst, läuft der App-Container nicht bis dort */
+
+    #root { min-height: 100%; }
+
+    /* Visuelle Marker für Container-Grenzen */
+    .frame-edge { outline: 3px solid #E74C3C; outline-offset: -3px; }
+    /* roter Rand = das ist die echte Außenkante des App-Containers */
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect } = React;
+
+    // ── Live-Diagnose: alle viewport-relevanten Werte ───────────────────────
+    function useDiagnose() {
+      const [d, setD] = useState(() => measure());
+
+      useEffect(() => {
+        const update = () => setD(measure());
+        window.addEventListener("resize", update);
+        window.addEventListener("scroll", update);
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener("resize", update);
+          window.visualViewport.addEventListener("scroll", update);
+        }
+        const id = setInterval(update, 500); // damit URL-Bar-Klappen sichtbar wird
+        return () => {
+          window.removeEventListener("resize", update);
+          window.removeEventListener("scroll", update);
+          if (window.visualViewport) {
+            window.visualViewport.removeEventListener("resize", update);
+            window.visualViewport.removeEventListener("scroll", update);
+          }
+          clearInterval(id);
+        };
+      }, []);
+
+      return d;
+    }
+
+    function measure() {
+      // Hilfs-Element, um CSS-Höhen in Pixel zu kriegen
+      const probe = document.getElementById("probe") || (() => {
+        const p = document.createElement("div");
+        p.id = "probe";
+        p.style.cssText = "position:fixed;left:-9999px;top:0;width:1px;";
+        document.body.appendChild(p);
+        return p;
+      })();
+
+      const px = (cssVal) => {
+        probe.style.height = cssVal;
+        return probe.getBoundingClientRect().height;
+      };
+
+      const sat = (side) => {
+        const el = document.createElement("div");
+        el.style.cssText = `position:fixed;${side}:env(safe-area-inset-${side});width:0;height:0;`;
+        document.body.appendChild(el);
+        const v = el.getBoundingClientRect()[side === "bottom" ? "top" : side];
+        document.body.removeChild(el);
+        return Math.round(side === "bottom" ? window.innerHeight - v : v);
+      };
+
+      const vv = window.visualViewport;
+      const isStandalone = window.navigator.standalone === true
+        || window.matchMedia("(display-mode: standalone)").matches;
+
+      return {
+        innerHeight: window.innerHeight,
+        outerHeight: window.outerHeight,
+        screenHeight: window.screen.height,
+        visualVH: vv ? Math.round(vv.height) : null,
+        dvh: Math.round(px("100dvh")),
+        lvh: Math.round(px("100lvh")),
+        svh: Math.round(px("100svh")),
+        vh:  Math.round(px("100vh")),
+        safeTop: sat("top"),
+        safeBottom: sat("bottom"),
+        standalone: isStandalone,
+      };
+    }
+
+    // ── App ─────────────────────────────────────────────────────────────────
+    function App() {
+      const d = useDiagnose();
+      const [modus, setModus] = useState("dvh");      // dvh | lvh | svh | vh
+      const [pattern, setPattern] = useState("inner"); // inner | body
+      const [showDiag, setShowDiag] = useState(true);
+
+      // Outer-Container-Höhe je nach Modus
+      const outerHeight = `100${modus}`;
+
+      // Dummy-Liste
+      const items = Array.from({ length: 30 }, (_, i) => i + 1);
+
+      // ─── Pattern A: Inner-Scroll (wie aktuell in allesda_v3.jsx) ─────────
+      // Outer ist fix auf 100xyzh, overflow hidden. Scroll passiert in einem
+      // inneren Container. → Safari-Bars klappen NICHT ein (Body bewegt sich nicht).
+      if (pattern === "inner") {
+        return (
+          <div className="frame-edge" style={{
+            height: outerHeight,
+            overflow: "hidden",
+            background: "#F4F6FA",
+            display: "flex",
+            flexDirection: "column",
+          }}>
+            <Header modus={modus} setModus={setModus}
+              pattern={pattern} setPattern={setPattern}
+              showDiag={showDiag} setShowDiag={setShowDiag}/>
+            {showDiag && <DiagnosePanel d={d}/>}
+            <div style={{
+              flex: 1, minHeight: 0,
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
+            }}>
+              <Liste items={items}/>
+              <UnterRandMarker/>
+            </div>
+          </div>
+        );
+      }
+
+      // ─── Pattern B: Body-Scroll ──────────────────────────────────────────
+      // Outer hat min-height, kein overflow. Body scrollt. Safari-Bars klappen ein.
+      return (
+        <div className="frame-edge" style={{
+          minHeight: outerHeight,
+          background: "#F4F6FA",
+          display: "flex",
+          flexDirection: "column",
+        }}>
+          <div style={{ position: "sticky", top: 0, zIndex: 10 }}>
+            <Header modus={modus} setModus={setModus}
+              pattern={pattern} setPattern={setPattern}
+              showDiag={showDiag} setShowDiag={setShowDiag}/>
+            {showDiag && <DiagnosePanel d={d}/>}
+          </div>
+          <Liste items={items}/>
+          <UnterRandMarker/>
+        </div>
+      );
+    }
+
+    // ── Header mit Mode-Switches ────────────────────────────────────────────
+    function Header({ modus, setModus, pattern, setPattern, showDiag, setShowDiag }) {
+      const Btn = ({ active, onClick, children }) => (
+        <button onClick={onClick} style={{
+          padding: "4px 10px", fontSize: 12, fontWeight: 600,
+          border: "1px solid #D8DCE8",
+          background: active ? "#0E7490" : "#FFFFFF",
+          color: active ? "#FFFFFF" : "#0F1022",
+          borderRadius: 6, cursor: "pointer",
+        }}>{children}</button>
+      );
+
+      return (
+        <div style={{
+          background: "#FFFFFF",
+          borderBottom: "1px solid #D8DCE8",
+          padding: "8px 12px",
+          paddingTop: "calc(8px + env(safe-area-inset-top, 0px))",
+        }}>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>
+            <span style={{ color: "#0F1022" }}>Alles</span>
+            <span style={{ color: "#0E7490" }}>Da</span>
+            <span style={{ fontSize: 10, color: "#737896", marginLeft: 6 }}>shell</span>
+          </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#737896", marginRight: 4 }}>Höhe:</span>
+            {["dvh", "lvh", "svh", "vh"].map(m => (
+              <Btn key={m} active={modus === m} onClick={() => setModus(m)}>{m}</Btn>
+            ))}
+            <span style={{ fontSize: 10, color: "#737896", margin: "0 4px 0 8px" }}>Scroll:</span>
+            <Btn active={pattern === "inner"} onClick={() => setPattern("inner")}>inner</Btn>
+            <Btn active={pattern === "body"} onClick={() => setPattern("body")}>body</Btn>
+            <Btn active={showDiag} onClick={() => setShowDiag(v => !v)}>diag</Btn>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Live-Diagnose-Anzeige ───────────────────────────────────────────────
+    function DiagnosePanel({ d }) {
+      const Row = ({ label, value, hint }) => (
+        <div style={{ display: "flex", justifyContent: "space-between",
+          padding: "2px 0", fontSize: 11, fontFamily: "monospace" }}>
+          <span style={{ color: "#4A5072" }}>{label}</span>
+          <span><strong>{value}</strong>{hint && <span style={{ color: "#737896" }}> {hint}</span>}</span>
+        </div>
+      );
+      return (
+        <div style={{
+          background: "#FFFBEB", borderBottom: "1px solid #FCD34D",
+          padding: "6px 12px",
+        }}>
+          <Row label="standalone (PWA)" value={String(d.standalone)}/>
+          <Row label="innerHeight" value={d.innerHeight} hint="px"/>
+          <Row label="visualViewport" value={d.visualVH ?? "—"} hint="px"/>
+          <Row label="100dvh" value={d.dvh} hint="px"/>
+          <Row label="100lvh" value={d.lvh} hint="px"/>
+          <Row label="100svh" value={d.svh} hint="px"/>
+          <Row label="100vh" value={d.vh} hint="px"/>
+          <Row label="safe-area top/bottom" value={`${d.safeTop} / ${d.safeBottom}`} hint="px"/>
+        </div>
+      );
+    }
+
+    // ── Dummy-Liste zum Scrollen ────────────────────────────────────────────
+    function Liste({ items }) {
+      return (
+        <div style={{ padding: "12px" }}>
+          {items.map(i => (
+            <div key={i} style={{
+              background: "#FFFFFF",
+              border: "1px solid #D8DCE8",
+              borderRadius: 8,
+              padding: "12px 14px",
+              marginBottom: 8,
+              fontSize: 14, color: "#0F1022",
+            }}>
+              <strong>Eintrag #{i}</strong>
+              <div style={{ fontSize: 11, color: "#737896", marginTop: 2 }}>
+                Dummy-Inhalt zum Scrollen
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ── Marker am Ende: zeigt, wo die Liste aufhört ─────────────────────────
+    function UnterRandMarker() {
+      return (
+        <div style={{
+          background: "#E74C3C", color: "#FFFFFF",
+          padding: "10px 12px", textAlign: "center",
+          fontSize: 11, fontWeight: 700,
+          letterSpacing: "0.05em",
+        }}>
+          ↓ ENDE DES INHALTS ↓
+          <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85, marginTop: 2 }}>
+            wenn diese Zeile hinter der Safari-Toolbar verschwindet:
+            Inhalt unten nicht erreichbar
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>
