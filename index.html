@@ -77,9 +77,15 @@
          sticky-Header bricht das aktuell. Für Test-Shell reicht overflow:hidden */
     }
 
-    /* Visueller Marker: rote Outline am Body-Rand, damit man sieht
-       wo der echte Layout-Rand ist */
-    body { outline: 3px solid #E74C3C; outline-offset: -3px; }
+    /* Visueller Test-Marker am Body-Rand (dezent) */
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      border: 2px solid rgba(231, 76, 60, 0.5);
+      z-index: 9999;
+    }
 
     /* Modus "inner" (Vergleichs-Pattern aus alter Architektur) */
     body.pattern-inner {
@@ -103,18 +109,34 @@
       gap: 0;
     }
 
-    /* Sidebar (nur Desktop) */
+    /* Sidebar-Cell: füllt die linke Spalte komplett aus, damit unten kein
+       weißes Loch entsteht. Innendrin sitzt die sticky-Sidebar. */
+    .sidebar-cell {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      min-height: calc(100dvh - var(--headerH, 100px));
+    }
     .sidebar {
       position: sticky;
       top: var(--headerH, 100px);
-      align-self: start;          /* damit sticky funktioniert in Grid */
       max-height: calc(100dvh - var(--headerH, 100px));
       overflow-y: auto;
       padding: 14px 12px;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
     }
-    .layout-mobile .sidebar { display: none; }
+    .layout-mobile .sidebar-cell { display: none; }
+
+    /* Pillen-Leiste: horizontaler Scroll soll vertikalem Scroll nicht in die
+       Quere kommen. touch-action: pan-x sagt iOS "diese Geste ist horizontal".
+       overscroll-behavior-x: contain verhindert Pull-to-Refresh-Trigger. */
+    .kategorie-scroller {
+      display: flex; gap: 6px;
+      overflow-x: auto; overflow-y: hidden;
+      padding: 0 14px;
+      scrollbar-width: thin;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x;
+      overscroll-behavior-x: contain;
+    }
 
     /* Tippbar genug auf Touch-Geräten */
     button { font-family: inherit; font-size: inherit; }
@@ -269,7 +291,11 @@
             />
             {showDiag && <DiagPanel d={d}/>}
             <div id="main">
-              {layout === "desktop" && <Sidebar/>}
+              {layout === "desktop" && (
+                <div className="sidebar-cell">
+                  <Sidebar/>
+                </div>
+              )}
               <ContentScreen/>
             </div>
           </ContentArea>
@@ -331,11 +357,7 @@
         { icon: "⚙", label: "Technik", color: "#0EA5E9" },
       ];
       return (
-        <div style={{
-          display: "flex", gap: 6, overflowX: "auto", overflowY: "hidden",
-          padding: "0 14px", scrollbarWidth: "thin",
-          WebkitOverflowScrolling: "touch",
-        }}>
+        <div className="kategorie-scroller">
           {items.map(it => (
             <div key={it.label} style={{
               flex: "0 0 auto",
@@ -366,7 +388,6 @@
       );
       return (
         <div style={{
-          position: "sticky", top: "var(--headerH, 100px)", zIndex: 50,
           background: "#FFFBEB", borderBottom: "1px solid #FCD34D",
           padding: "6px 12px",
           display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center",
@@ -421,7 +442,7 @@
         { icon: "⚙", label: "Technik", count: 0 },
       ];
       return (
-        <aside className="sidebar">
+        <div className="sidebar">
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)",
             textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
             Dashboard
@@ -438,7 +459,7 @@
               <span style={{ fontSize: 11, color: "var(--muted)" }}>{k.count}</span>
             </div>
           ))}
-        </aside>
+        </div>
       );
     }
 
@@ -459,7 +480,7 @@
       return (
         <div style={{
           position: "sticky",
-          top: `calc(var(--headerH, 100px) + 36px)`, // Header + ControlBar
+          top: "var(--headerH, 100px)",   // klebt direkt unter Top-Header
           zIndex: 30,
           background: "var(--bg)",
           padding: "12px 0 8px 0",
@@ -519,7 +540,7 @@
           background: "#E74C3C", color: "#fff",
           padding: "10px 12px", textAlign: "center",
           fontSize: 11, fontWeight: 700, letterSpacing: "0.05em",
-          borderRadius: 8, marginTop: 12,
+          margin: "12px -12px 0 -12px",       // bündig an Body-Rand
         }}>
           ↓ ENDE DES INHALTS ↓
           <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85, marginTop: 2 }}>
