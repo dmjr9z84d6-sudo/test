@@ -11,20 +11,22 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>AllesDa v88 &mdash; Immobilienverwaltung</title>
+  <title>AllesDa v89 &mdash; Immobilienverwaltung</title>
   <style>
     html, body {
       margin: 0; padding: 0;
-      height: 100%; overflow: hidden;
       -webkit-font-smoothing: antialiased;
       -webkit-text-size-adjust: 100%;
-      overscroll-behavior: none;
     }
     body {
       background: #07070C; color: #F0F0FF;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
     }
-    #root { height: 100vh; }
+    /* Höhe/Overflow werden von der App gesetzt (per Modus):
+       Desktop = Fixed-Viewport (App-Root height:100dvh, overflow:hidden),
+       Mobile  = Body-Scroll (body min-height:100dvh, kein overflow:hidden).
+       Hier KEIN festes height/overflow:hidden mehr, sonst ist der Body-Scroll
+       auf Mobile global blockiert. */
     #ladeIndikator {
       position: fixed; top: 0; right: 0; bottom: 0; left: 0;
       display: flex; flex-direction: column;
@@ -59,10 +61,10 @@
   <div id="ladeIndikator">
     <div class="spinner"></div>
     <div class="titel">Alles<span class="akzent">Da</span></div>
-    <div class="sub">wird geladen&hellip;  <span style="opacity: 0.5;">v88</span></div>
+    <div class="sub">wird geladen&hellip;  <span style="opacity: 0.5;">v89</span></div>
   </div>
 
   <!-- Cache-Busting durch Versions-Query: jeder Build erzeugt eine neue URL -->
-  <script src="AllesDa.js?v=88"></script>
+  <script src="AllesDa.js?v=89"></script>
 </body>
 </html>
