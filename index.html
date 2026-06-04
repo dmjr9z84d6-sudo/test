@@ -1,71 +1,87 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#07070C">
-  <!-- Cache-Control: index.html selbst soll nie aus dem Cache geladen werden,
-       damit die aktuellste Version-Referenz auf AllesDa.js durchkommt. -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <title>AllesDa v151 &mdash; Immobilienverwaltung</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>AllesDa v6.78</title>
   <style>
+    /* iOS PWA Standalone: html/body bekommen vom User-Agent overflow:hidden;
+       per JS mit !important überschrieben (siehe unten). Hier die Basis. */
     html, body {
-      margin: 0; padding: 0;
+      margin: 0;
+      padding: 0;
+      background: #0a0a0f;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
-      -webkit-text-size-adjust: 100%;
+      -webkit-tap-highlight-color: transparent;
     }
-    body {
-      background: #07070C; color: #F0F0FF;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
-      min-height: 100dvh;
+    * { box-sizing: border-box; }
+    #root { min-height: 100dvh; }
+    /* Ladeanzeige bis das Bundle initialisiert */
+    #ad-loader {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px; background: #0a0a0f; z-index: 9999;
     }
-    /* #root NICHT auf feste Höhe deckeln — sonst kein Body-Scroll auf Mobile.
-       Desktop-Fixierung (Window scrollt nie) setzt die App-Komponente selbst
-       über ihre eigenen html/body/Root-Styles im Desktop-Modus. */
-    #ladeIndikator {
-      position: fixed; top: 0; right: 0; bottom: 0; left: 0;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      background: #07070C; color: #F0F0FF;
-      z-index: 9999;
-      transition: opacity 0.3s ease;
+    #ad-loader .brand { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; }
+    #ad-loader .brand span { color: #2dd4bf; }
+    #ad-loader .ver { font-size: 12px; color: #6b7280; }
+    #ad-loader .spinner {
+      width: 26px; height: 26px; border: 3px solid #1f2937; border-top-color: #2dd4bf;
+      border-radius: 50%; animation: adspin 0.8s linear infinite;
     }
-    #ladeIndikator .spinner {
-      width: 36px; height: 36px;
-      border: 3px solid #252540;
-      border-top-color: #0E7490;
-      border-radius: 50%;
-      animation: ad-spin 0.8s linear infinite;
-    }
-    @keyframes ad-spin { to { transform: rotate(360deg); } }
-    #ladeIndikator .titel {
-      margin-top: 18px;
-      font-size: 15px; font-weight: 600;
-      letter-spacing: -0.02em;
-    }
-    #ladeIndikator .titel .akzent { color: #0E7490; }
-    #ladeIndikator .sub {
-      margin-top: 6px;
-      font-size: 11px; color: #7575A0;
-    }
+    @keyframes adspin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div id="root"></div>
-
-  <div id="ladeIndikator">
+  <div id="ad-loader">
+    <div class="brand">Alles<span>Da</span></div>
+    <div class="ver">v6.78 wird geladen…</div>
     <div class="spinner"></div>
-    <div class="titel">Alles<span class="akzent">Da</span></div>
-    <div class="sub">wird geladen&hellip;  <span style="opacity: 0.5;">v151</span></div>
   </div>
 
-  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-  <!-- Cache-Busting durch Versions-Query: jeder Build erzeugt eine neue URL -->
-  <script src="AllesDa.js?v=151"></script>
+  <script>
+    // iOS PWA Standalone erzwingt overflow:hidden auf html/body via UA-Stylesheet.
+    // CSS allein reicht nicht — per JS mit !important überschreiben, damit der
+    // natürliche Body-Scroll (Mobile) funktioniert.
+    (function () {
+      try {
+        var standalone = window.navigator.standalone === true
+          || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+        if (standalone) {
+          document.documentElement.style.setProperty("overflow", "visible", "important");
+          document.body.style.setProperty("overflow", "visible", "important");
+        }
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- App-Bundle (React inklusive). Cache-Bust über ?v= bei jedem Build erhöhen. -->
+  <script src="./AllesDa.js?v=154"></script>
+
+  <script>
+    // Loader entfernen, sobald React den Root befüllt hat.
+    (function () {
+      var root = document.getElementById("root");
+      var loader = document.getElementById("ad-loader");
+      function check() {
+        if (root && root.childNodes.length > 0) {
+          if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+        } else {
+          requestAnimationFrame(check);
+        }
+      }
+      requestAnimationFrame(check);
+      // Sicherheitsnetz: spätestens nach 5s ausblenden.
+      setTimeout(function () {
+        if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+      }, 5000);
+    })();
+  </script>
 </body>
 </html>
