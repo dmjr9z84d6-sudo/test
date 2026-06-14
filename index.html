@@ -7,11 +7,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#07070C">
   <!-- Cache-Control: index.html selbst soll nie aus dem Cache geladen werden,
-       damit die aktuellste Version-Referenz auf AllesDa.js durchkommt. -->
+       damit immer das aktuellste AllesDa.js nachgeladen wird. -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>AllesDa v171 &mdash; Immobilienverwaltung</title>
+  <title>AllesDa &mdash; Immobilienverwaltung</title>
   <style>
     html, body {
       margin: 0; padding: 0;
@@ -60,9 +60,17 @@
   <div id="ladeIndikator">
     <div class="spinner"></div>
     <div class="titel">Alles<span class="akzent">Da</span></div>
-    <div class="sub">wird geladen&hellip;  <span style="opacity: 0.5;">v171</span></div>
+    <div class="sub">wird geladen&hellip;</div>
   </div>
-  <!-- Cache-Busting durch Versions-Query: jeder Build erzeugt eine neue URL -->
-  <script src="AllesDa.js?v=171"></script>
+  <!-- Cache-Busting ohne Versionspflege: ein Zeitstempel-Query erzwingt bei
+       jedem Laden ein frisches AllesDa.js. index.html selbst bleibt dadurch
+       dauerhaft unverändert — bei Updates nur AllesDa.js neu hochladen. -->
+  <script>
+    (function () {
+      var s = document.createElement("script");
+      s.src = "AllesDa.js?v=" + Date.now();
+      document.body.appendChild(s);
+    })();
+  </script>
 </body>
 </html>
