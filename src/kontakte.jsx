@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, Fragment } from "react";
 import { FS, FW, RAD, getContrastColor } from "./constants.js";
 import {
   BEWOHNER_RECHTE, aktiveBelegung, bewohnerRecht, teileVon

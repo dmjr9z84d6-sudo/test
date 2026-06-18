@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, Fragment } from "react";
 import { FS, FW, RAD, getContrastColor } from "./constants.js";
 import { I, sucheAlles, useKontaktFarbe, zuweisungenFuerAvatar } from "./utils-icons.jsx";
 import { Avatar } from "./components.jsx";
