@@ -23,10 +23,11 @@ import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
 // ╚═════════════════════════════════════════════════════════════════════════╝
 // ZYKLISCHER Import aus der Hauptdatei: S5-Kern-Helfer, die hier zur Laufzeit
 // (JSX/Callbacks) gebraucht werden. esbuild löst den Zyklus auf.
+import { AktionsButton } from "./kontakte-modul.jsx";
 import {
   DokumenteAnsicht, LiegenschaftAnsicht, VerwaltungAnsicht,
   eigStufen, feldImKalender
-} from "./allesda_merged.jsx";
+} from "./liegenschaft.jsx";
 import { VEKontakteTab, objektBezugInfo } from "./kontakte.jsx";
 
 // ═══════════════════════════════════════════════════════════════════════════

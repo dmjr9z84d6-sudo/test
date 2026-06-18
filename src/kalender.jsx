@@ -22,9 +22,12 @@ import {
 // Alle Nutzungen erfolgen zur Laufzeit (JSX-Returns/Callbacks), nie beim
 // Modul-Init — daher von esbuild korrekt auflösbar. Siehe BUILD_TROUBLESHOOTING.
 import {
-  ANDERE_OPTION, AktionsButton, VertragForm, datumsTagMon, eigStufen,
+  AktionsButton, ObjektLegende
+} from "./kontakte-modul.jsx";
+import {
+  ANDERE_OPTION, VertragForm, datumsTagMon, eigStufen,
   feldImKalender, intervallMonate, tagsDiffMS
-} from "./allesda_merged.jsx";
+} from "./liegenschaft.jsx";
 import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
   VEKachel, VEListenZeile, alleEinheitenVonVe

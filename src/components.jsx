@@ -21,9 +21,11 @@ import {
 // Alle Nutzungen erfolgen zur Laufzeit (JSX-Returns/Callbacks), nie beim Modul-
 // Init — daher von esbuild korrekt auflösbar. Siehe BUILD_TROUBLESHOOTING.
 import {
-  AktionsButton, KontaktDetailKarte, KontaktKarte, ObjektPicker,
+  AktionsButton, KontaktDetailKarte, KontaktKarte, ObjektPicker
+} from "./kontakte-modul.jsx";
+import {
   eigStufen, feldImKalender, istFristFeldName, quoteLabel
-} from "./allesda_merged.jsx";
+} from "./liegenschaft.jsx";
 import { FeldObjektKarte } from "./objektansicht.jsx";
 import { isoKW } from "./kalender.jsx";
 

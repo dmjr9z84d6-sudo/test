@@ -14,7 +14,7 @@ import {
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
   gemeinschaftVertreter, gemeinschaftZustellAdresse, istEigentuemergemeinschaft,
   quoteAnteil, quoteLabel
-} from "./allesda_merged.jsx";
+} from "./liegenschaft.jsx";
 import { KALENDER_TYPEN, sammleTermine } from "./kalender.jsx";
 import { STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel, alleEinheitenVonVe } from "./objektansicht.jsx";
 

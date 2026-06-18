@@ -1783,6 +1783,7 @@ export {
   vsWertVon,
   KONTAKTARTEN_KATEGORIEN,
   buildKontaktarten,
+  klassifiziereZuweisung,
   kontaktPasstZuArt,
   kontaktInGruppe,
   objektOrt,

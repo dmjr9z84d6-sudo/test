@@ -14,9 +14,10 @@ import { Avatar, KontaktPicker } from "./components.jsx";
 // ║ KontaktZeile · CustomKriterienEditor · sammleFuerKategorie             ║
 // ╚═════════════════════════════════════════════════════════════════════════╝
 // ZYKLISCHER Import aus der Hauptdatei: S5-Kern-Helfer (Laufzeit-Auflösung).
+import { KontaktDetailKarte } from "./kontakte-modul.jsx";
 import {
-  KARTEN_ICONS, KontaktDetailKarte, KontaktZuweisungForm, buildInitialKarten
-} from "./allesda_merged.jsx";
+  KARTEN_ICONS, KontaktZuweisungForm, buildInitialKarten
+} from "./liegenschaft.jsx";
 
 // ── VEKontakteTab (Personen+Dienstleister gruppiert nach Rolle) ─────────────
 // ── KONTAKT_KATEGORIEN: Kategorien für den Kontakte-Tab im VEDetail ─────────
