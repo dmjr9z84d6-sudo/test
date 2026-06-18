@@ -1572,6 +1572,18 @@ export default function App() {
         // (alt „tickets" bleibt + neu „auftraege" wird angehängt).
         sett.kacheln = sett.kacheln.map(k =>
           (k && k.id === "tickets") ? { ...k, id: "auftraege", label: "Aufträge" } : k);
+        // Dedupe nach id: durch die tickets→auftraege-Umbenennung (oder doppelt
+        // gespeicherte Settings) können zwei Kacheln dieselbe id tragen. Erste
+        // gewinnt (behält die vom User gewählte Farbe/Reihenfolge/Sichtbarkeit).
+        {
+          const gesehen = {};
+          sett.kacheln = sett.kacheln.filter(k => {
+            if (!k || !k.id) return false;
+            if (gesehen[k.id]) return false;
+            gesehen[k.id] = true;
+            return true;
+          });
+        }
         const vorhandeneIds = sett.kacheln.map(k => k && k.id);
         const fehlendeK = (DEFAULT_SETTINGS.kacheln || []).filter(k => vorhandeneIds.indexOf(k.id) < 0);
         if (fehlendeK.length > 0) sett.kacheln = [...sett.kacheln, ...fehlendeK];
