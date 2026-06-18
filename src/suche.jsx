@@ -8,7 +8,7 @@ import { VEDetail, VEKachel } from "./objektansicht.jsx";
 // ║ SucheFeld · Suchergebnisse                                             ║
 // ╚═════════════════════════════════════════════════════════════════════════╝
 // ZYKLISCHER Import aus der Hauptdatei: Anzeige-Bausteine (Laufzeit).
-import { AktionsButton, KontaktDetailKarte, KontaktKarte } from "./allesda_merged.jsx";
+import { AktionsButton, KontaktDetailKarte, KontaktKarte } from "./kontakte-modul.jsx";
 
 // ── SucheFeld (Universalsuche mit Vorschlägen) ──────────────────────────────
 function SucheFeld({ settings, t, accent, onErgebnis, kontakte, ves, resetKey }) {
