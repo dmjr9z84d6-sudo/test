@@ -332,6 +332,10 @@ import {
 import { VEKontakteTab, objektBezugInfo } from "./kontakte.jsx";
 // Universalsuche — ausgelagert nach suche.jsx (Ausbau geplant).
 import { SucheFeld, Suchergebnisse } from "./suche.jsx";
+// Listen/Statistik/Schnelleingabe-Screens (S6) — aus listen-tools.jsx.
+import {
+  ListenGeneratorScreen, SchnelleingabeScreen, StatistikScreen
+} from "./listen-tools.jsx";
 // Kontakte-Modul (S7) — ausgelagert nach kontakte-modul.jsx (zyklischer Import:
 // holt seinerseits Vertrags-Karten + Foto-Helfer aus dieser Datei zurück).
 import {

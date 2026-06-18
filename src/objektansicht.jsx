@@ -26,7 +26,7 @@ import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
 import {
   DokumenteAnsicht, LiegenschaftAnsicht, VerwaltungAnsicht,
-  eigStufen, feldImKalender
+  eigStufen, feldImKalender, parseYMD
 } from "./liegenschaft.jsx";
 import { VEKontakteTab, objektBezugInfo } from "./kontakte.jsx";
 

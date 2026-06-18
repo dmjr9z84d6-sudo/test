@@ -25,6 +25,10 @@ import {
   VerwendungBadge, datumAnzeige, parseAnteile
 } from "./components.jsx";
 import { StatusLeiste, VEDetail, VEKachel } from "./objektansicht.jsx";
+// Kontakt-Komponenten (S7) — Laufzeit-Refs in JSX (Zyklus liegenschaft⇄kontakte-modul).
+import {
+  AktionsButton, BeziehungEditor, KontaktDetailKarte, KontaktKarte
+} from "./kontakte-modul.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 5a · LIEGENSCHAFT-KERN — ausgelagertes Modul                    ║
 // ║ EinheitDetail · EinheitZeile · GebaeudeKarte · KartenList ·             ║
