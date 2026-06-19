@@ -910,16 +910,35 @@ function Avatar({ name, firma = false, size = 32, accent = KONTAKTE_FARBE, zuwei
     const primaer = firma ? firmenRollen : rollen;
     const sekundaer = firma ? rollen : firmenRollen;
     if (iconsZeigen && zuweisungen && Array.isArray(zuweisungen)) {
+      // Schritt 1: pro ROLLENNAME nur das statushöchste Exemplar fürs Badge
+      // wählen. Eine Person kann GF mehrerer Firmen sein (mehrere gleiche
+      // Rollen-Einträge) — fürs Avatar-Badge zählt die Rolle aber nur EINMAL.
+      // Die volle Liste (beide Firmen) bleibt für Detailkarte/DSGVO erhalten,
+      // da diese aus flacheZuweisungen() lesen, nicht hier.
+      const proRolle = {};
       zuweisungen.forEach(z => {
-        const def = (primaer || []).find(r => r.name === z.rolle)
-          || (sekundaer || []).find(r => r.name === z.rolle);
+        if (!z || !z.rolle) return;
+        const status = z.status || "aktiv";
+        const cur = proRolle[z.rolle];
+        if (!cur || PRIO[status] > PRIO[cur.status]) {
+          proRolle[z.rolle] = { rolle: z.rolle, status, vorsitz: !!z.vorsitz, vertrag: !!z.vertrag };
+        }
+      });
+      // Schritt 2: jede (deduplizierte) Rolle deterministisch in IHRE Ecke
+      // legen. Position wird genau einmal pro Rollenname bestimmt → dieselbe
+      // Rolle kann nie zwei Ecken belegen (OR/UL-Konflikt ausgeschlossen).
+      // Konkurrieren verschiedene Rollen um dieselbe Ecke, gewinnt die mit
+      // höherem Status (sonst die zuerst gesehene).
+      Object.keys(proRolle).forEach(name => {
+        const r = proRolle[name];
+        const def = (primaer || []).find(d => d.name === name)
+          || (sekundaer || []).find(d => d.name === name);
         if (!def) return;
         if (!rolleEckSichtbar(def)) return;
         const pos = rolleEckPosition(def);
-        const status = z.status || "aktiv";
         const cur = eckBadges[pos];
-        if (!cur || PRIO[status] > PRIO[cur.status]) {
-          eckBadges[pos] = { rolle: z.rolle, status, vorsitz: !!z.vorsitz, vertrag: !!z.vertrag };
+        if (!cur || PRIO[r.status] > PRIO[cur.status]) {
+          eckBadges[pos] = { rolle: r.rolle, status: r.status, vorsitz: r.vorsitz, vertrag: r.vertrag };
         }
       });
     }
