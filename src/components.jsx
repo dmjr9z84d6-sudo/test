@@ -10,7 +10,7 @@ import {
 } from "./utils-basis.js";
 import {
   ANLEGE_FELDTYPEN, EIG_STATUS, FIELD_TYPES, SUGGESTIONS, aktiverHaushalt,
-  eigStatus, verwendungenVon
+  eigStatus, findeKontaktKandidaten, verwendungenVon
 } from "./datenmodell.js";
 import {
   I, formatNameMitCtx, useAvatarIcons, useFirmenRollen, useKategorien,
@@ -1281,6 +1281,14 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
   // sinnvoll bzw. leer). Nutzt dieselben Prüfungen wie die Kontaktkarte.
   const darfAnlegen = neuName.trim() && istTelefonGueltig(neuTel) && istEmailGueltig(neuEmail);
 
+  // Dubletten-Vorwarnung: gegen Bestand prüfen, sobald ein Name/E-Mail/Tel
+  // eingegeben ist. Reine Anzeige — Anlegen bleibt möglich, ist aber nicht mehr
+  // der reflexhafte Default. Nutzt die zentrale Match-Schicht (datenmodell.js).
+  const neuEntwurf = { typ: neuTyp, name: neuName, tel: neuTel, email: neuEmail };
+  const dublKandidaten = (neuOffen && neuName.trim().length >= 2)
+    ? findeKontaktKandidaten(neuEntwurf, kontakte, { nurTyp: neuTyp }).slice(0, 4)
+    : [];
+
   // Neuen Kontakt direkt im Picker anlegen, in die kontakte-Liste schreiben
   // und sofort als ausgewählten Wert zurückgeben.
   const neuAnlegen = () => {
@@ -1451,6 +1459,37 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                   <div style={{ fontSize: FS.xs, color: "#EF4444", marginBottom: 6 }}>
                     {!istTelefonGueltig(neuTel) ? "Telefonnummer prüfen. " : ""}
                     {!istEmailGueltig(neuEmail) ? "E-Mail-Adresse prüfen." : ""}
+                  </div>
+                )}
+                {dublKandidaten.length > 0 && (
+                  <div style={{ marginBottom: 8, padding: "8px 10px",
+                    background: "#F59E0B14", border: "1px solid #F59E0B55",
+                    borderRadius: RAD.sm }}>
+                    <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: "#B45309",
+                      marginBottom: 6 }}>
+                      {dublKandidaten.some(d => d.sicher)
+                        ? "Es gibt bereits passende Kontakte — lieber auswählen statt neu anlegen?"
+                        : "Ähnlicher Name vorhanden — schon angelegt?"}
+                    </div>
+                    {dublKandidaten.map(d => (
+                      <button key={d.kontakt.id}
+                        onClick={() => { onChange(d.kontakt.id); setNeuOffen(false); setNeuName("");
+                          setNeuTel(""); setNeuEmail(""); setOffen(false); setSuche(""); }}
+                        style={{ display: "flex", alignItems: "center", gap: 7, width: "100%",
+                          textAlign: "left", padding: "5px 7px", marginBottom: 3,
+                          background: t.surface, border: `1px solid ${t.border}`,
+                          borderRadius: RAD.sm, cursor: "pointer", fontFamily: "inherit" }}>
+                        <Avatar name={d.kontakt.name} firma={d.kontakt.typ === "firma"} size={20} accent={accent}/>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {d.kontakt.name}
+                        </span>
+                        <span style={{ fontSize: FS.xxs, color: t.muted,
+                          textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          {d.grund === "email" ? "gl. E-Mail" : d.grund === "telefon" ? "gl. Tel." : "gl. Name"}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 6 }}>

@@ -297,9 +297,14 @@ function RolleZeile({ z, ves, kontakte, editMode, onEdit, onDelete, t, accent, t
   // Auflösung: Personen → rollen. Firmen → Objekt-Zuweisung = Leistung
   // (settings.leistungen), Anstellung/Gewerk = firmenRollen. Da die drei
   // Vokabulare disjunkt sind (siehe DESIGN.md), ist die Kette eindeutig.
+  // ABER: Eine Firma kann über `besitz` auch eine PERSONEN-Rolle tragen
+  // (Eigentümer/Nießbraucher etc. — eine GmbH besitzt eine Einheit). Diese
+  // Rollen stehen in personenRollen. Daher bei Firmen personenRollen als
+  // Fallback durchsuchen — analog zur Avatar-Badge-Logik (primaer+sekundaer).
   const rolleDef = z.rolle
     ? (typ === "firma"
-        ? (leistungen.find(r => r.name === z.rolle) || firmenRollen.find(r => r.name === z.rolle))
+        ? (leistungen.find(r => r.name === z.rolle) || firmenRollen.find(r => r.name === z.rolle)
+           || personenRollen.find(r => r.name === z.rolle))
         : personenRollen.find(r => r.name === z.rolle))
     : null;
   // Wenn eine Rolle gesetzt, aber unbekannt ist: Eintrag überspringen (defensiv).

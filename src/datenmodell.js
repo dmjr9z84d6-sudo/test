@@ -1871,6 +1871,266 @@ function laufenderEigWechsel(eig) {
   return (eig || []).some(p => { const s = eigStatus(p); return s === "interessent" || s === "werdend"; });
 }
 
+// ── Dubletten-Match-Schicht ─────────────────────────────────────────────────
+// Gemeinsames Fundament für: (a) Dublettenwarnung im KontaktPicker beim
+// Anlegen, (b) Dubletten-Aufräumen unter Einstellungen, (c) später Import &
+// E-Mail-Absender-Matching (Konzepte_AllesDa.md Teil A). Rein funktional und
+// ohne Seiteneffekt — über den CJS-Stack unit-testbar.
+//
+// Drei Schlüssel, absteigende Trennschärfe:
+//   E-Mail (hart) > Telefon (hart) > normalisierter Name (weich = nur Verdacht).
+// Es gibt KEINEN Auto-Merge im Code; diese Helfer liefern nur Kandidaten/
+// Gruppen. Über das tatsächliche Zusammenführen entscheidet immer der Nutzer.
+
+const _RECHTSFORM_SUFFIXE = [
+  "gmbhundcokg", "gmbhcokg", "gmbh", "ohg", "kg", "ag",
+  "ek", "gbr", "ug", "ughaftungsbeschraenkt", "ev", "se", "kgaa", "partg"
+];
+
+// E-Mail normalisieren: trim + lowercase. Leer -> "".
+function normalisiereEmail(e) {
+  return ((e || "") + "").trim().toLowerCase();
+}
+
+// Telefon normalisieren: nur Ziffern. "+49 (0)89 / 123-45" -> "4908912345".
+// Leer/ohne Ziffern -> "".
+function normalisiereTelefon(t) {
+  return ((t || "") + "").replace(/[^0-9]/g, "");
+}
+
+// Firmen-/Kontaktname normalisieren: lowercase, Umlaute ent-mappt,
+// Satzzeichen/Whitespace raus, Rechtsform-Suffix abgeschnitten.
+// "WEG-Verwaltung Mitte GmbH" -> "wegverwaltungmitte".
+// So matchen "Müller GmbH", "Mueller G.m.b.H." und "Müller" auf denselben Kern.
+function normalisiereFirmenname(name) {
+  let s = ((name || "") + "").trim().toLowerCase();
+  s = s.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+  s = s.replace(/[^a-z0-9]/g, ""); // alles außer Buchstaben/Ziffern weg
+  for (const rf of _RECHTSFORM_SUFFIXE.slice().sort((a, b) => b.length - a.length)) {
+    if (s.length > rf.length && s.endsWith(rf)) {
+      return s.slice(0, -rf.length);
+    }
+  }
+  return s;
+}
+
+// Anzeigename eines Kontakts (Person ODER Firma) für den Namens-Match.
+function _kontaktAnzeigename(k) {
+  if (!k) return "";
+  if (k.typ === "firma") return k.name || "";
+  if (k.name) return k.name;
+  return [k.vorname, k.nachname].filter(Boolean).join(" ");
+}
+
+// Alle E-Mail-Werte eines Kontakts (Firma: einzelnes email; Person: emails[]).
+function _kontaktEmails(k) {
+  if (!k) return [];
+  const out = [];
+  if (k.email) out.push(normalisiereEmail(k.email));
+  (k.emails || []).forEach(e => {
+    const v = normalisiereEmail(typeof e === "string" ? e : (e && e.email));
+    if (v) out.push(v);
+  });
+  return out.filter(Boolean);
+}
+
+// Alle Telefon-Werte eines Kontakts (Firma: tel; Person: tels[]).
+function _kontaktTelefone(k) {
+  if (!k) return [];
+  const out = [];
+  if (k.tel) out.push(normalisiereTelefon(k.tel));
+  (k.tels || []).forEach(t => {
+    const v = normalisiereTelefon(typeof t === "string" ? t : (t && t.nr));
+    if (v) out.push(v);
+  });
+  return out.filter(v => v && v.length >= 4); // sehr kurze "Nummern" ignorieren
+}
+
+// findeKontaktKandidaten(neu, bestand, opts) -> Liste von Treffern, sortiert
+// nach Trennschärfe. Jeder Treffer: { kontakt, grund: "email"|"telefon"|"name",
+// sicher: bool }. "neu" ist ein (auch unvollständiger) Kontakt-Entwurf
+// { typ, name, email, tel, ... }. Self-Match wird über opts.ignoriereId
+// ausgeschlossen (beim Bearbeiten eines bestehenden Kontakts).
+function findeKontaktKandidaten(neu, bestand, opts) {
+  const o = opts || {};
+  const ignId = o.ignoriereId;
+  const nurTyp = o.nurTyp || (neu && neu.typ) || null; // i.d.R. auf "firma" eingrenzen
+  const nEmails = new Set(_kontaktEmails(neu));
+  const nTels = new Set(_kontaktTelefone(neu));
+  const nName = normalisiereFirmenname(_kontaktAnzeigename(neu));
+  const treffer = [];
+  (bestand || []).forEach(k => {
+    if (!k || k.id === ignId) return;
+    if (nurTyp && k.typ !== nurTyp) return;
+    let grund = null, sicher = false;
+    if (nEmails.size) {
+      const ke = _kontaktEmails(k);
+      if (ke.some(e => nEmails.has(e))) { grund = "email"; sicher = true; }
+    }
+    if (!grund && nTels.size) {
+      const kt = _kontaktTelefone(k);
+      if (kt.some(t => nTels.has(t))) { grund = "telefon"; sicher = true; }
+    }
+    if (!grund && nName) {
+      if (normalisiereFirmenname(_kontaktAnzeigename(k)) === nName) { grund = "name"; sicher = false; }
+    }
+    if (grund) treffer.push({ kontakt: k, grund, sicher });
+  });
+  const rang = { email: 0, telefon: 1, name: 2 };
+  treffer.sort((a, b) => rang[a.grund] - rang[b.grund]);
+  return treffer;
+}
+
+// gruppiereDubletten(kontakte, opts) -> [{ kern, grund, kontakte: [...] }]
+// Findet zusammengehörige Kontakte über E-Mail/Telefon/Name. Für die
+// Aufräum-Übersicht. opts.nurTyp grenzt auf z.B. "firma" ein. Verbindet
+// transitiv: A~B (E-Mail) und B~C (Name) landen in EINER Gruppe.
+function gruppiereDubletten(kontakte, opts) {
+  const o = opts || {};
+  const nurTyp = o.nurTyp || null;
+  const liste = (kontakte || []).filter(k => k && (!nurTyp || k.typ === nurTyp));
+  // Union-Find über Index
+  const parent = liste.map((_, i) => i);
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+  // Index-Maps für harte Schlüssel
+  const byEmail = new Map(), byTel = new Map(), byName = new Map();
+  const grundRang = {}; // root-index -> bester (=härtester) Grund
+  liste.forEach((k, i) => {
+    _kontaktEmails(k).forEach(e => {
+      if (byEmail.has(e)) { union(i, byEmail.get(e)); _setGrund(grundRang, find(i), "email"); }
+      else byEmail.set(e, i);
+    });
+    _kontaktTelefone(k).forEach(t => {
+      if (byTel.has(t)) { union(i, byTel.get(t)); _setGrund(grundRang, find(i), "telefon"); }
+      else byTel.set(t, i);
+    });
+    const nm = normalisiereFirmenname(_kontaktAnzeigename(k));
+    if (nm) {
+      if (byName.has(nm)) { union(i, byName.get(nm)); _setGrund(grundRang, find(i), "name"); }
+      else byName.set(nm, i);
+    }
+  });
+  // Gruppen einsammeln
+  const gruppen = new Map();
+  liste.forEach((k, i) => {
+    const r = find(i);
+    if (!gruppen.has(r)) gruppen.set(r, []);
+    gruppen.get(r).push(k);
+  });
+  const out = [];
+  gruppen.forEach((mitglieder, r) => {
+    if (mitglieder.length < 2) return; // nur echte Dubletten
+    out.push({
+      kern: normalisiereFirmenname(_kontaktAnzeigename(mitglieder[0])),
+      grund: grundRang[r] || "name",
+      kontakte: mitglieder,
+    });
+  });
+  return out;
+}
+function _setGrund(map, root, grund) {
+  const rang = { email: 0, telefon: 1, name: 2 };
+  if (!map[root] || rang[grund] < rang[map[root]]) map[root] = grund;
+}
+
+// Vollständigkeits-Score eines Kontakts — für die Master-Wahl beim Merge.
+function _vollstaendigkeit(k) {
+  let s = 0;
+  ["tel", "email", "strasse", "plz", "ort", "homepage", "rechtsform", "sub"].forEach(f => {
+    if ((k[f] || "").toString().trim()) s++;
+  });
+  ["zustaendigkeiten", "besitz", "ansprechpartner", "gewerke", "firmenRollen",
+   "objektZuweisungen", "tels", "emails"].forEach(f => {
+    if (Array.isArray(k[f])) s += k[f].length;
+  });
+  return s;
+}
+
+function _dedupListe(items) {
+  const seen = new Set(); const out = [];
+  (items || []).forEach(it => {
+    const sig = (it && typeof it === "object") ? JSON.stringify(it) : String(it);
+    if (!seen.has(sig)) { seen.add(sig); out.push(it); }
+  });
+  return out;
+}
+
+// fuehreKontakteZusammen(daten, gruppe, opts) — führt EINE Dublettengruppe
+// zusammen. daten = { kontakte, ves }. gruppe = Array von Kontakt-Objekten
+// (aus gruppiereDubletten). Liefert NEUE { kontakte, ves } (kein Mutieren der
+// Eingabe) plus einen Bericht. Master = vollständigster, sonst kleinste ID,
+// sofern opts.masterId nicht explizit gesetzt ist.
+//
+// Kritisch: ALLE ID-Verweise im gesamten Baum (kontaktId/firmaId/partnerId/
+// ansprechpartnerId/zielKontaktId/vertragsparteiId/beteiligterId) werden von
+// den Dublette-IDs auf die Master-ID umgebogen — sonst zeigen SEV-Einträge
+// oder Verträge nach dem Löschen ins Leere.
+function fuehreKontakteZusammen(daten, gruppe, opts) {
+  const o = opts || {};
+  const tief = JSON.parse(JSON.stringify({ kontakte: daten.kontakte || [], ves: daten.ves || [] }));
+  const idsInGruppe = new Set(gruppe.map(g => g.id));
+  // Master bestimmen
+  let masterId = o.masterId;
+  if (masterId == null) {
+    const sortiert = gruppe.slice().sort((a, b) =>
+      (_vollstaendigkeit(b) - _vollstaendigkeit(a)) || (a.id - b.id));
+    masterId = sortiert[0].id;
+  }
+  const master = tief.kontakte.find(k => k.id === masterId);
+  if (!master) return { kontakte: tief.kontakte, ves: tief.ves, bericht: { fehler: "Master nicht gefunden" } };
+  const dublIds = new Set([...idsInGruppe].filter(id => id !== masterId));
+  const konflikte = [];
+
+  // Listen vereinen + Skalare auffüllen
+  tief.kontakte.forEach(k => {
+    if (!dublIds.has(k.id)) return;
+    ["zustaendigkeiten", "besitz", "ansprechpartner", "gewerke", "firmenRollen",
+     "objektZuweisungen", "tels", "emails"].forEach(lf => {
+      if (Array.isArray(k[lf]) && k[lf].length) {
+        master[lf] = (Array.isArray(master[lf]) ? master[lf] : []).concat(k[lf]);
+      }
+    });
+    ["tel", "email", "strasse", "plz", "ort", "homepage", "rechtsform", "sub"].forEach(sf => {
+      const mv = (master[sf] || "").toString().trim();
+      const fv = (k[sf] || "").toString().trim();
+      if (!mv && fv) master[sf] = k[sf];
+      else if (mv && fv && mv.toLowerCase() !== fv.toLowerCase()) {
+        konflikte.push({ feld: sf, master: mv, dublette: fv, dubletteId: k.id });
+      }
+    });
+  });
+  ["zustaendigkeiten", "besitz", "ansprechpartner", "gewerke", "firmenRollen",
+   "objektZuweisungen", "tels", "emails"].forEach(lf => {
+    if (Array.isArray(master[lf])) master[lf] = _dedupListe(master[lf]);
+  });
+
+  // Verweise umbiegen (gesamter Baum)
+  const VERWEIS_KEYS = new Set(["kontaktId", "firmaId", "partnerId", "ansprechpartnerId",
+    "zielKontaktId", "vertragsparteiId", "beteiligterId"]);
+  let umgehaengt = 0;
+  const umbiegen = (node) => {
+    if (Array.isArray(node)) { node.forEach(umbiegen); return; }
+    if (node && typeof node === "object") {
+      Object.keys(node).forEach(key => {
+        const val = node[key];
+        if (VERWEIS_KEYS.has(key) && dublIds.has(val)) { node[key] = masterId; umgehaengt++; }
+        else umbiegen(val);
+      });
+    }
+  };
+  umbiegen(tief.kontakte);
+  umbiegen(tief.ves);
+
+  // Dubletten entfernen
+  const kontakteNeu = tief.kontakte.filter(k => !dublIds.has(k.id));
+  return {
+    kontakte: kontakteNeu, ves: tief.ves,
+    bericht: { masterId, entfernt: [...dublIds], umgehaengt, konflikte },
+  };
+}
+
+
 export {
   buildMockData,
   _MOCK,
@@ -1964,5 +2224,11 @@ export {
   EIG_STATUS,
   eigStatus,
   laufenderEigWechsel,
-  migriereKontaktZuweisungen
+  migriereKontaktZuweisungen,
+  normalisiereEmail,
+  normalisiereTelefon,
+  normalisiereFirmenname,
+  findeKontaktKandidaten,
+  gruppiereDubletten,
+  fuehreKontakteZusammen
 };

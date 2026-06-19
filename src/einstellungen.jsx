@@ -8,7 +8,7 @@ import {
 import { splitPlzOrt } from "./utils-basis.js";
 import {
   DEFAULT_KONTAKTE, DEFAULT_SETTINGS, DEFAULT_VES, KONTAKTARTEN_KATEGORIEN, VERWALTUNGSARTEN,
-  kontaktInGruppe, normalisiereKontakte, normalisiereVes, objektInGruppe, objektOrt,
+  gruppiereDubletten, fuehreKontakteZusammen, kontaktInGruppe, normalisiereKontakte, normalisiereVes, objektInGruppe, objektOrt,
   wendeKontaktZuweisungenAnAlle
 } from "./datenmodell.js";
 import {
@@ -3011,8 +3011,11 @@ function SektionDaten({ t, accent, settings, setSettings, mode, setMode,
   const [pendingImport, setPendingImport] = useState(null);
   const [importFehler, setImportFehler] = useState(null);
   const [resetBereit, setResetBereit] = useState(null); // "settings"|"daten"|null
+  // Dubletten-Aufräumen: bestaetigeMerge = Gruppe, die gerade zur Bestätigung
+  // ansteht (Inline-Confirm statt window.confirm, DESIGN §25.2).
+  const [bestaetigeMerge, setBestaetigeMerge] = useState(null);
   const meldungenZuruecksetzen = () => {
-    setPendingImport(null); setImportFehler(null); setResetBereit(null);
+    setPendingImport(null); setImportFehler(null); setResetBereit(null); setBestaetigeMerge(null);
   };
 
   const datumStempel = () => {
@@ -3050,6 +3053,19 @@ function SektionDaten({ t, accent, settings, setSettings, mode, setMode,
         },
       });
     }, (msg) => setImportFehler({ art: "settings", text: msg }));
+  };
+
+  // Firmen-Dubletten im aktuellen Bestand (E-Mail/Tel/Name). Live aus den
+  // Kontakten — verschwindet eine Gruppe nach dem Merge automatisch.
+  const dublGruppen = gruppiereDubletten(kontakte || [], { nurTyp: "firma" });
+
+  // Eine Gruppe zusammenführen: Master = vollständigster Datensatz. Schreibt
+  // Kontakte UND Objekte (wegen umgehängter SEV-/Vertrags-Verweise) zurück.
+  const mergeAusfuehren = (gruppe) => {
+    const r = fuehreKontakteZusammen({ kontakte, ves }, gruppe);
+    if (setKontakte) setKontakte(() => r.kontakte);
+    if (setVes && r.ves) setVes(() => r.ves);
+    setBestaetigeMerge(null);
   };
 
   const onDatenExport = () => {
@@ -3329,6 +3345,76 @@ function SektionDaten({ t, accent, settings, setSettings, mode, setMode,
           <br/><br/>
           <strong style={{ color: t.text }}>Geplant:</strong> automatische Synchronisation über die Cloud, damit die Einstellungen auf allen Geräten verfügbar sind und mehrere Benutzer am gleichen Datenbestand arbeiten können.
         </div>
+      </EinstellKarte>
+
+      <EinstellKarte title="Doppelte Firmen aufräumen" t={t} accent={accent}>
+        {dublGruppen.length === 0 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8,
+            padding: "8px 12px", background: "#10B98115",
+            border: "1px solid #10B98140", borderRadius: RAD.ms,
+            fontSize: FS.m, color: t.text }}>
+            <span style={{ width: 8, height: 8, borderRadius: RAD.pill,
+              background: "#10B981", flexShrink: 0 }}></span>
+            <span>Keine doppelten Firmen gefunden.</span>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: FS.m, color: t.sub, lineHeight: 1.5, marginBottom: 12 }}>
+              {dublGruppen.length === 1 ? "Eine Firma kommt" : dublGruppen.length + " Firmen kommen"} mehrfach vor.
+              Beim Zusammenführen bleibt der vollständigste Datensatz; alle Objekt-Zuordnungen,
+              Verträge und Zuständigkeiten der Doppel werden übernommen.
+            </div>
+            {dublGruppen.map((g, gi) => {
+              const ist = bestaetigeMerge === g;
+              const name = (g.kontakte[0].name || "").trim();
+              const grundLabel = g.grund === "email" ? "gleiche E-Mail"
+                : g.grund === "telefon" ? "gleiche Telefonnummer" : "gleicher Name";
+              return (
+                <div key={gi} style={{ padding: "10px 12px", marginBottom: 8,
+                  background: t.surface, border: `1px solid ${ist ? "#F59E0B" : t.border}`,
+                  borderRadius: RAD.ms }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{name}</span>
+                    <span style={{ fontSize: FS.xs, color: t.muted,
+                      padding: "1px 7px", background: t.card, borderRadius: RAD.pill }}>
+                      {g.kontakte.length}× · {grundLabel}
+                    </span>
+                  </div>
+                  {!ist ? (
+                    <button onClick={() => setBestaetigeMerge(g)} style={{
+                      marginTop: 8, padding: "5px 14px", fontSize: FS.s, fontWeight: FW.bold,
+                      background: accent, color: getContrastColor(accent), border: "none",
+                      borderRadius: RAD.sm, cursor: "pointer", fontFamily: "inherit" }}>
+                      Zusammenführen
+                    </button>
+                  ) : (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: FS.xs, color: "#B45309", marginBottom: 7 }}>
+                        {g.kontakte.length} Einträge zu einem zusammenführen? Die übrigen
+                        {" " + (g.kontakte.length - 1) + " "}werden entfernt, ihre Zuordnungen
+                        wandern mit. Das lässt sich nicht rückgängig machen — vorher exportieren.
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => setBestaetigeMerge(null)} style={{
+                          flex: 1, padding: "5px 0", fontSize: FS.s, background: "transparent",
+                          color: t.sub, border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                          cursor: "pointer", fontFamily: "inherit" }}>
+                          Abbrechen
+                        </button>
+                        <button onClick={() => mergeAusfuehren(g)} style={{
+                          flex: 2, padding: "5px 0", fontSize: FS.s, fontWeight: FW.bold,
+                          background: "#F59E0B", color: "#fff", border: "none",
+                          borderRadius: RAD.sm, cursor: "pointer", fontFamily: "inherit" }}>
+                          Jetzt zusammenführen
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
       </EinstellKarte>
     </>
   );
