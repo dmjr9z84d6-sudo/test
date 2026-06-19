@@ -1386,7 +1386,11 @@ function objektZuweisungenAusEinheiten(ve) {
         const hh = b.haushalt || { mitglieder: [] };
         (hh.mitglieder || []).forEach(m => {
           if (!m || m.kontaktId == null) return;
-          const rolle = istVertragspartei(m.recht) ? bewohnerRecht(m.recht).label : "Bewohner";
+          // Jedes Mitglied trägt sein konkretes Recht als Rolle (Mieter, Pächter,
+          // Eigennutzer, Nießbraucher, Wohnberechtigt, Angehöriger, Sonstige). Die
+          // frühere Sammelrolle „Bewohner" entfällt — das genaue Recht ist immer
+          // bekannt (m.recht) und aussagekräftiger.
+          const rolle = bewohnerRecht(m.recht).label;
           add(m.kontaktId, einheit.id, rolle, status);
         });
       });
@@ -1414,7 +1418,15 @@ function wendeKontaktZuweisungenAn(kontakte, ve) {
     // rollen[] neu konsolidieren. Einheit-abgeleitete Rollennamen werden komplett
     // aus den Zuweisungen neu bestimmt (über ALLE Objekte, da rollen[] global ist);
     // andere Rollen (HV, Beirat, Versorger …) bleiben erhalten.
-    const EINHEIT_ROLLEN = { "Eigentümer": 1, "Mieter": 1, "Bewohner": 1, "Sondereigentumsverwaltung": 1 };
+    // Einheit-abgeleitete Rollen, die bei jeder Konsolidierung neu aus den
+    // Zuweisungen bestimmt werden. „Bewohner" bleibt als Altlast-Putzer gelistet,
+    // damit früher gespeicherte „Bewohner"-Einträge beim ersten Laden verschwinden;
+    // erzeugt wird die Rolle nicht mehr. Die konkreten Wohn-/Nutzungsrechte stehen
+    // hier, damit ein Rechtswechsel (z. B. Nießbraucher → Angehöriger) den alten
+    // Eintrag sauber ersetzt statt zu duplizieren.
+    const EINHEIT_ROLLEN = { "Eigentümer": 1, "Mieter": 1, "Pächter": 1, "Eigennutzer": 1,
+      "Nießbraucher": 1, "Wohnberechtigt": 1, "Angehöriger": 1, "Sonstige": 1,
+      "Bewohner": 1, "Sondereigentumsverwaltung": 1 };
     const rollenSet = {};
     // (a) Nicht-einheit-Rollen aus bisherigem rollen[] behalten.
     (Array.isArray(k.rollen) ? k.rollen : []).forEach(r => { if (!EINHEIT_ROLLEN[r]) rollenSet[r] = true; });

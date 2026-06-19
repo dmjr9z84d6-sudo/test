@@ -1240,7 +1240,7 @@ function belegungsRollenFuerKontakt(k, ves) {
           const hh = b.haushalt || { mitglieder: [] };
           (hh.mitglieder || []).forEach(m => {
             if (!m || m.kontaktId == null || String(m.kontaktId) !== kid) return;
-            const rolle = istVertragspartei(m.recht) ? bewohnerRecht(m.recht).label : "Bewohner";
+            const rolle = bewohnerRecht(m.recht).label;
             const key = ve.id + "|" + einheit.id + "|" + rolle;
             if (gesehen.has(key)) return;
             gesehen.add(key);

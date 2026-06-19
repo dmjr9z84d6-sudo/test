@@ -496,7 +496,7 @@ function berechneKontaktStatus(k, inhalte) {
   // Bewegungen rollen-spezifisch: Wohn-Rollen → Einzug/Auszug, Eigentümer →
   // Kauf/Verkauf, sonstige Rollen → generisch „Zuweisung beginnt/endet".
   // Je Kategorie eigener Einstellungs-Schalter; nächstliegendes Ereignis zählt.
-  var WOHN_ROLLEN = ["Mieter", "Bewohner", "Eigennutzer", "Nießbraucher", "Wohnberechtigter"];
+  var WOHN_ROLLEN = ["Mieter", "Pächter", "Eigennutzer", "Nießbraucher", "Wohnberechtigt", "Angehöriger", "Sonstige"];
   var bewegungen = [];
   allZuw.forEach(function(z) {
     var rolle = z.rolle || "";

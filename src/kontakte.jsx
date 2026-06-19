@@ -767,7 +767,7 @@ function KontakteNeueKarteMenu({ t, accent, ve, fehlendeGruppen, alleKontakte, f
   const rollenListe = Array.from(new Set(alleRollen));
   // Meistgebrauchte Rollen zuerst; bereits angewählte bleiben auch in der
   // eingeklappten Ansicht sichtbar.
-  const C_TOP_ROLLEN = ["Eigentümer", "Mieter", "Bewohner", "Verwalter", "Hausmeister"];
+  const C_TOP_ROLLEN = ["Eigentümer", "Mieter", "Eigennutzer", "Verwalter", "Hausmeister"];
   const cRollenKurz = C_TOP_ROLLEN.filter(rn => rollenListe.indexOf(rn) >= 0)
     .concat(rollenListe.filter(rn => C_TOP_ROLLEN.indexOf(rn) < 0 && cRollen.indexOf(rn) >= 0));
   const cRollenAnzeige = cRollenAlle ? rollenListe : cRollenKurz;

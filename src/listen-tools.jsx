@@ -498,10 +498,10 @@ const LISTEN_KATALOG = [
       { id: "email", label: "E-Mail", default: true },
     ],
     filter: [
-      { id: "auchBewohnerRollen", label: "Auch Eigentümer/Mieter/Bewohner", default: false },
+      { id: "auchBewohnerRollen", label: "Auch Eigentümer/Mieter/Bewohner-Rollen", default: false },
     ],
     zeilen: (ctx) => {
-      const WOHN_ROLLEN = ["Eigentümer", "Mieter", "Bewohner", "Nießbraucher", "Wohnberechtigter"];
+      const WOHN_ROLLEN = ["Eigentümer", "Mieter", "Pächter", "Eigennutzer", "Nießbraucher", "Wohnberechtigt", "Angehöriger", "Sonstige"];
       const rows = [];
       (ctx.kontakte || []).forEach(k => {
         if (!k) return;

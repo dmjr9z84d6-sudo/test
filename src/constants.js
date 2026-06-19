@@ -56,7 +56,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "11.79";
+export const APP_VERSION = "11.80";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
@@ -123,12 +123,17 @@ export const DEFAULT_ROLLEN = [
   // Person VE
   { name: "Eigentümer",               kuerzel: "E",   color: "#F472B6", slot: "ve",      aktiv: true }, // Pink
   { name: "Mieter",                   kuerzel: "M",   color: "#22C55E", slot: "ve",      aktiv: true, kategorie: "miete" }, // Grün
-  // Bewohner = Sammelrolle für Nicht-Mieter-Bewohner (Eigennutzer, Angehörige …).
-  // Bewusst OHNE Avatar-Eck-Badge (eckSichtbar:false) — „Besonderes" kennzeichnen,
-  // Normalität nicht. Im Profil/in der Einheit erscheint sie aber als Text/Rolle.
-  { name: "Bewohner",                 kuerzel: "B",   color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer
-  { name: "Nießbraucher",             kuerzel: "N",   color: "#0EA5E9", slot: "ve",      aktiv: true, kategorie: "niessbrauch" }, // Himmel
-  { name: "Wohnberechtigter",         kuerzel: "W",   color: "#A855F7", slot: "ve",      aktiv: true, kategorie: "wohnrecht" }, // Lila
+  { name: "Pächter",                  kuerzel: "P",   color: "#16A34A", slot: "ve",      aktiv: true }, // Grün dunkel — Pacht (Vertragspartei)
+  // Konkrete Wohn-/Nutzungsrechte. Ersetzen die frühere Sammelrolle „Bewohner":
+  // Jedes Haushaltsmitglied trägt sein echtes Recht (Quelle: BEWOHNER_RECHTE),
+  // das Label wird daraus abgeleitet. „Angehöriger"/„Sonstige" decken Mitwohnende
+  // ohne eigenen Rechtstitel ab. Avatar-Eck bewusst zurückhaltend (eckSichtbar:false)
+  // bei den „normalen" Wohnverhältnissen — Badge erscheint dennoch im Profil/Einheit.
+  { name: "Eigennutzer",              kuerzel: "EN",  color: "#3B82F6", slot: "ve",      aktiv: true, eckSichtbar: false }, // Blau
+  { name: "Nießbraucher",             kuerzel: "N",   color: "#9333EA", slot: "ve",      aktiv: true, kategorie: "niessbrauch" }, // Lila
+  { name: "Wohnberechtigt",           kuerzel: "W",   color: "#0891B2", slot: "ve",      aktiv: true, kategorie: "wohnrecht" }, // Cyan
+  { name: "Angehöriger",              kuerzel: "AG",  color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer — mitwohnend ohne eigenen Rechtstitel
+  { name: "Sonstige",                 kuerzel: "S",   color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer
   // SEV
   { name: "Sondereigentumsverwaltung",  kuerzel: "SEV", color: "#7C3AED", slot: "sev",     aktiv: true, kategorie: "sev" }, // Violett — SEV-Firma/-Verwaltung der Einheit
   { name: "Bevollmächtigter",         kuerzel: "S",   color: "#0891B2", slot: "sev",     aktiv: true }, // Cyan
