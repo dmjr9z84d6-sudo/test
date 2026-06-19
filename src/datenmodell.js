@@ -553,12 +553,70 @@ function mappeMiteigentuemer(k) {
   return geaendert ? out : k;
 }
 
+// ── Einmal-Migration (v11.81): Rollen-Aufräumung ───────────────────────────
+// Drei Bereinigungen in allen rollentragenden Feldern eines Kontakts:
+//   · "Ansprechpartner (Objekt)" / "Ansprechpartner (Firma)" → "Ansprechpartner"
+//     (Objekt- vs. Firmenbezug wird ohnehin aus den IDs der Zuweisung abgeleitet,
+//     nicht aus dem Rollennamen — die Trennung war rein optisch.)
+//   · "Wohnberechtigt" → "Wohnberechtigter" (substantivierte Form, konsistent
+//     zu Bevollmächtigter/Nießbraucher).
+//   · "Bewohner" → entfernt (durch konkrete Wohnrechte ersetzt).
+// Idempotent: läuft mehrfach gefahrlos; deduplizert rollen[]; betroffene
+// Zuweisungen mit "Bewohner" werden aus den Listen gestrichen.
+function mappeRollenAufraeumung(k) {
+  if (!k || typeof k !== "object") return k;
+  const UMBENENNEN = {
+    "Ansprechpartner (Objekt)": "Ansprechpartner",
+    "Ansprechpartner (Firma)":  "Ansprechpartner",
+    "Wohnberechtigt":           "Wohnberechtigter",
+  };
+  const ENTFERNEN = { "Bewohner": true };
+  let geaendert = false;
+  const out = { ...k };
+
+  // rollen[] (Strings): umbenennen, "Bewohner" raus, dedup.
+  if (Array.isArray(out.rollen)) {
+    const neu = [];
+    out.rollen.forEach(r => {
+      if (ENTFERNEN[r]) { geaendert = true; return; }
+      const name = UMBENENNEN[r] || r;
+      if (name !== r) geaendert = true;
+      if (neu.indexOf(name) < 0) neu.push(name); // Dedup (AP-Objekt+Firma → 1×AP)
+    });
+    if (geaendert) out.rollen = neu;
+  }
+
+  // Objekt-Listen mit Rollennamen in einem Feld: umbenennen ODER Eintrag streichen.
+  const mapListe = (liste, feld) => {
+    if (!Array.isArray(liste)) return liste;
+    let hit = false;
+    const neu = [];
+    liste.forEach(z => {
+      if (!z) { neu.push(z); return; }
+      const val = z[feld];
+      if (ENTFERNEN[val]) { hit = true; return; } // Eintrag entfällt
+      if (UMBENENNEN[val]) { hit = true; neu.push({ ...z, [feld]: UMBENENNEN[val] }); return; }
+      neu.push(z);
+    });
+    if (hit) geaendert = true;
+    return hit ? neu : liste;
+  };
+  out.besitz            = mapListe(out.besitz, "rolle");
+  out.objektZuweisungen = mapListe(out.objektZuweisungen, "rolle");
+  out.firmenRollen      = mapListe(out.firmenRollen, "rolle");
+  out.zustaendigkeiten  = mapListe(out.zustaendigkeiten, "leistung");
+  return geaendert ? out : k;
+}
+
 function migriereKontaktZuweisungen(k) {
   if (!k || typeof k !== "object") return k;
   // Einmal-Migration (v5.76): "Miteigentümer" → "Eigentümer" in allen Feldern.
   // Idempotent (ein Eigentümer ggf. doppelt → unten via Set dedupliziert). Läuft
   // VOR dem early-return, damit auch bereits migrierte Kontakte erfasst werden.
   k = mappeMiteigentuemer(k);
+  // Einmal-Migration (v11.81): Rollen-Aufräumung — ebenfalls VOR dem early-return,
+  // damit auch bereits auf die neue Achse migrierte Kontakte erfasst werden.
+  k = mappeRollenAufraeumung(k);
   if (k.besitz != null || k.zustaendigkeiten != null || k.firmenRollen != null) return k;
   const alt = Array.isArray(k.objektZuweisungen) ? k.objektZuweisungen : [];
   const besitz = [], zustaendigkeiten = [], firmenRollen = [];

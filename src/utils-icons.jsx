@@ -692,6 +692,48 @@ async function fuehreFlushAus() {
   }
 }
 
+// ── Rollen-Settings-Bereinigung (v11.81) ────────────────────────────────────
+// Räumt die gespeicherte Rollen-DEFINITIONSLISTE (settings.rollen) auf:
+//   · "Ansprechpartner (Objekt)" / "Ansprechpartner (Firma)" / "Ansprechpartner"
+//     → eine einzige Rolle "Ansprechpartner" (Slot firma). Anzeige-Flags
+//     (eckSichtbar/eckPosition/badgeSichtbar) des ZUERST gesehenen Eintrags
+//     gewinnen; spätere Dubletten entfallen.
+//   · "Wohnberechtigt" → "Wohnberechtigter" (nur Name; übrige Felder bleiben).
+//   · "Bewohner" → entfernt (durch konkrete Wohnrechte ersetzt).
+// Idempotent: bei bereits sauberer Liste wird die Original-Referenz zurückgegeben.
+function bereinigeRollenSettings(rollen) {
+  if (!Array.isArray(rollen)) return rollen;
+  const UMBENENNEN = {
+    "Ansprechpartner (Objekt)": "Ansprechpartner",
+    "Ansprechpartner (Firma)":  "Ansprechpartner",
+    "Wohnberechtigt":           "Wohnberechtigter",
+  };
+  const ENTFERNEN = { "Bewohner": true };
+  let geaendert = false;
+  const out = [];
+  const gesehen = {}; // Name → Index in out (für Dedup nach Umbenennung)
+  rollen.forEach(r => {
+    if (!r || typeof r !== "object") { out.push(r); return; }
+    if (ENTFERNEN[r.name]) { geaendert = true; return; }
+    const neuName = UMBENENNEN[r.name];
+    let eintrag = r;
+    if (neuName && neuName !== r.name) {
+      geaendert = true;
+      // Slot auf "firma" zwingen, falls AP-Objekt (war "gremium") zusammengeführt wird.
+      eintrag = (neuName === "Ansprechpartner")
+        ? { ...r, name: neuName, slot: "firma" }
+        : { ...r, name: neuName };
+    }
+    if (Object.prototype.hasOwnProperty.call(gesehen, eintrag.name)) {
+      geaendert = true; // Dubletten-Eintrag (z. B. zweite AP-Variante) entfällt
+      return;
+    }
+    gesehen[eintrag.name] = out.length;
+    out.push(eintrag);
+  });
+  return geaendert ? out : rollen;
+}
+
 // ── Storage-Objekt (öffentliche API — bleibt kompatibel) ────────────────────
 const storage = {
   // ── Settings ─────────────────────────────────────────────────────────────
@@ -702,7 +744,14 @@ const storage = {
       // Gespeicherte Werte über die Defaults legen: fehlende Felder werden
       // generisch mit ihrem Default ergänzt (kein handgepflegtes Migrations-
       // Wirrwarr nötig). Gespeicherte Werte gewinnen.
-      return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(raw));
+      const geladen = Object.assign({}, DEFAULT_SETTINGS, JSON.parse(raw));
+      // Einmal-Migration (v11.81): Rollen-Liste in den Settings aufräumen
+      // (AP-Varianten → "Ansprechpartner", "Wohnberechtigt" → "Wohnberechtigter",
+      // "Bewohner" raus). Idempotent — läuft bei jedem Laden gefahrlos.
+      if (Array.isArray(geladen.rollen)) {
+        geladen.rollen = bereinigeRollenSettings(geladen.rollen);
+      }
+      return geladen;
     } catch (e) {
       console.warn("Settings konnten nicht geladen werden:", e);
       return null;

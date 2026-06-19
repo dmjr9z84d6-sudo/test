@@ -1910,6 +1910,30 @@ function VerwendungenTabelle({ settings, setSettings, t, accent }) {
 // Formular, wo eine Startfarbe nötig ist. `gruppeKey`: "rollen" | "firmenRollen".
 function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, einheit = "Rolle", istFirma = false, ohneBadge = false }) {
   const liste = settings[gruppeKey] || defaults;
+  // Personen-Rollen werden nach Slot-Gruppe geordnet (Einheit → Vertretung →
+  // Gremium → Firma) statt alphabetisch — so stehen fachlich verwandte Rollen
+  // beieinander und die wichtigsten oben. Gewerke/Leistungen bleiben alphabetisch.
+  const SLOT_GRUPPE = { ve: 0, sev: 1, gremium: 2, firma: 3 };
+  const ROLLE_RANG = { // Reihenfolge innerhalb der Slot-Gruppe (kleiner = oben)
+    "Eigentümer": 0, "Mieter": 1, "Pächter": 2, "Eigennutzer": 3, "Nießbraucher": 4,
+    "Wohnberechtigter": 5, "Angehöriger": 6, "Sonstige": 7,
+    "Bevollmächtigter": 0, "Betreuer": 1, "Sondereigentumsverwaltung": 2,
+    "Verwaltungsbeirat": 0, "Rechnungsprüfer": 1,
+    "Verwalter": 0, "Geschäftsführer": 1, "Buchhalter": 2, "Sachbearbeiter": 3,
+    "Mitarbeiter": 4, "Ansprechpartner": 5,
+  };
+  const sortierePersonen = (a, b) => {
+    const ga = SLOT_GRUPPE[a.slot]; const gb = SLOT_GRUPPE[b.slot];
+    const gA = (ga == null) ? 99 : ga; const gB = (gb == null) ? 99 : gb;
+    if (gA !== gB) return gA - gB;
+    const ra = ROLLE_RANG[a.name]; const rb = ROLLE_RANG[b.name];
+    const rA = (ra == null) ? 99 : ra; const rB = (rb == null) ? 99 : rb;
+    if (rA !== rB) return rA - rB;
+    return a.name.localeCompare(b.name, "de"); // Fallback: alphabetisch
+  };
+  const sortiereListe = (arr) => istFirma
+    ? [...arr].sort((a, b) => a.name.localeCompare(b.name, "de"))
+    : [...arr].sort(sortierePersonen);
   const kategorien = settings.kategorien || DEFAULT_KATEGORIEN;
   const farben = useKontaktFarbe();
   const toggleFarbe = farben.person || accent; // Toggles in Kontakte-Farbe
@@ -2110,7 +2134,7 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
 
       <div style={{ background: t.surface, border: `1px solid ${t.border}`,
         borderTop: "none", borderRadius: "0 0 9px 9px", padding: 4 }}>
-        {[...liste].sort((a, b) => a.name.localeCompare(b.name, "de")).map((r) => {
+        {sortiereListe(liste).map((r) => {
           const eckAn = rolleEckSichtbar(r);
           const badgeAn = rolleBadgeSichtbar(r);
           const ecke = rolleEckPosition(r);

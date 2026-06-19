@@ -56,7 +56,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "11.80";
+export const APP_VERSION = "11.81";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ export const DEFAULT_ROLLEN = [
   // bei den „normalen" Wohnverhältnissen — Badge erscheint dennoch im Profil/Einheit.
   { name: "Eigennutzer",              kuerzel: "EN",  color: "#3B82F6", slot: "ve",      aktiv: true, eckSichtbar: false }, // Blau
   { name: "Nießbraucher",             kuerzel: "N",   color: "#9333EA", slot: "ve",      aktiv: true, kategorie: "niessbrauch" }, // Lila
-  { name: "Wohnberechtigt",           kuerzel: "W",   color: "#0891B2", slot: "ve",      aktiv: true, kategorie: "wohnrecht" }, // Cyan
+  { name: "Wohnberechtigter",         kuerzel: "W",   color: "#0891B2", slot: "ve",      aktiv: true, kategorie: "wohnrecht" }, // Cyan
   { name: "Angehöriger",              kuerzel: "AG",  color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer — mitwohnend ohne eigenen Rechtstitel
   { name: "Sonstige",                 kuerzel: "S",   color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer
   // SEV
@@ -141,14 +141,13 @@ export const DEFAULT_ROLLEN = [
   // Zusatzfunktionen (Gremium)
   { name: "Verwaltungsbeirat",        kuerzel: "VB",  color: "#15803D", slot: "gremium", aktiv: true }, // Grün; mit vorsitz:true wird das VBV
   { name: "Rechnungsprüfer",          kuerzel: "RP",  color: "#047857", slot: "gremium", aktiv: true }, // Smaragd
-  { name: "Ansprechpartner (Objekt)", kuerzel: "AO",  color: "#0D9488", slot: "gremium", aktiv: true }, // Teal — objektbezogener AP (≠ Firmen-AP)
   // Person Firma / Hausverwaltung
   { name: "Verwalter",                kuerzel: "VW",  color: "#2563EB", slot: "firma",   aktiv: true }, // Blau (analog Firmen-Rolle Hausverwaltung)
   { name: "Buchhalter",               kuerzel: "BH",  color: "#0E7490", slot: "firma",   aktiv: true }, // Cyan dunkel
   { name: "Geschäftsführer",          kuerzel: "GF",  color: "#4338CA", slot: "firma",   aktiv: true }, // Indigo
   { name: "Mitarbeiter",              kuerzel: "MA",  color: "#7C3AED", slot: "firma",   aktiv: true }, // Violett
   { name: "Sachbearbeiter",           kuerzel: "SB",  color: "#9333EA", slot: "firma",   aktiv: true }, // Lila
-  { name: "Ansprechpartner (Firma)",  kuerzel: "AP",  color: "#C026D3", slot: "firma",   aktiv: true }, // Magenta — Firmen-AP (≠ Objekt-AP)
+  { name: "Ansprechpartner",          kuerzel: "AP",  color: "#C026D3", slot: "firma",   aktiv: true }, // Magenta — Objekt/Firma wird aus der Zuweisung abgeleitet
 ];
 
 
