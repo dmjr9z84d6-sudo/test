@@ -1914,10 +1914,11 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
   // Gremium → Firma) statt alphabetisch — so stehen fachlich verwandte Rollen
   // beieinander und die wichtigsten oben. Gewerke/Leistungen bleiben alphabetisch.
   const SLOT_GRUPPE = { ve: 0, sev: 1, gremium: 2, firma: 3 };
+  const SLOT_LABEL = { ve: "Einheit / Nutzung", sev: "Vertretung", gremium: "Gremium", firma: "Firma" };
   const ROLLE_RANG = { // Reihenfolge innerhalb der Slot-Gruppe (kleiner = oben)
     "Eigentümer": 0, "Mieter": 1, "Pächter": 2, "Eigennutzer": 3, "Nießbraucher": 4,
     "Wohnberechtigter": 5, "Angehöriger": 6, "Sonstige": 7,
-    "Bevollmächtigter": 0, "Betreuer": 1, "Sondereigentumsverwaltung": 2,
+    "Bevollmächtigter": 0, "Betreuer": 1,
     "Verwaltungsbeirat": 0, "Rechnungsprüfer": 1,
     "Verwalter": 0, "Geschäftsführer": 1, "Buchhalter": 2, "Sachbearbeiter": 3,
     "Mitarbeiter": 4, "Ansprechpartner": 5,
@@ -2134,7 +2135,7 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
 
       <div style={{ background: t.surface, border: `1px solid ${t.border}`,
         borderTop: "none", borderRadius: "0 0 9px 9px", padding: 4 }}>
-        {sortiereListe(liste).map((r) => {
+        {(() => { let letzterSlot = null; return sortiereListe(liste).map((r) => {
           const eckAn = rolleEckSichtbar(r);
           const badgeAn = rolleBadgeSichtbar(r);
           const ecke = rolleEckPosition(r);
@@ -2142,8 +2143,23 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
           const markiert = bearbeiten && ist; // Highlight nur im Bearbeiten-Modus
           const rKuerzel = effKuerzel(r, kategorien);
           const rColor = effColor(r, kategorien);
+          // Gruppen-Überschrift nur bei Personen-Rollen und nur beim Slot-Wechsel.
+          const zeigeKopf = !istFirma && SLOT_LABEL[r.slot] && r.slot !== letzterSlot;
+          const ersterKopf = letzterSlot === null;
+          if (zeigeKopf) letzterSlot = r.slot;
           return (
-            <div key={r.name}
+            <React.Fragment key={r.name}>
+            {zeigeKopf && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8,
+                padding: "10px 6px 4px", marginTop: ersterKopf ? 0 : 6 }}>
+                <span style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                  textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>
+                  {SLOT_LABEL[r.slot]}
+                </span>
+                <div style={{ flex: 1, height: 1, background: t.border + "40" }}/>
+              </div>
+            )}
+            <div
               onClick={() => setSelName(r.name)}
               style={{
                 display: "flex", alignItems: "center", gap: 4,
@@ -2192,8 +2208,9 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
                 )}
               </div>
             </div>
+            </React.Fragment>
           );
-        })}
+        }); })()}
       </div>
     </>
   );

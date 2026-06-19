@@ -708,7 +708,7 @@ function bereinigeRollenSettings(rollen) {
     "Ansprechpartner (Firma)":  "Ansprechpartner",
     "Wohnberechtigt":           "Wohnberechtigter",
   };
-  const ENTFERNEN = { "Bewohner": true };
+  const ENTFERNEN = { "Bewohner": true, "Sondereigentumsverwaltung": true };
   let geaendert = false;
   const out = [];
   const gesehen = {}; // Name → Index in out (für Dedup nach Umbenennung)
@@ -745,9 +745,9 @@ const storage = {
       // generisch mit ihrem Default ergänzt (kein handgepflegtes Migrations-
       // Wirrwarr nötig). Gespeicherte Werte gewinnen.
       const geladen = Object.assign({}, DEFAULT_SETTINGS, JSON.parse(raw));
-      // Einmal-Migration (v11.81): Rollen-Liste in den Settings aufräumen
+      // Einmal-Migration (v11.82): Rollen-Liste in den Settings aufräumen
       // (AP-Varianten → "Ansprechpartner", "Wohnberechtigt" → "Wohnberechtigter",
-      // "Bewohner" raus). Idempotent — läuft bei jedem Laden gefahrlos.
+      // "Bewohner" + "Sondereigentumsverwaltung" raus). Idempotent.
       if (Array.isArray(geladen.rollen)) {
         geladen.rollen = bereinigeRollenSettings(geladen.rollen);
       }

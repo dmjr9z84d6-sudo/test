@@ -56,7 +56,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "11.81";
+export const APP_VERSION = "11.84";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
@@ -135,7 +135,6 @@ export const DEFAULT_ROLLEN = [
   { name: "Angehöriger",              kuerzel: "AG",  color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer — mitwohnend ohne eigenen Rechtstitel
   { name: "Sonstige",                 kuerzel: "S",   color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer
   // SEV
-  { name: "Sondereigentumsverwaltung",  kuerzel: "SEV", color: "#7C3AED", slot: "sev",     aktiv: true, kategorie: "sev" }, // Violett — SEV-Firma/-Verwaltung der Einheit
   { name: "Bevollmächtigter",         kuerzel: "S",   color: "#0891B2", slot: "sev",     aktiv: true }, // Cyan
   { name: "Betreuer",                 kuerzel: "BT",  color: "#0369A1", slot: "sev",     aktiv: true }, // Blau dunkel
   // Zusatzfunktionen (Gremium)
