@@ -5643,7 +5643,7 @@ function KartenList({ karten, setKarten, t, accent, editMode, kontakte, setKonta
   return (
     <div>
       {karten.map((karte, idx) => (
-        <div key={karte.id} id={"vwkarte-" + karte.id}
+        <div key={(ve && ve.id != null ? ve.id : "") + "-" + karte.id} id={"vwkarte-" + karte.id}
           style={{
             position: "relative",
             scrollMarginTop: "var(--ad-header-h, 200px)",
