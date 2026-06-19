@@ -2320,6 +2320,8 @@ function KDKStammdatenBlock({ edit, setEdit, t, farbe, editMode, istFirma }) {
         <div>
           {istFirma ? (
             <>
+              {edit.rechtsform && <div style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>🏢 {edit.rechtsform}</div>}
+              {edit.sub && <div style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>🏷 {edit.sub}</div>}
               {edit.tel    && <div style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>📞 {edit.tel}</div>}
               {edit.email  && <div style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>✉ {edit.email}</div>}
               {edit.homepage && <div style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>🌐 {edit.homepage}</div>}
@@ -2335,15 +2337,21 @@ function KDKStammdatenBlock({ edit, setEdit, t, farbe, editMode, istFirma }) {
             </>
           ) : (
             <>
+              {(edit.anrede || edit.titel) && (
+                <div style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>👤 {[edit.anrede, edit.titel].filter(Boolean).join(" ")}</div>
+              )}
               {(edit.tels||[]).map((tel,i) => (
                 <div key={i} style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>
-                  📞 {tel.nr}{tel.type ? <span style={{ fontSize: FS.xs, color:t.muted }}> ({tel.type})</span> : null}{tel.favorit ? <span style={{ color: "#F59E0B", marginLeft: 4 }}>★</span> : null}
+                  📞 {tel.nr}{(tel.type || tel.typ) ? <span style={{ fontSize: FS.xs, color:t.muted }}> ({tel.type || tel.typ})</span> : null}{tel.favorit ? <span style={{ color: "#F59E0B", marginLeft: 4 }}>★</span> : null}
                 </div>
               ))}
               {(edit.emails||[]).map((em,i) => (
-                <div key={i} style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>✉ {em.email}{em.favorit ? <span style={{ color: "#F59E0B", marginLeft: 4 }}>★</span> : null}</div>
+                <div key={i} style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>✉ {em.email}{(em.type || em.typ) ? <span style={{ fontSize: FS.xs, color:t.muted }}> ({em.type || em.typ})</span> : null}{em.favorit ? <span style={{ color: "#F59E0B", marginLeft: 4 }}>★</span> : null}</div>
               ))}
               {edit.strasse && <div style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>🏠 {edit.strasse}, {joinPlzOrt(edit.plz, edit.ort) || edit.plzOrt}{(edit.adresseFavorit || edit.strasseFavorit || edit.plzOrtFavorit) ? <span style={{ color: "#F59E0B", marginLeft: 4 }}>★</span> : null}</div>}
+              {(edit.geburtstag || edit.geburtsdatum) && (
+                <div style={{ fontSize: FS.m, color:t.sub, padding:"2px 0" }}>🎂 {edit.geburtstag || edit.geburtsdatum}</div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 7 }}>
                 <span style={{ fontSize: FS.s, color: "#F59E0B", lineHeight: 1 }}>★</span>
                 <span style={{ fontSize: FS.xs, color: t.muted }}>
