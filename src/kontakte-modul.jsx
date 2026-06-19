@@ -12,7 +12,7 @@ import {
 import {
   DESKTOP_MIN_WIDTH, I, ZurueckButton, ableiteStatusVonBis, belegungsRollenFuerKontakt,
   eingehendeVertretungen, feldWertGueltig, findScrollParent, flacheZuweisungen,
-  formatNameMitCtx, kontaktAllesGueltig, useAlleKontakte, useFirmenRollen, useKartenBadges,
+  formatNameMitCtx, kontaktAllesGueltig, useAlleKontakte, useAlleVes, useFirmenRollen, useKartenBadges,
   useKontaktAnzeige, useKontaktFarbe, useLeistungen, useLoeschenErlaubt, useMasterDetailLayout,
   useRollen, useStatusLeiste, useVerwendungen, useWindowWidth, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
@@ -2216,6 +2216,7 @@ function KDKHeader({ k, t, farbe, nameFarbe, istFirma, editMode, dirty, gueltig 
   edit, setEdit }) {
   const anzeige = useKontaktAnzeige();
   const alleKontakte = useAlleKontakte();
+  const alleVes = useAlleVes();
   // Foto-Upload (nur Personen) — IMMER aktiv:
   //   · im Edit-Modus  → setzt edit.foto (Speichern/Abbrechen-Workflow)
   //   · im View-Modus  → speichert direkt über onUpdate(k.foto)
@@ -2244,7 +2245,7 @@ function KDKHeader({ k, t, farbe, nameFarbe, istFirma, editMode, dirty, gueltig 
       {!istFirma && (
         <div style={{ position:"relative", flexShrink:0 }}>
           <Avatar name={k.name} firma={false} size={44} accent={farbe} foto={aktFoto}
-            zuweisungen={zuweisungenFuerAvatar(k, undefined, alleKontakte)}/>
+            zuweisungen={zuweisungenFuerAvatar(k, undefined, alleKontakte, alleVes)}/>
           {fotoEditierbar && (
             <input ref={fotoFileRef} type="file" accept="image/*"
               style={{ display:"none" }}
@@ -3319,8 +3320,9 @@ function KontaktListenZeile({ k, t, accent, aktiv, onClick, id, kbItem = false }
   const firmenRollen = useFirmenRollen();
   const anzeige = useKontaktAnzeige();
   const alleKontakte = useAlleKontakte();
+  const alleVes = useAlleVes();
   const name = formatNameMitCtx(k, anzeige) || k.name;
-  const zuweisungen = zuweisungenFuerAvatar(k, undefined, alleKontakte)
+  const zuweisungen = zuweisungenFuerAvatar(k, undefined, alleKontakte, alleVes)
     .filter(z => (z.status || "aktiv") !== "ehemalig");
   const rollen = [...new Set(zuweisungen.map(z => z.rolle))];
   const rollenText = rollen.slice(0, 2).join(" · ");
@@ -3367,13 +3369,14 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
   const zeigeKartenBadges = istFirma ? kartenBadges.firma : kartenBadges.person;
   const anzeige = useKontaktAnzeige();
   const alleKontakte = useAlleKontakte();
+  const alleVes = useAlleVes();
   const name = formatNameMitCtx(k, anzeige) || k.name;
 
   // Aktive Rollen für Badges (max 3, dedupliziert) — ehemalige weggelassen.
   // Quelle: zuweisungenFuerAvatar (führt besitz/zustaendigkeiten/firmenRollen
   // UND die Gewerke der Firma zusammen) — dieselbe wie für die Eck-Badges.
   // alleKontakte → eingehende Vertretungen (Bevollmächtigter-Badge) werden ergänzt.
-  const zuweisungen = zuweisungenFuerAvatar(k, undefined, alleKontakte)
+  const zuweisungen = zuweisungenFuerAvatar(k, undefined, alleKontakte, alleVes)
     .filter(z => (z.status || "aktiv") !== "ehemalig");
   const uniRollenNamen = [...new Set(zuweisungen.map(z => z.rolle))].slice(0, 3);
   // Für jede Rolle die "wichtigste" Zuweisung finden (aktiv > werdend), inkl. vorsitz/vertrag
@@ -3450,7 +3453,7 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
         <div style={{ width: 48, flexShrink: 0, display: "flex",
           alignItems: "center", justifyContent: "center" }}>
           <Avatar name={name} firma={istFirma} size={38} accent={farbe}
-            zuweisungen={zuweisungenFuerAvatar(k, undefined, alleKontakte)}/>
+            zuweisungen={zuweisungenFuerAvatar(k, undefined, alleKontakte, alleVes)}/>
         </div>
         {/* Mitte: Name + IMMER 2 Detail-Slots (leere mit Platzhalter,
             damit alle Karten gleich hoch sind) */}

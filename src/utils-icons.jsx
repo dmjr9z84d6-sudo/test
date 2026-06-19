@@ -1082,14 +1082,29 @@ function migriereZuweisungen(daten) {
 // Liefert flache Einträge { rolle, status, vorsitz } — der Avatar bestimmt die
 // Eck-Position selbst aus der Rollendefinition (Slot). Fallback: objektZuweisungen.
 // Optional auf ein Objekt gefiltert (objektId) — für Objekt-bezogene Ansichten.
-function zuweisungenFuerAvatar(k, objektId, alleKontakte) {
+// `ves` (optional): wird es übergeben, ergänzt die Funktion die LIVE aus den
+// Belegungen abgeleiteten Rollen (Mieter/Pächter/… aus haushalt.mitglieder) —
+// damit der Avatar dieselben Rollen zeigt wie die ROLLEN-Liste (die ohnehin aus
+// belegungsRollenFuerKontakt liest). Ohne `ves` bleibt das Verhalten exakt wie
+// zuvor (z. B. kompakte Picker ohne Belegungs-Badge). Der objektId-Filter gilt
+// auch hier: im Objekt-Kontext nur die Belegung DIESES Objekts.
+function belegungsZuweisungen(k, objektId, ves) {
+  if (!Array.isArray(ves)) return [];
+  return belegungsRollenFuerKontakt(k, ves)
+    .filter(z => !objektId || z.objektId === objektId)
+    .map(z => ({ rolle: z.rolle, status: z.status || "aktiv", vorsitz: false }));
+}
+
+function zuweisungenFuerAvatar(k, objektId, alleKontakte, ves) {
   if (!k) return [];
+  const belegung = belegungsZuweisungen(k, objektId, ves);
   const hatNeu = Array.isArray(k.besitz) || Array.isArray(k.zustaendigkeiten) || Array.isArray(k.firmenRollen);
   if (!hatNeu) {
     const alt = Array.isArray(k.objektZuweisungen) ? k.objektZuweisungen : [];
-    return objektId ? alt.filter(z => z.objektId === objektId) : alt;
+    const altGefiltert = objektId ? alt.filter(z => z.objektId === objektId) : alt;
+    return [...altGefiltert, ...belegung];
   }
-  const out = [];
+  const out = [...belegung];
   (k.besitz || []).forEach(b => {
     if (objektId && b.objektId !== objektId) return;
     out.push({ rolle: b.rolle, status: b.status || "aktiv", vorsitz: false });
@@ -1769,6 +1784,12 @@ const RollenContext = createContext(DEFAULT_ROLLEN);
 const KontakteContext = createContext([]);
 function useAlleKontakte() { return useContext(KontakteContext); }
 
+// Volle Objektliste als Context — nötig, um die LIVE aus Belegungen abgeleiteten
+// Avatar-Badges (Mieter/Pächter/…) ohne Prop-Threading zu berechnen. Analog zu
+// KontakteContext. Wird im App-Rumpf mit `ves` befüllt.
+const VesContext = createContext([]);
+function useAlleVes() { return useContext(VesContext); }
+
 // Helfer: aktuelle Rollen-Liste aus dem Context holen
 function useRollen() {
   return useContext(RollenContext);
@@ -1960,6 +1981,8 @@ export {
   RollenContext,
   KontakteContext,
   useAlleKontakte,
+  VesContext,
+  useAlleVes,
   useRollen,
   FirmenRollenContext,
   useFirmenRollen,

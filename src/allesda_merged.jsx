@@ -217,6 +217,7 @@ import {
   StickySectionHeader,
   TerminBezeichnungenContext,
   VerwendungenContext,
+  VesContext,
   ZeitPickerContext,
   ZurueckButton,
   ableiteStatusVonBis,
@@ -2345,6 +2346,7 @@ export default function App() {
   return (
     <TipProvider>
     <KontakteContext.Provider value={kontakte}>
+    <VesContext.Provider value={ves}>
     <RollenContext.Provider value={effectiveSettings.rollen || DEFAULT_ROLLEN}>
     <FirmenRollenContext.Provider value={effectiveSettings.firmenRollen || DEFAULT_GEWERKE_LISTE}>
     <LeistungenContext.Provider value={effectiveSettings.leistungen || DEFAULT_LEISTUNGEN}>
@@ -3311,6 +3313,7 @@ export default function App() {
     </LeistungenContext.Provider>
     </FirmenRollenContext.Provider>
     </RollenContext.Provider>
+    </VesContext.Provider>
     </KontakteContext.Provider>
     </TipProvider>
   );

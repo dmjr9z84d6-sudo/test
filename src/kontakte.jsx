@@ -4,8 +4,8 @@ import {
   BEWOHNER_RECHTE, aktiveBelegung, bewohnerRecht, teileVon
 } from "./datenmodell.js";
 import {
-  I, SortierPfeile, stabilisiereScroll, useFirmenRollen, useKontaktFarbe,
-  useOutsideClick, useRollen
+  I, SortierPfeile, stabilisiereScroll, useAlleKontakte, useFirmenRollen, useKontaktFarbe,
+  useOutsideClick, useRollen, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
 import { Avatar, KontaktPicker } from "./components.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
@@ -286,11 +286,17 @@ function liegenschaftsBereiche(ve) {
 function KontaktZeile({ k, ve, t, accent, highlightAccent, isActive, onClick, id }) {
   const hl = highlightAccent || accent;
   const istFirma = k.typ === "firma";
+  const alleKontakte = useAlleKontakte();
   const name = istFirma
     ? k.name
     : `${k.vorname || ""} ${k.nachname || ""}`.trim() || k.name;
 
-  // Avatar-Eck-Badges: nur Rollen die zu DIESEM Objekt gehören.
+  // Avatar-Eck-Badges: nur Rollen die zu DIESEM Objekt gehören. Über
+  // zuweisungenFuerAvatar (neue Achsen besitz/zustaendigkeit + LIVE-Belegung
+  // dieses Objekts via [ve]), damit Mieter/Pächter etc. konsistent erscheinen.
+  const avatarZuw = zuweisungenFuerAvatar(k, ve.id, alleKontakte, [ve]);
+  // Bezug-Berechnung weiterhin aus den rohen objektZuweisungen (braucht
+  // einheitId/rolle-Details, die die Avatar-Form nicht trägt).
   const objektZuw = (k.objektZuweisungen || []).filter(z => z.objektId === ve.id);
 
   // Bezug: bei Bewohnern vorab berechnet (_bezug = Einheit · Recht);
@@ -318,7 +324,7 @@ function KontaktZeile({ k, ve, t, accent, highlightAccent, isActive, onClick, id
       cursor: "pointer", transition: "all 0.15s",
     }}>
       <Avatar name={name} firma={istFirma} size={32} accent={accent}
-        zuweisungen={istFirma ? null : objektZuw}/>
+        zuweisungen={istFirma ? null : avatarZuw}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
