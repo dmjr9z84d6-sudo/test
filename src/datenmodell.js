@@ -1422,7 +1422,40 @@ function wendeKontaktZuweisungenAn(kontakte, ve) {
     neueZuw.forEach(z => { if (z.rolle && z.einheitId != null) rollenSet[z.rolle] = true; });
     // (c) Objekt-/Firmen-Rollen aus Zuweisungen ohne einheitId behalten.
     neueZuw.forEach(z => { if (z.rolle && z.einheitId == null) rollenSet[z.rolle] = true; });
-    return { ...k, objektZuweisungen: neueZuw, rollen: Object.keys(rollenSet) };
+
+    // NEUE ACHSE synchron halten (besitz/zustaendigkeiten). Avatar und ROLLEN-
+    // Liste lesen aus besitz/flacheZuweisungen — diese Achse muss dieselbe
+    // Einheit-Ableitung tragen wie objektZuweisungen, sonst driften die Achsen
+    // auseinander (rollenlose besitz-Einträge → Objekt sichtbar, Rolle/Badge fehlt).
+    // Nur DIESES Objekt + einheit-bezogene Einträge ersetzen; alles andere behalten
+    // (objektbezogener Besitz ohne einheitId, andere Objekte, Dienstleister-
+    // Zuständigkeiten, Firmen-Gewerke). Gleicher Schutzfilter wie oben.
+    const hatNeueAchse = Array.isArray(k.besitz) || Array.isArray(k.zustaendigkeiten) || Array.isArray(k.firmenRollen);
+    let zusatz = null;
+    if (hatNeueAchse) {
+      const besitzBehalten = (Array.isArray(k.besitz) ? k.besitz : [])
+        .filter(b => b.objektId !== ve.id || b.einheitId == null);
+      const zustBehalten = (Array.isArray(k.zustaendigkeiten) ? k.zustaendigkeiten : [])
+        .filter(z => {
+          const ziel = z.ziel || {};
+          return ziel.objektId !== ve.id || ziel.einheitId == null;
+        });
+      const besitzNeu = [], zustNeu = [];
+      neueFuerObjekt.forEach(z => {
+        if (z.einheitId == null) return; // objekt-/firmenbezogen separat behandelt
+        const c = klassifiziereZuweisung(z, k.typ);
+        if (!c) return;
+        if (c.kat === "besitz") besitzNeu.push(c.eintrag);
+        else if (c.kat === "zustaendigkeit") zustNeu.push(c.eintrag);
+      });
+      zusatz = {
+        besitz: besitzBehalten.concat(besitzNeu),
+        zustaendigkeiten: zustBehalten.concat(zustNeu),
+      };
+    }
+
+    return { ...k, objektZuweisungen: neueZuw, rollen: Object.keys(rollenSet),
+      ...(zusatz || {}) };
   });
 }
 

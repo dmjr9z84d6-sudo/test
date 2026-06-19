@@ -1626,9 +1626,20 @@ export default function App() {
     }
     const daten = storage.ladeDaten();
     if (daten && typeof daten === "object") {
-      if (Array.isArray(daten.kontakte)) setKontakte(normalisiereKontakte(daten.kontakte));
-      if (Array.isArray(daten.ves))      setVes(normalisiereVes(daten.ves));
+      // Sowohl Kontakte als auch VEs laden, dann EINMAL die Einheit-Ableitung
+      // über alle Objekte anwenden — synchronisiert besitz/zustaendigkeiten +
+      // objektZuweisungen mit der Quelle der Wahrheit (Einheiten). Heilt
+      // Altbestand mit rollenlosen/veralteten Zuweisungen sofort beim Start.
+      const kGeladen = Array.isArray(daten.kontakte) ? normalisiereKontakte(daten.kontakte) : null;
+      const vGeladen = Array.isArray(daten.ves) ? normalisiereVes(daten.ves) : null;
+      const vFinal = vGeladen || ves;
+      if (kGeladen) setKontakte(wendeKontaktZuweisungenAnAlle(kGeladen, vFinal));
+      else setKontakte(prevK => wendeKontaktZuweisungenAnAlle(prevK, vFinal));
+      if (vGeladen) setVes(vGeladen);
       if (Array.isArray(daten.freieTermine)) setFreieTermine(daten.freieTermine);
+    } else {
+      // Keine gespeicherten Daten → DEFAULT-Stand ebenfalls einmal synchronisieren.
+      setKontakte(prevK => wendeKontaktZuweisungenAnAlle(prevK, ves));
     }
     setStorageGeladen(true);
   }, []);
