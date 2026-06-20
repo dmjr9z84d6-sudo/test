@@ -2130,6 +2130,93 @@ function fuehreKontakteZusammen(daten, gruppe, opts) {
   };
 }
 
+// ── Rollenkarten-Gruppierung ────────────────────────────────────────────────
+// Verschmilzt die frühere "Rollen"- und "Objekte"-Sektion der Kontakt-
+// Detailkarte zu EINER hierarchischen Liste: Rolle+Status → Objekte →
+// Einheiten. Eingabe sind die flachen Zeilen aus flacheZuweisungen() +
+// belegungsRollenFuerKontakt() (Felder: rolle, status, objektId, einheitId,
+// zielKontaktId?, firmaId?, vorsitz?, _quelle, _readonly?). rollenDefs ist die
+// Liste aller Rollen-Definitionen (settings.rollen + firmenRollen + leistungen
+// zusammengeführt), aus der der `slot` je Rolle gelesen wird.
+//
+// Slot bestimmt Bucket UND Darstellungstyp:
+//   gremium → objektweit (Objekt-Rahmen, KEINE Einheit)
+//   sev     → kontaktbezogen (Ziel-Kontakt, kein Objekt/Einheit)
+//   firma   → Anstellung (Firma als Ziel)
+//   ve      → einheitsbezogen (Objekt → Einheiten)
+//
+// Sortierung: 1) Bucket-Reihenfolge gremium→sev→firma→ve.
+//             2) innerhalb Bucket: aktiv vor werdend/ehemalig.
+//             3) stabil nach Rollenname.
+// Rückgabe: [{ rolle, status, slot, vorsitz, zielKontaktId?, firmaId?,
+//              objekte: [{ objektId, einheiten: [{ einheitId, _quelle, _readonly }] }] }]
+
+const ROLLEN_BUCKET_ORDER = ["gremium", "sev", "firma", "ve"];
+const ROLLEN_STATUS_ORDER = { aktiv: 0, werdend: 1, ehemalig: 2 };
+
+function _slotFuerRolle(rolleName, rollenDefs) {
+  const def = (rollenDefs || []).find(r => r && r.name === rolleName);
+  return (def && def.slot) || "ve"; // Default: einheitsbezogen
+}
+
+function gruppiereRollenkarten(zuweisungen, rollenDefs) {
+  const zeilen = (zuweisungen || []).filter(z => z && z.rolle);
+  // 1. Nach Rolle+Status+Vorsitz gruppieren (= ein Rahmen).
+  //    Vorsitz trennt, weil "Verwaltungsbeirat (Vorsitz)" ein eigener Rahmen ist.
+  const karten = new Map();
+  zeilen.forEach(z => {
+    const status = z.status || "aktiv";
+    const slot = _slotFuerRolle(z.rolle, rollenDefs);
+    const key = z.rolle + "|" + status + "|" + (z.vorsitz ? "V" : "") +
+                "|" + (z.zielKontaktId != null ? "z" + z.zielKontaktId : "") +
+                "|" + (z.firmaId != null ? "f" + z.firmaId : "");
+    if (!karten.has(key)) {
+      karten.set(key, { rolle: z.rolle, status, slot,
+        vorsitz: !!z.vorsitz,
+        zielKontaktId: z.zielKontaktId != null ? z.zielKontaktId : null,
+        firmaId: z.firmaId != null ? z.firmaId : null,
+        objekte: new Map() });
+    }
+    const karte = karten.get(key);
+    // Objekt-Ebene (nur wenn objektId vorhanden — gremium/ve haben sie, sev/firma nicht)
+    if (z.objektId) {
+      if (!karte.objekte.has(z.objektId)) karte.objekte.set(z.objektId, new Map());
+      const einheiten = karte.objekte.get(z.objektId);
+      // Einheit-Ebene (nur ve-Slot trägt einheitId; gremium nicht)
+      if (z.einheitId) {
+        if (!einheiten.has(z.einheitId)) {
+          einheiten.set(z.einheitId, { einheitId: z.einheitId,
+            _quelle: z._quelle, _readonly: !!z._readonly });
+        }
+      }
+    }
+  });
+  // 2. Maps → Arrays
+  const liste = [];
+  karten.forEach(k => {
+    const objekte = [];
+    k.objekte.forEach((einheitenMap, objektId) => {
+      const einheiten = [];
+      einheitenMap.forEach(e => einheiten.push(e));
+      objekte.push({ objektId, einheiten });
+    });
+    liste.push({ rolle: k.rolle, status: k.status, slot: k.slot,
+      vorsitz: k.vorsitz, zielKontaktId: k.zielKontaktId, firmaId: k.firmaId,
+      objekte });
+  });
+  // 3. Sortierung
+  liste.sort((a, b) => {
+    const ba = ROLLEN_BUCKET_ORDER.indexOf(a.slot);
+    const bb = ROLLEN_BUCKET_ORDER.indexOf(b.slot);
+    if (ba !== bb) return (ba < 0 ? 99 : ba) - (bb < 0 ? 99 : bb);
+    const sa = ROLLEN_STATUS_ORDER[a.status] != null ? ROLLEN_STATUS_ORDER[a.status] : 9;
+    const sb = ROLLEN_STATUS_ORDER[b.status] != null ? ROLLEN_STATUS_ORDER[b.status] : 9;
+    if (sa !== sb) return sa - sb;
+    return (a.rolle || "").localeCompare(b.rolle || "");
+  });
+  return liste;
+}
+
 
 export {
   buildMockData,
@@ -2230,5 +2317,6 @@ export {
   normalisiereFirmenname,
   findeKontaktKandidaten,
   gruppiereDubletten,
-  fuehreKontakteZusammen
+  fuehreKontakteZusammen,
+  gruppiereRollenkarten
 };

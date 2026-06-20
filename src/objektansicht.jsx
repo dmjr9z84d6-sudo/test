@@ -2081,7 +2081,7 @@ function PlatzhalterReiter({ t, accent, icon, titel, beschreibung, punkte }) {
 
 
 export {
-  FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
+  EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf

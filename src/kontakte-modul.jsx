@@ -6,7 +6,7 @@ import {
   datumDe, istEmailGueltig, istPlzGueltig, istTelefonGueltig, istUrlGueltig, joinPlzOrt
 } from "./utils-basis.js";
 import {
-  SUGGESTIONS, ausgehendeBefugnisse, buildKontaktarten, isStellplatzTyp,
+  SUGGESTIONS, ausgehendeBefugnisse, buildKontaktarten, gruppiereRollenkarten, isStellplatzTyp,
   klassifiziereZuweisung, kontaktPasstZuArt, teileVon, verwendungenVon
 } from "./datenmodell.js";
 import {
@@ -20,7 +20,7 @@ import {
   Avatar, DatumFeld, KontaktPicker, RolleBadge, Tip, Toggle, VerwendungBadge
 } from "./components.jsx";
 import {
-  FeldEinheitKarte, FeldObjektKarte, StatusLeiste, VEKachel, berechneKontaktStatus
+  EinheitKachel, FeldEinheitKarte, FeldObjektKarte, StatusLeiste, VEKachel, berechneKontaktStatus
 } from "./objektansicht.jsx";
 import { druckeHtml } from "./listen-tools.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
@@ -285,6 +285,162 @@ function ZeilenAktionen({ t, onEdit, onLoesen, onLoeschen, confirmLoesen = false
           {confirmLoesen && "Lösen?"}
         </button>
       )}
+    </div>
+  );
+}
+
+// ── RollenkarteBox: EINE gruppierte Rollenkarte (Rolle+Status) ──────────────
+// Verschmolzene Darstellung: runder RolleBadge + Name + Sub-Zeile + Status-
+// Pille; darunter je Objekt ein Rahmen (Bezeichnung groß, Adresse einmal) mit
+// kompakten Einheit-Kacheln (2-zeilig: Einheit-Bez + Lage, rechts Kenndaten).
+// Verhalten je Slot (aus gruppiereRollenkarten):
+//   ve      → Objekt-Rahmen mit Einheit-Kacheln
+//   gremium → Objekt-Rahmen ohne Einheiten (objektweit)
+//   sev     → Ziel-Kontakt statt Objekt
+//   firma   → Firma als Ziel
+// Ehemalige/werdende werden ausgegraut (opacity), bleiben aber sichtbar.
+function RollenEinheitZeile({ ve, einheit, t, accent, onClick }) {
+  // Kompakte Einheit-Kachel: KEINE VE-/Adress-Wiederholung (steht im Objekt-
+  // Kopf). Zwei Zeilen: Einheit-Bezeichnung + Lage; rechts Fläche/Stellung.
+  if (!einheit) return null;
+  const istSP = isStellplatzTyp(einheit.typ);
+  let rechts = null;
+  if (istSP) {
+    rechts = einheit.spStellung === "se_bestandteil" ? "SE-Bestandteil"
+      : (einheit.spStellung === "ge_snr" ? "GE + SNR"
+      : (einheit.spStellung === "eigenstaendig" ? "Teileigentum" : "Stellplatz"));
+  }
+  return (
+    <div onClick={onClick} style={{ display:"flex", alignItems:"center", gap:11,
+      padding:"9px 11px", background:t.card, border:`1px solid ${t.border}`,
+      borderRadius: RAD.ml, marginBottom:6, cursor:onClick?"pointer":"default" }}>
+      <div style={{ width:40, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ width:36, height:36, borderRadius: RAD.md, background: accent+"18",
+          display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <I name={istSP ? "building" : "home"} size={17} color={accent}/>
+        </div>
+      </div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: accent,
+          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+          {einheit.nr}
+        </div>
+        {einheit.lage && (
+          <div style={{ fontSize: FS.s, color:t.sub, marginTop:1,
+            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {einheit.lage}
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: FS.s, color:t.sub, whiteSpace:"nowrap", flexShrink:0, textAlign:"right" }}>
+        {rechts ? <span>{rechts}</span> : (
+          <>
+            {einheit.flaeche && <strong style={{ color:t.text }}>{einheit.flaeche}</strong>}
+            {einheit.zimmer && <span> · {einheit.zimmer} Zi</span>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RollenkarteBox({ karte, ves, kontakte, t, accent, onVEClick, onKontaktClick, aktuellesObjektId = null }) {
+  const personenRollen = useRollen();
+  const firmenRollen = useFirmenRollen();
+  const leistungen = useLeistungen();
+  const def = personenRollen.find(r => r.name === karte.rolle)
+    || leistungen.find(r => r.name === karte.rolle)
+    || firmenRollen.find(r => r.name === karte.rolle)
+    || { name: karte.rolle, color: accent };
+  const status = karte.status || "aktiv";
+  const ehemalig = status === "ehemalig";
+  const werdend = status === "werdend";
+  const farbe = ehemalig ? "#64748B" : (def.color || accent);
+  const statusFarbe = status === "aktiv" ? "#22C55E" : (werdend ? "#F59E0B" : "#94A3B8");
+  const statusLabel = status === "aktiv" ? "aktiv" : (werdend ? "werdend" : "ehemalig");
+
+  // Sub-Zeile: Vorsitz/Zähl-Info
+  const objektCount = (karte.objekte || []).length;
+  const einheitCount = (karte.objekte || []).reduce((s,o) => s + (o.einheiten||[]).length, 0);
+  let sub = "";
+  if (karte.vorsitz) sub = "Vorsitz";
+  else if (objektCount > 1) sub = `${einheitCount} Einheiten in ${objektCount} Objekten`;
+
+  // Ziel-Kontakt (sev / firma)
+  const zielKontakt = karte.zielKontaktId != null
+    ? (kontakte || []).find(k => String(k.id) === String(karte.zielKontaktId)) : null;
+  const zielFirma = karte.firmaId != null
+    ? (kontakte || []).find(k => String(k.id) === String(karte.firmaId)) : null;
+  const ziel = zielKontakt || zielFirma;
+
+  return (
+    <div style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius: RAD.ml,
+      padding:12, opacity: ehemalig ? 0.62 : 1 }}>
+      {/* Kopf: runder Badge + Rolle + Status */}
+      <div style={{ display:"flex", alignItems:"center", gap:11, marginBottom: (karte.objekte.length || ziel) ? 11 : 0 }}>
+        <RolleBadge rolle={karte.rolle} size={32} status={status} vorsitz={karte.vorsitz}/>
+        <div style={{ minWidth:0, flex:1 }}>
+          <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: farbe,
+            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {karte.rolle}{karte.vorsitz ? " (Vorsitz)" : ""}
+          </div>
+          {sub && <div style={{ fontSize: FS.s, color:t.sub }}>{sub}</div>}
+        </div>
+        <span style={{ marginLeft:"auto", flexShrink:0, fontSize: FS.xs, fontWeight: FW.bold,
+          padding:"3px 9px", borderRadius: RAD.pill, color: statusFarbe,
+          background: statusFarbe+"22" }}>{statusLabel}</span>
+      </div>
+
+      {/* Ziel-Kontakt (sev/firma) */}
+      {ziel && (
+        <div onClick={onKontaktClick ? () => onKontaktClick(ziel.id) : null}
+          style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 11px",
+            background:t.surface, border:`1px solid ${t.border}`, borderRadius: RAD.ml,
+            cursor:onKontaktClick?"pointer":"default" }}>
+          <Avatar name={ziel.name || ((ziel.vorname||"")+" "+(ziel.nachname||"")).trim()}
+            firma={ziel.typ==="firma"} size={32} accent={accent}/>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize: FS.m, fontWeight: FW.bold, color:t.text,
+              overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {ziel.name || ((ziel.vorname||"")+" "+(ziel.nachname||"")).trim()}
+            </div>
+            <div style={{ fontSize: FS.s, color:t.sub }}>
+              {karte.firmaId != null ? "Firma" : (ziel.typ==="firma" ? "Firma" : "Person")}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Objekte mit Einheiten (ve/gremium) */}
+      {(karte.objekte || []).map((obj, oi) => {
+        const ve = (ves || []).find(v => v.id === obj.objektId);
+        if (!ve) return null;
+        const adrTeile = (ve.adresse || "").split(",").map(s => s.trim());
+        const adr = adrTeile.slice(0, 2).join(", ");
+        const objKlickbar = onVEClick && String(ve.id) !== String(aktuellesObjektId);
+        return (
+          <div key={oi} style={{ background:t.surface, border:`1px solid ${t.border}`,
+            borderRadius: RAD.ml, padding:"11px 12px", marginBottom: oi < karte.objekte.length-1 ? 8 : 0 }}>
+            <div onClick={objKlickbar ? () => onVEClick(ve.id) : null}
+              style={{ marginBottom: (obj.einheiten||[]).length ? 9 : 0,
+                cursor: objKlickbar ? "pointer" : "default" }}>
+              <div style={{ fontSize: FS.xl, fontWeight: FW.heavy, color: accent,
+                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {ve.nr}
+              </div>
+              {adr && <div style={{ fontSize: FS.s, color:t.sub, marginTop:1 }}>
+                {adr}{karte.slot === "gremium" ? " · ganze WEG" : ""}
+              </div>}
+            </div>
+            {(obj.einheiten || []).map((eh, ei) => {
+              const einheit = (ve.einheiten || []).find(e => e.id === eh.einheitId);
+              if (!einheit) return null;
+              return <RollenEinheitZeile key={ei} ve={ve} einheit={einheit} t={t} accent={accent}
+                onClick={objKlickbar ? () => onVEClick(ve.id) : null}/>;
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2665,6 +2821,7 @@ function KontaktDetailKarte({ k, t, accent, ves, kontakte, onVEClick, onUpdate, 
   const zeigeGotoFooter    = zeigeGotoFooterProp || (embedded && !!onGotoKontakt);
   const personenRollen = useRollen();
   const firmenRollen = useFirmenRollen();
+  const kdkLeistungen = useLeistungen();
   const [internEditMode, setInternEditMode] = useState(false);
   // Wenn von außen kontrolliert (Mobile: Bearbeiten-Toggle sitzt im
   // Sticky-Header), nutzen wir externEditMode; sonst eigenen State.
@@ -2917,6 +3074,11 @@ function KontaktDetailKarte({ k, t, accent, ves, kontakte, onVEClick, onUpdate, 
     ? [...alleZuweisungen.filter(z => z.objektId === objektFilter),
        ...belegungsRollen.filter(z => z.objektId === objektFilter)]
     : [...alleZuweisungen, ...eingehendeAlsRollen, ...belegungsRollen];
+  // Gruppierte Rollenkarten (verschmolzene Rollen+Objekte-Darstellung) für den
+  // ANZEIGE-Modus. Slot/Sortierung kommt aus gruppiereRollenkarten; die
+  // Rollendefs vereinen Personen-, Firmen- und Leistungs-Rollen (für den slot).
+  const _alleRollenDefs = [...personenRollen, ...firmenRollen, ...kdkLeistungen];
+  const rollenKarten = gruppiereRollenkarten(zuweisungen, _alleRollenDefs);
   // Objekt-Paare (Objekt + optional Einheit) aus den Zuweisungen ableiten —
   // für den Objekte-Block bei Personen ohne Objektfilter.
   const objektPaare = [];
@@ -3006,7 +3168,7 @@ function KontaktDetailKarte({ k, t, accent, ves, kontakte, onVEClick, onUpdate, 
       <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${t.border}40` }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
           <div style={{ fontSize: FS.s, fontWeight: FW.bold, color:t.sub, textTransform:"uppercase", letterSpacing:"0.1em" }}>
-            {istFirma ? `Objekte (${zuweisungen.length})` : `Rollen (${zuweisungen.length})`}
+            {(istFirma && editMode) ? `Objekte (${zuweisungen.length})` : `Rollen (${rollenKarten.length || zuweisungen.length})`}
           </div>
           {editMode && !neueRolleForm && editRolleIdx === null && (
             <button onClick={() => setNeueRolleForm(true)}
@@ -3027,7 +3189,16 @@ function KontaktDetailKarte({ k, t, accent, ves, kontakte, onVEClick, onUpdate, 
             {istFirma ? "Keine Objekte zugewiesen." : "Keine Rollen zugewiesen."}
           </div>
         )}
-        {zuweisungen.length > 0 && (
+        {zuweisungen.length > 0 && !editMode && (
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {rollenKarten.map((karte, ki) => (
+              <RollenkarteBox key={ki} karte={karte} ves={ves} kontakte={kontakte}
+                t={t} accent={farbe} onVEClick={onVEClick} onKontaktClick={onKontaktClick}
+                aktuellesObjektId={objektFilter}/>
+            ))}
+          </div>
+        )}
+        {zuweisungen.length > 0 && editMode && (
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
             {zuweisungen.map((z,i) => {
               if (editRolleIdx === i) return (
@@ -3070,7 +3241,7 @@ function KontaktDetailKarte({ k, t, accent, ves, kontakte, onVEClick, onUpdate, 
             })}
           </div>
         )}
-        {!objektFilter && !istFirma && !(objektPaare.length === 0 && !editMode) && (
+        {!objektFilter && !istFirma && editMode && !(objektPaare.length === 0 && !editMode) && (
             <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${t.border}40` }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
                 <div style={{ fontSize: FS.s, fontWeight: FW.bold, color:t.sub, textTransform:"uppercase", letterSpacing:"0.1em" }}>
