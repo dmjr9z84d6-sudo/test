@@ -5,7 +5,7 @@ import {
   flaecheVon, isStellplatzTyp, istAnonymesMitglied, teileVon
 } from "./datenmodell.js";
 import {
-  EinheitOffenContext, I, ZurueckButton, scrollToCard, useHandlungsbedarf, useKontaktFarbe,
+  EinheitOffenContext, I, scrollToCard, useHandlungsbedarf, useKontaktFarbe,
   useLoeschenErlaubt, useMasterDetailLayout, useObjektTabs, useStatusLeiste, veKartenFeldWert
 } from "./utils-icons.jsx";
 import {
@@ -23,7 +23,7 @@ import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
 // ╚═════════════════════════════════════════════════════════════════════════╝
 // ZYKLISCHER Import aus der Hauptdatei: S5-Kern-Helfer, die hier zur Laufzeit
 // (JSX/Callbacks) gebraucht werden. esbuild löst den Zyklus auf.
-import { AktionsButton } from "./kontakte-modul.jsx";
+import { AktionsButton, DetailMobilScrollTop } from "./kontakte-modul.jsx";
 import {
   DokumenteAnsicht, LiegenschaftAnsicht, VerwaltungAnsicht,
   eigStufen, feldImKalender, parseYMD
@@ -1571,15 +1571,20 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAnteil
     </div>
   );
 
-  // Fallback: kein Master mehr — Detail full-width + Zurück-Button
+  // Fallback: kein Master mehr (= Mobil-Detail). Einheitlich zum Objekte-/
+  // Kontakte-Tab: DetailMobilScrollTop scrollt den Detail-Kopf beim Öffnen unter
+  // den Sticky-Header (Header sichtbar) statt unten kleben zu lassen. KEIN
+  // eigener „Zurück zur Liste"-Body-Button mehr — das „Zurück" oben rechts
+  // liefert der aufrufende Sticky-Header (Kalender/ETV/Kommunikation via
+  // ObjektListeMitDetail). So sind alle Master-Detail-Pfade konsistent.
   if (mdLayout.masterCols === 0) {
     return (
-      <div ref={mdRef} style={{ flex: 1, minHeight: 0, minWidth: 0,
-        display: "flex", flexDirection: "column" }}>
-        <ZurueckButton onClick={() => setExpandedVEId(null)} variante="body" t={t}/>
-        <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto" }}>
+      <div ref={mdRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0,
+        display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        <DetailMobilScrollTop offenId={offenVE && offenVE.id} t={t}
+          headerSelector="[data-app-fixed-header]">
           {renderDetail()}
-        </div>
+        </DetailMobilScrollTop>
       </div>
     );
   }
