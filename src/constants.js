@@ -56,7 +56,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "11.91";
+export const APP_VERSION = "11.92";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
@@ -129,7 +129,11 @@ export const DEFAULT_ROLLEN = [
   // das Label wird daraus abgeleitet. „Angehöriger"/„Sonstige" decken Mitwohnende
   // ohne eigenen Rechtstitel ab. Avatar-Eck bewusst zurückhaltend (eckSichtbar:false)
   // bei den „normalen" Wohnverhältnissen — Badge erscheint dennoch im Profil/Einheit.
-  { name: "Eigennutzer",              kuerzel: "EN",  color: "#3B82F6", slot: "ve",      aktiv: true, eckSichtbar: false }, // Blau
+  // HINWEIS: „Eigennutzer" ist bewusst KEINE Rolle (v11.92). Selbstnutzung lebt nur
+  // als Bewohner-Recht (BEWOHNER_RECHTE id:"eigennutzer") und zeigt sich über den
+  // goldenen Ring an der Eigentümer-Karte + „selbst bewohnt" an der Einheit — nie als
+  // eigene Rolle/Badge. Die abgeleitete Rollen-Erzeugung überspringt das Recht generell
+  // (datenmodell.js objektZuweisungenAusEinheiten + utils-icons.jsx belegungsRollenFuerKontakt).
   { name: "Nießbraucher",             kuerzel: "N",   color: "#9333EA", slot: "ve",      aktiv: true, kategorie: "niessbrauch" }, // Lila
   { name: "Wohnberechtigter",         kuerzel: "W",   color: "#0891B2", slot: "ve",      aktiv: true, kategorie: "wohnrecht" }, // Cyan
   { name: "Angehöriger",              kuerzel: "AG",  color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer — mitwohnend ohne eigenen Rechtstitel

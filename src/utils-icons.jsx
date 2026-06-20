@@ -701,6 +701,8 @@ async function fuehreFlushAus() {
 //     gewinnen; spätere Dubletten entfallen.
 //   · "Wohnberechtigt" → "Wohnberechtigter" (nur Name; übrige Felder bleiben).
 //   · "Bewohner" → entfernt (durch konkrete Wohnrechte ersetzt).
+//   · "Eigennutzer" → entfernt (v11.92: keine Rolle mehr, nur Bewohner-Recht;
+//     Selbstnutzung zeigt sich über goldenen Ring + „selbst bewohnt").
 // Idempotent: bei bereits sauberer Liste wird die Original-Referenz zurückgegeben.
 function bereinigeRollenSettings(rollen) {
   if (!Array.isArray(rollen)) return rollen;
@@ -709,7 +711,7 @@ function bereinigeRollenSettings(rollen) {
     "Ansprechpartner (Firma)":  "Ansprechpartner",
     "Wohnberechtigt":           "Wohnberechtigter",
   };
-  const ENTFERNEN = { "Bewohner": true, "Sondereigentumsverwaltung": true };
+  const ENTFERNEN = { "Bewohner": true, "Sondereigentumsverwaltung": true, "Eigennutzer": true };
   let geaendert = false;
   const out = [];
   const gesehen = {}; // Name → Index in out (für Dedup nach Umbenennung)
@@ -1288,15 +1290,13 @@ function belegungsRollenFuerKontakt(k, ves) {
         (teil.belegungen || []).forEach(b => {
           const status = belegPhaseZuStatus(belegungsPhase(b, heute));
           const hh = b.haushalt || { mitglieder: [] };
-          // Ist dieser Kontakt aktiver Eigentümer (ohne bis) DIESER Einheit?
-          // Dann wird die abgeleitete "Eigennutzer"-Rolle unterdrückt — die
-          // Selbstnutzung zeigt sich allein über den goldenen Ring an der
-          // Eigentümer-Karte und das "selbst bewohnt"-Badge in der Einheit.
-          const istEigentuemerHier = (Array.isArray(einheit.eigentuemer) ? einheit.eigentuemer : [])
-            .some(e => e && !e.bis && e.kontaktId != null && String(e.kontaktId) === kid);
+          // „Eigennutzer" ist KEINE Rolle (v11.92): das Recht "eigennutzer" erzeugt
+          // generell keine abgeleitete Rolle/kein Badge. Selbstnutzung zeigt sich allein
+          // über den goldenen Ring an der Eigentümer-Karte + „selbst bewohnt" an der
+          // Einheit. Das Recht selbst bleibt unangetastet (Quelle für Ring/„selbst bewohnt").
           (hh.mitglieder || []).forEach(m => {
             if (!m || m.kontaktId == null || String(m.kontaktId) !== kid) return;
-            if (m.recht === "eigennutzer" && istEigentuemerHier) return;
+            if (m.recht === "eigennutzer") return;
             const rolle = bewohnerRecht(m.recht).label;
             const key = ve.id + "|" + einheit.id + "|" + rolle;
             if (gesehen.has(key)) return;

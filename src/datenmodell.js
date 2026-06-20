@@ -1503,9 +1503,13 @@ function objektZuweisungenAusEinheiten(ve) {
         (hh.mitglieder || []).forEach(m => {
           if (!m || m.kontaktId == null) return;
           // Jedes Mitglied trägt sein konkretes Recht als Rolle (Mieter, Pächter,
-          // Eigennutzer, Nießbraucher, Wohnberechtigt, Angehöriger, Sonstige). Die
-          // frühere Sammelrolle „Bewohner" entfällt — das genaue Recht ist immer
-          // bekannt (m.recht) und aussagekräftiger.
+          // Nießbraucher, Wohnberechtigt, Angehöriger, Sonstige). Die frühere
+          // Sammelrolle „Bewohner" entfällt — das genaue Recht ist immer bekannt
+          // (m.recht) und aussagekräftiger.
+          // AUSNAHME (v11.92): „Eigennutzer" ist KEINE Rolle. Das Recht "eigennutzer"
+          // erzeugt generell keine Zuweisung/kein Badge — Selbstnutzung zeigt sich nur
+          // über goldenen Ring + „selbst bewohnt". Das Recht selbst bleibt am Mitglied.
+          if (m.recht === "eigennutzer") return;
           const rolle = bewohnerRecht(m.recht).label;
           add(m.kontaktId, einheit.id, rolle, status);
         });
