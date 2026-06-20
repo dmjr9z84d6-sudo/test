@@ -1394,6 +1394,64 @@ function belegungsVerwendungen(einheit) {
   return namen.map(name => ({ name, status: "aktiv" }));
 }
 
+// ── Selbstnutzung + Belegungszustand je Einheit (rein abgeleitet, Anzeige) ──
+// Quelle ist IMMER die laufende Belegung — kein selbstnutzer-Flag (das ist tot).
+// Genutzt für: goldener Ring am Eigentümer-Rollen-Badge (Kontakt) + Zustands-
+// Chip je Einheit-Kachel in der aufgeklappten Rolle.
+
+// Wohnt der gegebene Kontakt in DIESER Einheit selbst (recht "eigennutzer" in
+// der heute laufenden Belegung eines ihrer Teile)? Wir verlangen ausdrücklich
+// "eigennutzer" — Nießbraucher/Wohnberechtigte sind Bewohner, aber NICHT der
+// selbstnutzende Eigentümer im hier gemeinten Sinn.
+function istSelbstnutzerInEinheit(einheit, kontaktId) {
+  if (!einheit || kontaktId == null) return false;
+  const teile = teileVon(einheit);
+  for (let i = 0; i < teile.length; i++) {
+    const b = heuteLaufendeBelegung(teile[i]) || aktiveBelegung(teile[i]);
+    if (!b) continue;
+    const hh = b.haushalt || { mitglieder: [] };
+    const mit = (hh.mitglieder || []).filter(Boolean);
+    for (let j = 0; j < mit.length; j++) {
+      if (mit[j].recht === "eigennutzer"
+          && mit[j].kontaktId != null
+          && String(mit[j].kontaktId) === String(kontaktId)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Die heute geltende Belegungs-Verwendung EINER Einheit als EIN Name
+// ("Vermietet" | "Eigennutzung" | "Leerstand"). Aggregiert über alle Teile via
+// belegungsVerwendungen; bei gemischten Teilen gewinnt die erste Nicht-Leer-
+// Verwendung (Leerstand wird dort bereits herausgefiltert, sobald ein Teil
+// belegt ist). Für den Zustands-Chip je Einheit-Kachel.
+function belegungVerwendungEinerEinheit(einheit) {
+  const verw = belegungsVerwendungen(einheit);
+  if (!verw || verw.length === 0) return "Leerstand";
+  return verw[0].name;
+}
+
+// Ist IRGENDEINE Einheit dieser gruppierten Rollenkarte vom gegebenen Kontakt
+// selbstgenutzt? Steuert den goldenen Ring am Eigentümer-Rollen-Badge — analog
+// zu vorsitz/vertrag eine "besondere Stellung", nur über alle Einheiten der
+// Karte aggregiert (eine Wohnung selbst bewohnt reicht).
+function karteIstSelbstnutzend(karte, ves, kontaktId) {
+  if (!karte || kontaktId == null || !Array.isArray(ves)) return false;
+  const objekte = karte.objekte || [];
+  for (let o = 0; o < objekte.length; o++) {
+    const ve = ves.find(v => v && String(v.id) === String(objekte[o].objektId));
+    if (!ve) continue;
+    const einheiten = objekte[o].einheiten || [];
+    for (let e = 0; e < einheiten.length; e++) {
+      const einheit = (ve.einheiten || []).find(x => x && x.id === einheiten[e].einheitId);
+      if (einheit && istSelbstnutzerInEinheit(einheit, kontaktId)) return true;
+    }
+  }
+  return false;
+}
+
 // ── Kontakt-Rollen-Ableitung (zentral) ──────────────────────────────────────
 // Quelle der Wahrheit sind die EINHEITEN (Eigentümer/SEV an der Einheit, Mieter/
 // Bewohner im Belegungsmodell). Die kontakt.objektZuweisungen sind nur ein
@@ -2288,6 +2346,9 @@ export {
   BELEGUNG_VERWENDUNGEN,
   BELEGUNGSTYP_ZU_VERWENDUNG,
   belegungsVerwendungen,
+  istSelbstnutzerInEinheit,
+  belegungVerwendungEinerEinheit,
+  karteIstSelbstnutzend,
   belegPhaseZuStatus,
   objektZuweisungenAusEinheiten,
   wendeKontaktZuweisungenAn,

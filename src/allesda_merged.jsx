@@ -326,7 +326,7 @@ import {
 import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
-  StatusLeiste, VEDetail, VEKachel, VEListenZeile, alleEinheitenVonVe,
+  StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 } from "./objektansicht.jsx";
 // Kontakt-Kategorien — ausgelagert nach kontakte.jsx (zyklischer Import).
@@ -1219,87 +1219,8 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   );
 }
 
-// ── ObjekteMasterDetail (responsive Master-Detail-Layout für Objekte) ───────
-// Analog zu KontakteMasterDetail: misst Breite und entscheidet zwischen
-// 2-Spalten-Master, 1-Spalten-Master, oder nur Detail mit "Zurück"-Button.
-function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAnteil = 0.6, kartenSpalten = 2, gefiltert, expandedVEId, setExpandedVEId, sprungZiel = null,
-  offenVE, t, accent, kontakte, setKontakte, ves, setVes, gotoKontakt, listenAnsicht = "karten", renderDetailOverride = null, auswahlAccentOverride = null }) {
-  const istListe = listenAnsicht === "liste";
-  // Detail immer fest (absolute px aus dem Slider), Master nimmt den Rest. Bei
-  // Karten teilt sich der Rest in kartenSpalten gleich breite Spalten.
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil);
-  const kartenCols = Math.max(1, Math.min(kartenSpalten, Math.floor((mdLayout.masterWidth || cardWidth) / 300)));
-  // Auswahl-Akzent: Mehr-Farbe = Objekt-Bereichsfarbe, Graumodus = System-Akzent.
-  // Override (z. B. Kalenderfarbe) hat Vorrang.
-  const auswahlAccent = auswahlAccentOverride || useKontaktFarbe().auswahlObjekt || accent;
-
-  // Border/Background auf eigenem inneren Wrapper (analog KontaktDetailKarte).
-  // KEIN minHeight: 100% — sonst scrollt die Pane nicht.
-  // renderDetailOverride: erlaubt fremden Detail-Inhalt (z. B. Kalender-Termine
-  // eines Objekts) bei gleichem Master-Detail-Gerüst.
-  const renderDetail = () => renderDetailOverride ? renderDetailOverride(offenVE) : (
-    <div style={{
-      background: auswahlAccent + "08",
-      border: `1px solid ${auswahlAccent}`,
-      borderRadius: RAD.lg, padding: "14px 16px",
-      minWidth: 0, boxSizing: "border-box", overflowWrap: "anywhere" }}>
-      <VEDetail ve={offenVE} t={t} accent={accent}
-        kontakte={kontakte} setKontakte={setKontakte} ves={ves} setVes={setVes}
-        cardId={"obj-" + offenVE.id}
-        sprungZiel={sprungZiel}
-        onKontaktClick={(id) => { setExpandedVEId(null); gotoKontakt(id); }}
-        onBack={() => setExpandedVEId(null)}/>
-    </div>
-  );
-
-  // Fallback: kein Master mehr — Detail full-width + Zurück-Button
-  if (mdLayout.masterCols === 0) {
-    return (
-      <div ref={mdRef} style={{ flex: 1, minHeight: 0, minWidth: 0,
-        display: "flex", flexDirection: "column" }}>
-        <ZurueckButton onClick={() => setExpandedVEId(null)} variante="body" t={t}/>
-        <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto" }}>
-          {renderDetail()}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div ref={mdRef} style={{ display: "flex", gap: 10,
-      flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
-      <div data-ad-scroll="y" data-ad-auslauf="1" style={{
-        flex: mdLayout.detailFest ? "1 1 0%" : `0 0 ${mdLayout.masterWidth}px`, minWidth: 0,
-        overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
-        <div style={listenAnsicht === "liste"
-          ? { display: "flex", flexDirection: "column", gap: 6 }
-          : kartenCols > 1
-          ? { display: "grid",
-              gridTemplateColumns: `repeat(${kartenCols}, minmax(0, 1fr))`,
-              gap: 8, alignContent: "start" }
-          : { display: "flex", flexDirection: "column", gap: 8 }}>
-          {gefiltert.map(ve => listenAnsicht === "liste" ? (
-            <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
-              aktiv={expandedVEId === ve.id} kbItem id={"obj-" + ve.id}
-              auswahlAccentOverride={auswahlAccentOverride}
-              onClick={() => setExpandedVEId(expandedVEId === ve.id ? null : ve.id)}/>
-          ) : (
-            <VEKachel key={ve.id} ve={ve} t={t} accent={accent}
-              aktiv={expandedVEId === ve.id} kbItem
-              id={"obj-" + ve.id}
-              auswahlAccentOverride={auswahlAccentOverride}
-              onClick={() => setExpandedVEId(expandedVEId === ve.id ? null : ve.id)}/>
-          ))}
-        </div>
-      </div>
-      <div data-ad-auslauf="1" style={{
-        flex: mdLayout.detailFest ? `0 0 ${mdLayout.detailBreite}px` : "1 1 0%", minWidth: 0,
-        overflowY: "auto" }}>
-        {renderDetail()}
-      </div>
-    </div>
-  );
-}
+// ObjekteMasterDetail wohnt jetzt in objektansicht.jsx (zyklusfrei) und wird
+// von dort importiert. Siehe Import-Block oben.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // StatusBand — schmale Zeile unter dem App-Header, zeigt Speicher-Status

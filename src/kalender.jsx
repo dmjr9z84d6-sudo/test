@@ -30,7 +30,7 @@ import {
 } from "./liegenschaft.jsx";
 import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
-  VEKachel, VEListenZeile, alleEinheitenVonVe
+  ObjekteMasterDetail, VEKachel, VEListenZeile, alleEinheitenVonVe
 } from "./objektansicht.jsx";
 import { objektBezugInfo } from "./kontakte.jsx";
 

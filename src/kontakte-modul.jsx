@@ -7,7 +7,8 @@ import {
 } from "./utils-basis.js";
 import {
   SUGGESTIONS, ausgehendeBefugnisse, buildKontaktarten, gruppiereRollenkarten, isStellplatzTyp,
-  klassifiziereZuweisung, kontaktPasstZuArt, teileVon, verwendungenVon
+  klassifiziereZuweisung, kontaktPasstZuArt, teileVon, verwendungenVon,
+  belegungVerwendungEinerEinheit, istSelbstnutzerInEinheit, karteIstSelbstnutzend
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, I, ZurueckButton, ableiteStatusVonBis, belegungsRollenFuerKontakt,
@@ -299,7 +300,10 @@ function ZeilenAktionen({ t, onEdit, onLoesen, onLoeschen, confirmLoesen = false
 //   sev     → Ziel-Kontakt statt Objekt
 //   firma   → Firma als Ziel
 // Ehemalige/werdende werden ausgegraut (opacity), bleiben aber sichtbar.
-function RollenEinheitZeile({ ve, einheit, t, accent, onClick }) {
+// zustand:  Belegungs-Verwendung dieser Einheit ("Vermietet"|"Eigennutzung"|
+//           "Leerstand"|null) — nur für Eigentümer-Karten gesetzt. selbst: ob
+//           der angezeigte Kontakt diese Einheit SELBST bewohnt (Klartext-Chip).
+function RollenEinheitZeile({ ve, einheit, t, accent, onClick, zustand = null, selbst = false, zustandColor = null }) {
   // Kompakte Einheit-Kachel: KEINE VE-/Adress-Wiederholung (steht im Objekt-
   // Kopf). Zwei Zeilen: Einheit-Bezeichnung + Lage; rechts Fläche/Stellung.
   if (!einheit) return null;
@@ -309,6 +313,26 @@ function RollenEinheitZeile({ ve, einheit, t, accent, onClick }) {
     rechts = einheit.spStellung === "se_bestandteil" ? "SE-Bestandteil"
       : (einheit.spStellung === "ge_snr" ? "GE + SNR"
       : (einheit.spStellung === "eigenstaendig" ? "Teileigentum" : "Stellplatz"));
+  }
+  // Zustands-Chip: Klartext + Icon in der Verwendungsfarbe. "selbst bewohnt"
+  // überschreibt das generische "Eigennutzung", wenn es DER angezeigte Kontakt
+  // ist. Icon konsistent zur Belegung: home (Eigennutzung), key (Vermietet),
+  // circle (Leerstand).
+  let chip = null;
+  if (zustand) {
+    const cFarbe = zustandColor || "#64748B";
+    const cLabel = selbst ? "selbst bewohnt"
+      : (zustand === "Vermietet" ? "vermietet"
+      : (zustand === "Eigennutzung" ? "eigengenutzt" : "Leerstand"));
+    const cIcon = (selbst || zustand === "Eigennutzung") ? "home"
+      : (zustand === "Vermietet" ? "key" : "circle");
+    chip = (
+      <span style={{ display:"inline-flex", alignItems:"center", gap:4,
+        fontSize: FS.xs, fontWeight: FW.bold, padding:"3px 9px", borderRadius: RAD.pill,
+        color: cFarbe, background: cFarbe + "1E", whiteSpace:"nowrap" }}>
+        <I name={cIcon} size={12} color={cFarbe}/>{cLabel}
+      </span>
+    );
   }
   return (
     <div onClick={onClick} style={{ display:"flex", alignItems:"center", gap:11,
@@ -332,22 +356,27 @@ function RollenEinheitZeile({ ve, einheit, t, accent, onClick }) {
           </div>
         )}
       </div>
-      <div style={{ fontSize: FS.s, color:t.sub, whiteSpace:"nowrap", flexShrink:0, textAlign:"right" }}>
-        {rechts ? <span>{rechts}</span> : (
-          <>
-            {einheit.flaeche && <strong style={{ color:t.text }}>{einheit.flaeche}</strong>}
-            {einheit.zimmer && <span> · {einheit.zimmer} Zi</span>}
-          </>
-        )}
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4,
+        flexShrink:0, textAlign:"right" }}>
+        {chip}
+        <div style={{ fontSize: FS.s, color:t.sub, whiteSpace:"nowrap" }}>
+          {rechts ? <span>{rechts}</span> : (
+            <>
+              {einheit.flaeche && <strong style={{ color:t.text }}>{einheit.flaeche}</strong>}
+              {einheit.zimmer && <span> · {einheit.zimmer} Zi</span>}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function RollenkarteBox({ karte, ves, kontakte, t, accent, onVEClick, onKontaktClick, aktuellesObjektId = null }) {
+function RollenkarteBox({ karte, ves, kontakte, t, accent, onVEClick, onKontaktClick, kontaktId = null, aktuellesObjektId = null }) {
   const personenRollen = useRollen();
   const firmenRollen = useFirmenRollen();
   const leistungen = useLeistungen();
+  const alleVerwendungen = useVerwendungen();
   const def = personenRollen.find(r => r.name === karte.rolle)
     || leistungen.find(r => r.name === karte.rolle)
     || firmenRollen.find(r => r.name === karte.rolle)
@@ -373,12 +402,28 @@ function RollenkarteBox({ karte, ves, kontakte, t, accent, onVEClick, onKontaktC
     ? (kontakte || []).find(k => String(k.id) === String(karte.firmaId)) : null;
   const ziel = zielKontakt || zielFirma;
 
+  // Selbstnutzer-Ring: nur an der Eigentümer-Karte (slot "ve", Rolle Eigentümer)
+  // und nur wenn DIESER Kontakt in irgendeiner seiner Einheiten selbst wohnt.
+  // Rein abgeleitet (keine Datenänderung) — analog vorsitz/vertrag eine
+  // "besondere Stellung", die den goldenen Ring auslöst.
+  const istEigentuemerKarte = karte.rolle === "Eigentümer";
+  const selbstnutzend = istEigentuemerKarte && !ehemalig
+    && karteIstSelbstnutzend(karte, ves, kontaktId);
+
+  // Verwendungsfarbe nach Name (live aus den Verwendungs-Defs, mit Defaults als
+  // Fallback). Damit tragen die Zustands-Chips dieselbe Farbe wie überall sonst.
+  const VERWENDUNG_FALLBACK = { Vermietet: "#10B981", Eigennutzung: "#3B82F6", Leerstand: "#DC2626" };
+  const verwendungFarbe = (name) => {
+    const d = (alleVerwendungen || []).find(v => v.name === name);
+    return (d && d.color) || VERWENDUNG_FALLBACK[name] || "#64748B";
+  };
+
   return (
     <div style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius: RAD.ml,
       padding:12, opacity: ehemalig ? 0.62 : 1 }}>
       {/* Kopf: runder Badge + Rolle + Status */}
       <div style={{ display:"flex", alignItems:"center", gap:11, marginBottom: (karte.objekte.length || ziel) ? 11 : 0 }}>
-        <RolleBadge rolle={karte.rolle} size={32} status={status} vorsitz={karte.vorsitz}/>
+        <RolleBadge rolle={karte.rolle} size={32} status={status} vorsitz={karte.vorsitz} selbstnutzend={selbstnutzend}/>
         <div style={{ minWidth:0, flex:1 }}>
           <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: farbe,
             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
@@ -435,8 +480,17 @@ function RollenkarteBox({ karte, ves, kontakte, t, accent, onVEClick, onKontaktC
             {(obj.einheiten || []).map((eh, ei) => {
               const einheit = (ve.einheiten || []).find(e => e.id === eh.einheitId);
               if (!einheit) return null;
+              // Belegungszustand nur an der Eigentümer-Karte zeigen — bei Mieter/
+              // SEV wäre "vermietet" redundant. Stellplätze tragen keinen Zustand
+              // (eigene Stellung-Anzeige).
+              const zeigeZustand = istEigentuemerKarte && !isStellplatzTyp(einheit.typ);
+              const zustand = zeigeZustand ? belegungVerwendungEinerEinheit(einheit) : null;
+              const selbst = zeigeZustand && kontaktId != null
+                && istSelbstnutzerInEinheit(einheit, kontaktId);
               return <RollenEinheitZeile key={ei} ve={ve} einheit={einheit} t={t} accent={accent}
-                onClick={objKlickbar ? () => onVEClick(ve.id) : null}/>;
+                onClick={objKlickbar ? () => onVEClick(ve.id) : null}
+                zustand={zustand} selbst={selbst}
+                zustandColor={zustand ? verwendungFarbe(zustand) : null}/>;
             })}
           </div>
         );
@@ -3194,7 +3248,7 @@ function KontaktDetailKarte({ k, t, accent, ves, kontakte, onVEClick, onUpdate, 
             {rollenKarten.map((karte, ki) => (
               <RollenkarteBox key={ki} karte={karte} ves={ves} kontakte={kontakte}
                 t={t} accent={farbe} onVEClick={onVEClick} onKontaktClick={onKontaktClick}
-                aktuellesObjektId={objektFilter}/>
+                kontaktId={k.id} aktuellesObjektId={objektFilter}/>
             ))}
           </div>
         )}

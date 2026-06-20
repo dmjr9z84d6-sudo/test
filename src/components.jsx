@@ -1050,7 +1050,7 @@ function Avatar({ name, firma = false, size = 32, accent = KONTAKTE_FARBE, zuwei
 //   werdend:  transparenter Hintergrund + gestrichelter Rand + Schrift in Farbe + ›-Indikator
 //   ehemalig: grauer Hintergrund (#E5E7EB) + Schrift bleibt FARBIG + Diagonal-Strich -45°
 // vorsitz:    Farbiger Kreis oben-rechts außerhalb mit weißem ★ (z. B. VB+vorsitz = VBV)
-function RolleBadge({ rolle, size = 20, status = "aktiv", vorsitz = false, vertrag = false }) {
+function RolleBadge({ rolle, size = 20, status = "aktiv", vorsitz = false, vertrag = false, selbstnutzend = false }) {
   // Erst Personen-Rollen, dann Firmen-Rollen durchsuchen
   const personenRollen = useRollen();
   const firmenRollen = useFirmenRollen();
@@ -1095,14 +1095,16 @@ function RolleBadge({ rolle, size = 20, status = "aktiv", vorsitz = false, vertr
     + (status !== "aktiv" ? ` (${status})` : "")
     + (vorsitz ? " · Vorsitz" : "")
     + (vertrag ? " · mit Vertrag" : "")
+    + (selbstnutzend ? " · Selbstnutzer" : "")
     + (systemDeaktiviert ? " [Rolle deaktiviert]" : "");
 
-  // Goldener Ring bei Vorsitz ODER Vertrag: 1px solide Linie + weicher Glow.
-  // Vorsitz (Personen, Verwaltungsbeirat) und Vertrag (Firmen-Zuständigkeit)
-  // kollidieren nie am selben Badge — beide markieren eine "offizielle Stellung".
-  // Im "Weniger Farbe"-Modus graut der Gold-Ring graduell mit (toGrau nutzt die
-  // globale Farb-Intensität) — synchron zu allen übrigen Akzenten.
-  const goldRing = (vorsitz || vertrag) && !ehemalig;
+  // Goldener Ring bei Vorsitz ODER Vertrag ODER Selbstnutzung: 1px solide Linie
+  // + weicher Glow. Vorsitz (Personen, Verwaltungsbeirat), Vertrag (Firmen-
+  // Zuständigkeit) und Selbstnutzung (Eigentümer wohnt selbst) markieren je eine
+  // "besondere Stellung" und kollidieren nie am selben Badge — Eigentümer ist nie
+  // zugleich Vorsitz/Vertrag an DEMSELBEN Badge. Im "Weniger Farbe"-Modus graut
+  // der Gold-Ring graduell mit (toGrau nutzt die globale Farb-Intensität).
+  const goldRing = (vorsitz || vertrag || selbstnutzend) && !ehemalig;
   const VORSITZ_GOLD = toGrau("#EAB308"); // Tailwind yellow-500, intensitätsabhängig
   const vorsitzShadow = goldRing
     ? `0 0 0 1px ${VORSITZ_GOLD}, 0 0 ${size < 20 ? 5 : 7}px ${size < 20 ? 1 : 2}px ${VORSITZ_GOLD}99`
