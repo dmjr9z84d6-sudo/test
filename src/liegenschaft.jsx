@@ -27,7 +27,7 @@ import {
 import { StatusLeiste, VEDetail, VEKachel } from "./objektansicht.jsx";
 // Kontakt-Komponenten (S7) — Laufzeit-Refs in JSX (Zyklus liegenschaft⇄kontakte-modul).
 import {
-  AktionsButton, BeziehungEditor, KontaktDetailKarte, KontaktKarte
+  AktionsButton, BeziehungEditor, KontaktDetailKarte, KontaktKarte, getFirmaMitarbeiter
 } from "./kontakte-modul.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 5a · LIEGENSCHAFT-KERN — ausgelagertes Modul                    ║

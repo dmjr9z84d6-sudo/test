@@ -1288,8 +1288,15 @@ function belegungsRollenFuerKontakt(k, ves) {
         (teil.belegungen || []).forEach(b => {
           const status = belegPhaseZuStatus(belegungsPhase(b, heute));
           const hh = b.haushalt || { mitglieder: [] };
+          // Ist dieser Kontakt aktiver Eigentümer (ohne bis) DIESER Einheit?
+          // Dann wird die abgeleitete "Eigennutzer"-Rolle unterdrückt — die
+          // Selbstnutzung zeigt sich allein über den goldenen Ring an der
+          // Eigentümer-Karte und das "selbst bewohnt"-Badge in der Einheit.
+          const istEigentuemerHier = (Array.isArray(einheit.eigentuemer) ? einheit.eigentuemer : [])
+            .some(e => e && !e.bis && e.kontaktId != null && String(e.kontaktId) === kid);
           (hh.mitglieder || []).forEach(m => {
             if (!m || m.kontaktId == null || String(m.kontaktId) !== kid) return;
+            if (m.recht === "eigennutzer" && istEigentuemerHier) return;
             const rolle = bewohnerRecht(m.recht).label;
             const key = ve.id + "|" + einheit.id + "|" + rolle;
             if (gesehen.has(key)) return;
