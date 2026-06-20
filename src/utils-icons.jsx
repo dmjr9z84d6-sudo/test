@@ -464,7 +464,8 @@ function ZurueckButton({ onClick, variante = "body", t, label, kbZurueck = false
   const style = istHeader
     ? { marginLeft: "auto", display: "flex", alignItems: "center", gap: 4,
         background: "none", border: `1px solid ${t.border}`, color: t.text,
-        borderRadius: RAD.ms, padding: "6px 12px", cursor: "pointer",
+        borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+        cursor: "pointer",
         fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }
     : { display: "flex", alignItems: "center", gap: 6,
         background: "none", border: `1px solid ${t.border}`, color: t.text,

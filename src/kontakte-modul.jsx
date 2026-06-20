@@ -4055,7 +4055,17 @@ function DetailMobilScrollTop({ offenId, t, headerSelector, children }) {
         catch (e) { scroller.scrollTop = ziel; }
       } else if (typeof window !== "undefined") {
         const headerEl = headerSelector ? document.querySelector(headerSelector) : null;
-        const headerH = headerEl ? headerEl.offsetHeight + 12 : 180;
+        // Zusätzlich zur App-Header-Höhe auch die sticky Sektionsleiste
+        // (Kontakte/Personen/Firmen/Zurück) abziehen — sonst rutscht der
+        // Detail-Kopf hinter diese Leiste (sie bleibt sticky stehen).
+        let sektionH = 0;
+        if (typeof document !== "undefined" && document.documentElement) {
+          const raw = getComputedStyle(document.documentElement)
+            .getPropertyValue("--ad-section-h");
+          const parsed = parseFloat(raw);
+          if (!isNaN(parsed)) sektionH = parsed;
+        }
+        const headerH = (headerEl ? headerEl.offsetHeight : 168) + sektionH + 12;
         const top = (window.scrollY || 0) + el.getBoundingClientRect().top - headerH;
         try { window.scrollTo({ top: Math.max(0, top), behavior: "auto" }); }
         catch (e) { window.scrollTo(0, Math.max(0, top)); }
