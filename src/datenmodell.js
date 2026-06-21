@@ -932,6 +932,7 @@ const FIELD_TYPES = [
   { id:"notiz",  label:"Notizen", icon:"📝", color:"#6366F1" },
   { id:"file",   label:"Datei",   icon:"📎", color:"#8B5CF6" },
   { id:"legionellen", label:"Legionellen", icon:"💧", color:"#0EA5C9" },
+  { id:"berechnet_override", label:"Berechnet", icon:"=", color:"#0EA5C9" },
 ];
 
 // Feldtypen, die im „Neues Feld anlegen"-Menü zur Auswahl stehen (bewusst

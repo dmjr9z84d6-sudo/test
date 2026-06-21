@@ -2469,7 +2469,10 @@ function FieldRow({ field, index, t, accent, editMode, setFields, kontakte = [],
   const istKontakteMulti = field.type === "kontakte";
   const istObjekt = field.type === "objekt";
   const istDatum = field.type === "date";
-  const istBerechnet = field.type === "computed" || field.readOnly;
+  const istBerechnet = field.type === "computed" || (field.readOnly && field.type !== "berechnet_override");
+  // Berechnet-mit-Override: zeigt im Lese-Modus den Override-Wert (field.value),
+  // sonst den berechneten Wert (field.berechnet). Im Edit-Modus überschreibbar.
+  const istBerechnetOverride = field.type === "berechnet_override";
   const istSelect = field.type === "select";
   const istNotiz = field.type === "notiz";
   const istEtvNaechste = field.type === "etv_naechste";
@@ -2712,6 +2715,31 @@ function FieldRow({ field, index, t, accent, editMode, setFields, kontakte = [],
           fontWeight: 400, fontStyle: "italic", textAlign: "right" }}>
           {val || "—"}
         </span>
+      ) : istBerechnetOverride ? (
+        editMode ? (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <input value={val}
+              onChange={e => setVal(e.target.value)}
+              onBlur={save}
+              onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") { setVal(field.value || ""); e.currentTarget.blur(); } }}
+              inputMode="decimal"
+              placeholder={field.berechnet != null && field.berechnet !== "" ? String(field.berechnet) : ""}
+              style={{ width: "100%", boxSizing: "border-box", background: t.surface,
+                border: `1px solid ${accent}60`, borderRadius: RAD.sm,
+                padding: "3px 8px", fontSize: FS.input, color: t.text, outline: "none", fontFamily: "inherit" }}/>
+            {field.berechnet != null && field.berechnet !== "" && (
+              <div style={{ fontSize: FS.xs, color: t.muted, textAlign: "right", marginTop: 3 }}>
+                berechnet: {field.berechnet}{val ? "" : " (wird angezeigt)"}
+              </div>
+            )}
+          </div>
+        ) : (
+          <span style={{ flex: 1, fontSize: FS.s,
+            color: (val || field.berechnet) ? t.text : t.muted,
+            fontWeight: (val || field.berechnet) ? 500 : 400, textAlign: "right" }}>
+            {val || field.berechnet || "—"}
+          </span>
+        )
       ) : field.type === "bool" ? (
         <div onClick={() => { if (!editMode) return; const nv = val === "ja" ? "nein" : "ja"; setVal(nv); save2(nv); }} style={{
             width: 30, height: 17, borderRadius: RAD.md,
@@ -3089,6 +3117,8 @@ function FieldList({ fields, setFields, t, accent, editMode, kategorie, ohneVors
     if (f.type === "etv_naechste") return false;
     // Legionellen-Feld bleibt sichtbar (Pflicht-Charakter je Objekt).
     if (f.type === "legionellen") return false;
+    // Berechnet-mit-Override: zeigt immer mindestens den berechneten Wert.
+    if (f.type === "berechnet_override") return false;
     // Kontakt-Feld mit Verknüpfung gilt als befüllt (Name wird abgeleitet).
     if (f.type === "kontakt" && f.kontaktId) return false;
     // Mehrfach-Kontakte mit mindestens einem Eintrag gelten als befüllt.

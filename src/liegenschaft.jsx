@@ -4343,6 +4343,7 @@ const KARTEN_ICONS = [
 function GebaeudeKopf({ karte, t, accent, editMode, renaming, name, setName,
     onRename, setRenaming, onRemove, onSetIcon, expanded, setExpanded,
     immerOffen = false, wohnM2, nutzM2, anzahlEinheiten, anzahlVertraege = 0, zeigtVertraege = false, sort = null,
+    wohnText = null, nutzText = null, einhText = null,
     lokalEditErlaubt = false, lokalEdit = false, onLokalEditStart = null, onLokalEditFertig = null, onLokalEditAbbrechen = null,
     onPickerOpenChange = null }) {
   const [iconPickerOffen, setIconPickerOffen] = useState(false);
@@ -4434,13 +4435,17 @@ function GebaeudeKopf({ karte, t, accent, editMode, renaming, name, setName,
               </span>
             )}
           </div>
-          {(wohnM2 > 0 || nutzM2 > 0 || anzahlEinheiten > 0) && (
-            <div style={{ fontSize: FS.s, color: t.sub, display: "flex", gap: 5, flexWrap: "wrap", marginTop: 2 }}>
-              {wohnM2 > 0 && <span>{wohnM2.toFixed(0)} m² Wohnfl.</span>}
-              {nutzM2 > 0 && <span>· {nutzM2.toFixed(0)} m² Nutzfl.</span>}
-              {anzahlEinheiten > 0 && <span>· {anzahlEinheiten} Einheiten</span>}
-            </div>
-          )}
+          {(() => {
+            const wT = wohnText != null ? wohnText : (wohnM2 > 0 ? wohnM2.toFixed(0) + " m² Wohnfl." : "");
+            const nT = nutzText != null ? nutzText : (nutzM2 > 0 ? nutzM2.toFixed(0) + " m² Nutzfl." : "");
+            const eT = einhText != null ? einhText : (anzahlEinheiten > 0 ? anzahlEinheiten + " Einheiten" : "");
+            const teile = [wT, nT, eT].filter(Boolean);
+            return teile.length > 0 ? (
+              <div style={{ fontSize: FS.s, color: t.sub, display: "flex", gap: 5, flexWrap: "wrap", marginTop: 2 }}>
+                {teile.map((tx, i) => <span key={i}>{i > 0 ? "· " + tx : tx}</span>)}
+              </div>
+            ) : null;
+          })()}
         </div>
       )}
       <div onClick={(e) => e.stopPropagation()}
@@ -5502,6 +5507,70 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
   const nutzM2 = localEinheiten.filter(e => e.typ === "Teileigentum")
     .reduce((s, e) => s + flaecheVon(e), 0);
 
+  // ── Berechnete Stammdaten-Zeilen mit optionalem Override (DESIGN §70.1) ──
+  // Gesamtfläche · Wohnfläche · Nutzfläche · Einheiten erscheinen als read-only,
+  // aber überschreibbare Stammfelder. Der berechnete Wert (aus den Einheiten)
+  // liegt am Feld als `berechnet`; ein manuell gepflegter `value` überschreibt
+  // ihn (auch im Header). Nur auf Karten, die Einheiten tragen.
+  const calcGesamtM2 = wohnM2 + nutzM2;
+  const CALC_DEFS = [
+    { id: "_calc_gesamt", name: "Gesamtfläche", berechnet: calcGesamtM2 > 0 ? Math.round(calcGesamtM2) + " m²" : "" },
+    { id: "_calc_wohn",   name: "Wohnfläche",   berechnet: wohnM2 > 0 ? Math.round(wohnM2) + " m²" : "" },
+    { id: "_calc_nutz",   name: "Nutzfläche",   berechnet: nutzM2 > 0 ? Math.round(nutzM2) + " m²" : "" },
+    { id: "_calc_einh",   name: "Einheiten",    berechnet: localEinheiten.length > 0 ? String(localEinheiten.length) : "" },
+  ];
+  // Felder für die FieldList: berechnete Zeilen vorne (nur wenn die Karte
+  // Einheiten zeigt), dahinter die übrigen Stamm-/Eigenfelder. Vorhandene
+  // Override-Werte (value) aus allFields übernehmen; berechnet immer frisch.
+  const displayFields = zeigtEinheiten
+    ? [
+        ...CALC_DEFS.map(d => {
+          const vorhanden = allFields.find(f => f.id === d.id);
+          return { id: d.id, name: d.name, type: "berechnet_override", _stamm: true,
+            berechnet: d.berechnet, value: vorhanden ? (vorhanden.value || "") : "" };
+        }),
+        ...allFields.filter(f => CALC_DEFS.every(d => d.id !== f.id)),
+      ]
+    : allFields;
+  // Schreibt FieldList-Änderungen zurück: berechnete Zeilen nur behalten, wenn
+  // ein Override gepflegt ist (sonst nicht persistieren — sie werden bei jedem
+  // Render frisch erzeugt). Übrige Felder unverändert übernehmen.
+  const setDisplayFields = !zeigtEinheiten ? setAllFields : (updater) => {
+    setAllFields(prev => {
+      const prevDisplay = [
+        ...CALC_DEFS.map(d => {
+          const vorhanden = prev.find(f => f.id === d.id);
+          return { id: d.id, name: d.name, type: "berechnet_override", _stamm: true,
+            berechnet: d.berechnet, value: vorhanden ? (vorhanden.value || "") : "" };
+        }),
+        ...prev.filter(f => CALC_DEFS.every(d => d.id !== f.id)),
+      ];
+      const next = typeof updater === "function" ? updater(prevDisplay) : updater;
+      const calcMitOverride = next
+        .filter(f => CALC_DEFS.some(d => d.id === f.id) && f.value && String(f.value).trim())
+        .map(f => { const { berechnet, ...rest } = f; return rest; });
+      const rest = next.filter(f => CALC_DEFS.every(d => d.id !== f.id));
+      return [...calcMitOverride, ...rest];
+    });
+  };
+  // Effektive Header-Werte: Override (falls gepflegt) schlägt den berechneten
+  // Wert. Als Anzeige-String an den Kopf, damit ein freier Override (z. B. aus
+  // einer offiziellen Wohnflächenberechnung) 1:1 oben erscheint.
+  const calcOverride = (id) => {
+    const f = allFields.find(x => x.id === id);
+    return f && f.value && String(f.value).trim() ? String(f.value).trim() : null;
+  };
+  const wohnAnzeigeText = calcOverride("_calc_wohn")
+    ? (calcOverride("_calc_wohn").match(/m²|m2|qm/i) ? calcOverride("_calc_wohn") + " Wohnfl." : calcOverride("_calc_wohn") + " m² Wohnfl.")
+    : (wohnM2 > 0 ? Math.round(wohnM2) + " m² Wohnfl." : "");
+  const nutzAnzeigeText = calcOverride("_calc_nutz")
+    ? (calcOverride("_calc_nutz").match(/m²|m2|qm/i) ? calcOverride("_calc_nutz") + " Nutzfl." : calcOverride("_calc_nutz") + " m² Nutzfl.")
+    : (nutzM2 > 0 ? Math.round(nutzM2) + " m² Nutzfl." : "");
+  const einhOverride = calcOverride("_calc_einh");
+  const einhAnzeigeText = einhOverride
+    ? (einhOverride.match(/einheit/i) ? einhOverride : einhOverride + " Einheiten")
+    : (localEinheiten.length > 0 ? localEinheiten.length + " Einheiten" : "");
+
   // Karten werden IMMER angezeigt — auch ohne Inhalt. Eine leere Karte zeigt,
   // dass es den Bereich gibt, und signalisiert ggf. Handlungsbedarf. (Früher
   // wurden leere nicht-fixe Karten im Lese-Modus ausgeblendet; entfernt.)
@@ -5517,6 +5586,9 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
         onPickerOpenChange={setIconPickerAuf}
         expanded={effExpanded} setExpanded={toggleExpanded} sort={sort} immerOffen={immerOffen}
         wohnM2={wohnM2} nutzM2={nutzM2} anzahlEinheiten={localEinheiten.length}
+        wohnText={zeigtEinheiten ? wohnAnzeigeText : null}
+        nutzText={zeigtEinheiten ? nutzAnzeigeText : null}
+        einhText={zeigtEinheiten ? einhAnzeigeText : null}
         anzahlVertraege={vertraege.length} zeigtVertraege={zeigtVertraege}
         lokalEditErlaubt={lokalEditErlaubt && !editMode && effExpanded && (!lokalEditGesperrt || lokalEdit) && !belegungEdit && activeEinheit == null} lokalEdit={lokalEdit}
         onLokalEditStart={() => {
@@ -5553,9 +5625,9 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
           {/* Stammdaten als FieldList zuerst — Felder oben, eins nach dem
               anderen. „+ Eigenes Feld" sitzt zwischen Feldern und Verträgen,
               damit ein neu angelegtes Feld oben bei den übrigen Feldern landet. */}
-          {(allFields.length > 0 || effEdit) && (
+          {(displayFields.length > 0 || effEdit) && (
             <div style={{ marginBottom: 8 }}>
-              <FieldList fields={allFields} setFields={setAllFields}
+              <FieldList fields={displayFields} setFields={setDisplayFields}
                 t={t} accent={accent} editMode={effEdit} kategorie={karte.kategorie}
                 ohneVorschlaege={ohneEinheiten}
                 kontakte={kontakte} setKontakte={setKontakte} onKontaktClick={onKontaktClick}
