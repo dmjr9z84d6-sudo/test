@@ -2973,3 +2973,57 @@ keine Code-Logik; sie gehört in den JSON-Bauplan (`AUFTRAG_AllesDa_JSON_bauen.m
 
 > Verifiziert (isolierter Render): 3 Räume → 2× „abrechenbar" (inkl. Raum ohne Flag), 1× „nicht
 > abrechenbar" (Balkon), Grün present; Edit zeigt 3 Checkboxen, keine Lese-Hinweise. ERR=0.
+
+### §70.3 Stammdaten-Feldreihenfolge + Objekt/Gebäude-Ebenentrennung (v11.95)
+
+**Anlass:** Die Stammdaten-Felder standen in zufälliger Reihenfolge (Calc-Zeilen pauschal vorne).
+Zudem lagen Grundbuch/Flurstück/Grundstücksfläche fälschlich auf Gebäude-Ebene, obwohl eine WEG
+i.d.R. EIN Grundbuchblatt/Grundstück hat — auch bei mehreren Häusern (Quelle = TE-Rubrum, nicht
+Hausbeschreibung).
+
+**Feste Reihenfolge (`FELD_REIHENFOLGE` + `CALC_ORDER` in `GebaeudeKarte`):** Felder werden vor dem
+Rendern nach einer Namens-Reihenfolge sortiert; Calc-Zeilen kommen als Block an definierter Position
+(IDs in `CALC_ORDER`); eigene Felder hängen hinten an.
+- **Objekt-Stammkarte:** VE-Nummer · Verwaltungsart · Straße · PLZ · Ort · Abstimmung · Gesamt-MEA ·
+  Wirtschaftsjahr · **Grundbuch · Flurstück · Grundstücksfläche** · Gesamtfläche · Wohnfläche ·
+  Nutzfläche · Einheiten · Einheiten-Aufschlüsselung.
+- **Gebäudekarte:** Baujahr · Stockwerke · Vollsanierung · Aufgänge · Ein-/Ausgänge · Wohnfläche ·
+  Nutzfläche · Einheiten. KEINE Grundbuch-/Flurstück-/Grundstücksfelder mehr im Default.
+
+**Grundbuch/Flurstück/Grundstücksfläche = Objekt-Ebene:** Neu leer in `buildInitialKarten`
+(Stammkarte). `ergaenzeStammSyncFelder` rüstet sie bei Bestandsobjekten nach (leer). Die alten
+Gebäude-Werte werden NICHT automatisch migriert — beim JSON-Import gehören sie auf die Objekt-
+Stammkarte (Datenpflege, s. AUFTRAG-Bauplan). Mehrhaus-Sonderfall (getrennte Flurstücke je Haus)
+= späterer optionaler Gebäude-Override, noch nicht gebaut.
+
+### §70.4 Einheiten-Aufschlüsselung nach Typ (v11.95)
+
+Auf der **Aggregat-Stammkarte** (nicht je Gebäude) erscheinen unter „Einheiten" (gesamt) fünf
+berechnete Aufschlüsselungs-Zeilen: Wohnen (`Wohneigentum`), Teileigentum (`Teileigentum`),
+Garagen (`Garage`), Stellplätze (`Stellplatz`), Sonstige (`Carport`+`Doppelparker`). Alle
+read-only/überschreibbar (§70.1). `nurWennWert`: Zeilen mit 0 werden im Lesemodus ausgeblendet
+(Gesamt/Flächen bleiben immer). Aggregat zieht über `aggregierteEinheiten` (alle Gebäude); die
+einzelne Gebäudekarte zeigt nur ihre eigenen Werte (keine Aufschlüsselung).
+
+> Verifiziert (isolierter Render, Mix 3 Wohnen/1 Teil/2 Garage/1 Stellplatz/0 Carport): Reihenfolge
+> aufsteigend korrekt; Gesamtfläche 631, Σ über alle Gebäude; „Sonstige" (0) ausgeblendet. ERR=0.
+
+### §70.5 Blankes Programm — Mock-Daten entfernt (v11.95)
+
+**Grundsatz „keine Altlasten bis zur Öffentlichkeit" (§61) konsequent umgesetzt:** Der Mock-
+Generator `buildMockData` (15 Objekte/100 Personen/20 Firmen, Seed 12345) ist **komplett entfernt**;
+`DEFAULT_VES = []`, `DEFAULT_KONTAKTE = []`, `userKontaktId: null`. Die App startet leer; echte
+Daten kommen ausschließlich über den JSON-Import (Einstellungen). Der „Auf Demo zurücksetzen"-Button
+in den Einstellungen wurde entfernt (Export/Import bleiben).
+
+**Bewusst behalten:** (1) die 8 Dashboard-Layout-Platzhalter (`const demo = […]` in
+`allesda_merged.jsx` für ETV/Aufträge/Beschluss/Technik/Dokumente/Fotos/Kommunikation/Finanzen) —
+Gerüst für Bereiche, deren echte Datenanbindung noch Roadmap ist; (2) `beispielVE` (kosmetische
+Vorschau-Kachel in den Verwendungs-Einstellungen). Die Zuweisungs-Migrationshelfer
+(`migriereKontaktZuweisungen`, `klassifiziereZuweisung` u. a.) bleiben — sie greifen auch beim
+JSON-Import.
+
+> **Verifikations-Folge:** Da keine Mock-Daten mehr existieren, kann der Stufe-4-Render-Test nicht
+> mehr auf `DEFAULT_VES`/`DEFAULT_KONTAKTE` zurückgreifen — künftig kleinen Inline-Datensatz oder
+> echte Test-JSON verwenden. Mount der leeren App: 119 Nodes (statt ~750), ERR=0; Bundle ~1,04 MB
+> (von 1,1 MB).

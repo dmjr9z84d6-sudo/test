@@ -7,7 +7,7 @@ import {
 } from "./constants.js";
 import { splitPlzOrt } from "./utils-basis.js";
 import {
-  DEFAULT_KONTAKTE, DEFAULT_SETTINGS, DEFAULT_VES, KONTAKTARTEN_KATEGORIEN, VERWALTUNGSARTEN,
+  DEFAULT_SETTINGS, KONTAKTARTEN_KATEGORIEN, VERWALTUNGSARTEN,
   gruppiereDubletten, fuehreKontakteZusammen, kontaktInGruppe, normalisiereKontakte, normalisiereVes, objektInGruppe, objektOrt,
   wendeKontaktZuweisungenAnAlle
 } from "./datenmodell.js";
@@ -3120,17 +3120,6 @@ function SektionDaten({ t, accent, settings, setSettings, mode, setMode,
     storage.setzeZurueck("settings");
     setSettings(DEFAULT_SETTINGS);
   };
-  const onDatenReset = () => {
-    if (resetBereit !== "daten") {
-      setPendingImport(null); setImportFehler(null);
-      setResetBereit("daten");
-      return;
-    }
-    setResetBereit(null);
-    storage.setzeZurueck("daten");
-    setKontakte(normalisiereKontakte(DEFAULT_KONTAKTE));
-    setVes(normalisiereVes(DEFAULT_VES));
-  };
 
   // Excel-Import: liest die AllesDa-Vorlage (.xlsx) ein und mappt sie ins
   // App-Schema. ERSETZT die aktuellen Daten — nach Inline-Bestätigung
@@ -3298,15 +3287,7 @@ function SektionDaten({ t, accent, settings, setSettings, mode, setMode,
           <button onClick={onDatenImport} style={btnSecondary}>
             <I name="document" size={12} color={t.text}/>Daten einspielen…
           </button>
-          {resetButton("daten", onDatenReset,
-            "Auf Demo zurücksetzen", "Wirklich auf Demo-Daten zurücksetzen?")}
         </div>
-        {resetBereit === "daten" && (
-          <div style={{ fontSize: FS.s, color: t.sub, marginTop: 2, lineHeight: 1.4 }}>
-            Alle Kontakte und Objekte werden ersetzt — nicht rückgängig zu
-            machen. Nochmal tippen zum Bestätigen.
-          </div>
-        )}
         {meldungFuer("daten")}
         <div style={{ fontSize: FS.s, color: t.muted, marginTop: 6 }}>
           {kontakte.length} Kontakte · {ves.length} Objekte · {formatKB(groesse.daten)} im Browser

@@ -15,416 +15,11 @@ import { isoHeute, splitPlzOrt, zuIsoDatum } from "./utils-basis.js";
 // ╚═════════════════════════════════════════════════════════════════════════╝
 
 // ── Daten: Kontakte ─────────────────────────────────────────────────────────
-// ── Mock-Daten: Generator mit deterministischem Seed ───────────────────────
-// Erzeugt 100 Personen, 20 Firmen und 15 Objekte mit kreuz-verlinkten
-// Eigentümern, Mietern, Beiräten, Dienstleistern. Seed = 12345.
-function buildMockData() {
-  let seed = 12345;
-  const rand = () => { seed = (seed * 1664525 + 1013904223) & 0x7fffffff; return seed / 0x7fffffff; };
-  const randInt = (min, max) => Math.floor(rand() * (max - min + 1)) + min;
-  const pick = (arr) => arr[Math.floor(rand() * arr.length)];
-  const chance = (pct) => rand() * 100 < pct;
 
-  const VORNAMEN_M = ["Maximilian","Felix","Lukas","Paul","Jonas","Tim","Leon","David","Daniel","Tobias","Stefan","Andreas","Christian","Markus","Klaus","Wolfgang","Thomas","Michael","Frank","Peter","Hans","Bernd","Heinz","Werner","Joachim","Helmut","Walter","Wilhelm","Manfred","Horst","Erich","Hermann","Karl","Friedrich","Otto","Albert","Ernst","Heinrich","Erwin","Günter","Rudolf","Dieter","Norbert","Reinhard","Detlef","Volker","Ralf","Uwe","Olaf","Julian"];
-  const VORNAMEN_F = ["Anna","Sophia","Marie","Lena","Lea","Mia","Hannah","Emma","Lina","Laura","Sara","Lisa","Maria","Julia","Katrin","Petra","Susanne","Brigitte","Monika","Birgit","Heike","Andrea","Karin","Sabine","Christine","Ingrid","Ursula","Renate","Elke","Christa","Helga","Marion","Doris","Annette","Silvia","Beate","Cornelia","Martina","Gisela","Iris","Bettina","Tanja","Claudia","Steffi","Carolin","Astrid","Vanessa","Nicole","Sandra","Stefanie"];
-  const NACHNAMEN = ["Müller","Schmidt","Schneider","Fischer","Weber","Meyer","Wagner","Becker","Schulz","Hoffmann","Schäfer","Koch","Bauer","Richter","Klein","Wolf","Schröder","Neumann","Schwarz","Zimmermann","Braun","Krüger","Hofmann","Hartmann","Lange","Schmitt","Werner","Schmitz","Krause","Meier","Lehmann","Schmid","Schulze","Maier","Köhler","Herrmann","König","Walter","Mayer","Huber","Kaiser","Fuchs","Peters","Lang","Scholz","Möller","Weiß","Jung","Hahn","Schubert","Vogel","Friedrich","Keller","Günther","Frank","Berger","Winkler","Roth","Beck","Lorenz","Baumann","Franke","Albrecht","Schuster","Simon","Ludwig","Böhm","Winter","Kraus","Martin","Schumacher","Krämer","Vogt","Stein","Jäger","Otto","Sommer","Groß","Seidel","Brandt","Haas","Schreiber","Graf","Schulte","Dietrich","Ziegler","Kuhn","Pohl","Engel","Horn","Busch","Bergmann","Voigt","Sauer","Arnold","Wolff","Pfeiffer","Holz","Krieger"];
-  const STRASSEN = ["Hauptstraße","Bahnhofstraße","Schulstraße","Gartenstraße","Bergstraße","Lindenstraße","Schillerstraße","Goethestraße","Mozartstraße","Beethovenstraße","Kirchstraße","Mühlenweg","Parkstraße","Waldstraße","Münchner Straße","Berliner Straße","Hamburger Straße","Frankfurter Straße","Nürnberger Straße","Sebastian-Bach-Straße","Theodor-Heuss-Straße","Karl-Marx-Straße","Adenauerstraße","Schwabinger Straße","Sendlinger Straße","Maximilianstraße","Rosenheimer Straße","Tegernseer Landstraße","Implerstraße","Lindwurmstraße"];
-  const PLZ_ORTE = ["80331 München","80333 München","80335 München","80336 München","80337 München","80339 München","80469 München","80539 München","80636 München","80637 München","80686 München","80796 München","80797 München","80801 München","80803 München","80807 München","80809 München"];
-  const FIRMA_RECHTSFORMEN = ["GmbH","OHG","KG","GmbH & Co. KG","e.K.","AG"];
-  const HV_NAMEN = ["Muster Hausverwaltung","Bayern Immobilien","Stadt-Verwaltung","Wohnbau München","Süd-Verwaltung"];
-  const HM_NAMEN = ["Hausmeister-Service Bayern","Allround Service","Gebäudemanagement Süd"];
-  const FIRMENNAMEN_ELEKTRO = ["Elektro Fischer","Elektrotechnik Bayern","E-Service München"];
-  const FIRMENNAMEN_SANITAER = ["Sanitär Maier","Heizungstechnik Schmid","Wasser & Wärme GmbH"];
-  const FIRMENNAMEN_REINIGUNG = ["Glanz & Sauber","Bayrische Gebäudereinigung","CleanTec"];
-  const FIRMENNAMEN_GRUEN = ["Grünpflege München","Gartenservice Bayern"];
-  const FIRMENNAMEN_VERSORGER = ["Stadtwerke München","E.ON Energie"];
-  const FIRMENNAMEN_VERSICHERUNG = ["Allianz Versicherung","Bayerische Hausratsversicherung"];
-
-  const ddmmyyyy = (off) => {
-    const d = new Date(); d.setDate(d.getDate() + off);
-    return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
-  };
-  const yyyy = (off) => { const d = new Date(); d.setFullYear(d.getFullYear() + off); return ddmmyyyy(0).slice(0,6) + d.getFullYear(); };
-
-  // ── Firmen erzeugen (IDs 101..120) ─────────────────────────────────────
-  const firmenLayouts = [
-    { typ:"hv",         gewerke:["Hausverwaltung"],    rolle:"Hausverwaltung", anzahl:4 },
-    { typ:"hm",         gewerke:["Hausmeister"],       rolle:"Hausmeister",    anzahl:2 },
-    { typ:"sanitaer",   gewerke:["Sanitär","Heizung"], rolle:"Wartung",        anzahl:3 },
-    { typ:"elektro",    gewerke:["Elektro"],           rolle:"Wartung",        anzahl:3 },
-    { typ:"reinigung",  gewerke:["Reinigung"],         rolle:"Reinigung",      anzahl:2 },
-    { typ:"gruen",      gewerke:["Grünpflege","Winterdienst"], rolle:"Grünpflege", anzahl:2 },
-    { typ:"versorger",  gewerke:["Strom","Wasser","Gas"], rolle:"Versorger",   anzahl:2 },
-    { typ:"versicher",  gewerke:["Versicherung"],      rolle:"Versicherung",   anzahl:2 },
-  ];
-  const firmen = [];
-  let fid = 101;
-  firmenLayouts.forEach(lay => {
-    for (let i = 0; i < lay.anzahl; i++) {
-      const namePool = lay.typ === "hv" ? HV_NAMEN
-        : lay.typ === "hm" ? HM_NAMEN
-        : lay.typ === "elektro" ? FIRMENNAMEN_ELEKTRO
-        : lay.typ === "sanitaer" ? FIRMENNAMEN_SANITAER
-        : lay.typ === "reinigung" ? FIRMENNAMEN_REINIGUNG
-        : lay.typ === "gruen" ? FIRMENNAMEN_GRUEN
-        : lay.typ === "versorger" ? FIRMENNAMEN_VERSORGER
-        : FIRMENNAMEN_VERSICHERUNG;
-      const baseName = namePool[i % namePool.length];
-      const rechtsform = pick(FIRMA_RECHTSFORMEN);
-      const fullName = `${baseName} ${rechtsform}`;
-      const _po = splitPlzOrt(pick(PLZ_ORTE));
-      const strasse = `${pick(STRASSEN)} ${randInt(1, 199)}`;
-      firmen.push({
-        id: fid, typ:"firma", name: fullName, rechtsform,
-        sub: lay.gewerke.join(" · "),
-        tel: `089 ${randInt(100000, 999999)}`,
-        email: `info@${baseName.toLowerCase().replace(/[^a-z]+/g,"")}.de`,
-        homepage: `www.${baseName.toLowerCase().replace(/[^a-z]+/g,"")}.de`,
-        strasse, plz: _po.plz, ort: _po.ort,
-        gewerke: lay.gewerke, ansprechpartner: [],
-        _typ: lay.typ, _defaultRolle: lay.rolle,
-        objektZuweisungen: [], // wird später befüllt
-      });
-      fid++;
-    }
-  });
-
-  // ── 100 Personen erzeugen (IDs 1..100) ─────────────────────────────────
-  const personen = [];
-  for (let id = 1; id <= 100; id++) {
-    const istM = chance(55);
-    const vorname = pick(istM ? VORNAMEN_M : VORNAMEN_F);
-    const nachname = pick(NACHNAMEN);
-    const anrede = istM ? "Herr" : "Frau";
-    const titel = chance(15) ? pick(["Dr.", "Prof.", "Prof. Dr.", "Dipl.-Ing.", "Dipl.-Kfm.", "Mag."]) : "";
-    const strasse = `${pick(STRASSEN)} ${randInt(1, 199)}`;
-    const _po = splitPlzOrt(pick(PLZ_ORTE));
-    const tels = [];
-    tels.push({ type: "Mobil", nr: `01${randInt(50,79)} ${randInt(1000000, 9999999)}` });
-    if (chance(35)) tels.push({ type: "Festnetz", nr: `089 ${randInt(100000, 999999)}` });
-    const emails = [];
-    if (chance(85)) emails.push({ type: "Privat", email: `${vorname.toLowerCase()}.${nachname.toLowerCase().replace(/[äöüß]/g, ch => ({"ä":"ae","ö":"oe","ü":"ue","ß":"ss"}[ch]))}@${pick(["gmx.de","web.de","gmail.com","t-online.de"])}` });
-    if (chance(20)) emails.push({ type: "Geschäftlich", email: `${vorname.charAt(0).toLowerCase()}.${nachname.toLowerCase().replace(/[äöüß]/g, ch => ({"ä":"ae","ö":"oe","ü":"ue","ß":"ss"}[ch]))}@firma.de` });
-    personen.push({
-      id, typ:"person", anrede, titel, vorname, nachname,
-      name: `${vorname} ${nachname}`,
-      sub: "", badges: [],
-      tels, emails, strasse, plz: _po.plz, ort: _po.ort,
-      rollen: [],
-      objektZuweisungen: [],
-    });
-  }
-
-  // ── 15 Objekte erzeugen (IDs ve1..ve15) ────────────────────────────────
-  const ves = [];
-  let eIdCounter = 1;
-  for (let i = 1; i <= 15; i++) {
-    const veId = `ve${i}`;
-    const nr = `WEG-2024-${String(i).padStart(3, "0")}`;
-    const adresse = `${pick(STRASSEN)} ${randInt(1, 199)}, ${pick(PLZ_ORTE)}`;
-    // 2-12 Wohneinheiten + 0-6 Stellplätze
-    const anzahlWE = randInt(2, 12);
-    const anzahlSP = chance(70) ? randInt(1, 6) : 0;
-    const einheiten = [];
-    for (let w = 1; w <= anzahlWE; w++) {
-      const flaeche = randInt(45, 145);
-      const zimmer = `${randInt(1, 5)}${chance(40) ? ",5" : ""}`;
-      const lagen = ["EG links","EG rechts","1. OG links","1. OG rechts","2. OG links","2. OG rechts","3. OG","DG"];
-      einheiten.push({
-        id: `e${eIdCounter++}`, nr: `WE ${String(w).padStart(2,"0")}`,
-        verwNr: `V-${String(w).padStart(3,"0")}`,
-        typ: "Wohneigentum",
-        flaeche: `${flaeche} m²`,
-        mea: `${Math.round(1000/anzahlWE)}`,
-        lage: lagen[(w-1) % lagen.length], zimmer,
-        eigentuemer: [], mieter: [],
-      });
-    }
-    for (let s = 1; s <= anzahlSP; s++) {
-      einheiten.push({
-        id: `e${eIdCounter++}`, nr: `SP-${String(s).padStart(2,"0")}`,
-        verwNr: `V-S${String(s).padStart(2,"0")}`,
-        typ: "Stellplatz", flaeche: "", mea: "",
-        lage: chance(50) ? "TG UG" : "Außen",
-        eigentuemer: [], mieter: [], spStellung: "eigenstaendig", spEinheitId: null,
-      });
-    }
-    // Verwaltungs-Status: 60% aktiv, 20% läuft bald aus, 20% abgelaufen
-    const status = rand();
-    let beginn, bestelltBis, naechsteWahl;
-    if (status < 0.6) {
-      beginn = ddmmyyyy(-randInt(200, 1500));
-      bestelltBis = ddmmyyyy(randInt(180, 800));
-      naechsteWahl = "";
-    } else if (status < 0.8) {
-      beginn = ddmmyyyy(-randInt(800, 1500));
-      bestelltBis = ddmmyyyy(randInt(1, 89)); // läuft bald aus
-      naechsteWahl = ddmmyyyy(randInt(1, 60));
-    } else {
-      beginn = ddmmyyyy(-randInt(1200, 2000));
-      bestelltBis = ddmmyyyy(-randInt(1, 365)); // abgelaufen
-      naechsteWahl = "";
-    }
-    // Verwaltungsart-Mix für Demo: ~70% WEG, je ~10% Miet, Gewerbe, SEV.
-    // So sind alle 4 Arten beim Filter-Demo sichtbar.
-    const artVal = rand();
-    const verwaltungsart = artVal < 0.7 ? "weg"
-                         : artVal < 0.8 ? "miet"
-                         : artVal < 0.9 ? "gewerbe"
-                         : "sev";
-    ves.push({
-      id: veId, nr, adresse, einheiten,
-      verwaltungsart,
-      verwaltung: { beginn, bestelltBis, verwalter: null, buchhalter: null, uebernommenVon: null,
-        verwZustimmung: chance(60), naechsteETV: chance(70) ? ddmmyyyy(randInt(30, 300)) : "",
-        naechsteWahl },
-      vertraege: [], etvHistorie: [],
-    });
-  }
-
-  // ── Eigentümer + Mieter pro Einheit zuweisen ───────────────────────────
-  // Personen 1..70 sind "Privatpersonen" (Eigentümer/Mieter)
-  // Personen 71..100 sind potenzielle Firmen-Mitarbeiter (GF/MA)
-  const eigentuemerKandidaten = personen.slice(0, 70);
-  let kandIdx = 0;
-  ves.forEach(ve => {
-    ve.einheiten.forEach(einheit => {
-      // Jede Einheit hat 1 Eigentümer; gelegentlich 2 (Ehepaar)
-      const e1 = eigentuemerKandidaten[kandIdx % eigentuemerKandidaten.length]; kandIdx++;
-      einheit.eigentuemer.push({
-        name: e1.name, von: ddmmyyyy(-randInt(100, 2500)),
-        kontaktId: e1.id, grundbuch: true, selbstnutzer: chance(40),
-      });
-      e1.objektZuweisungen.push({ objektId: ve.id, einheitId: einheit.id, rolle: "Eigentümer", status: "aktiv" });
-      if (!e1.rollen.includes("Eigentümer")) e1.rollen.push("Eigentümer");
-      // ~8% Einheiten haben einen WERDENDEN Eigentümer-Wechsel (Käufer schwebt)
-      if (einheit.typ === "Wohneigentum" && chance(8)) {
-        const ek = eigentuemerKandidaten[kandIdx % eigentuemerKandidaten.length]; kandIdx++;
-        if (ek.id !== e1.id) {
-          einheit.eigentuemer.push({
-            name: ek.name, von: ddmmyyyy(randInt(15, 120)),
-            kontaktId: ek.id, grundbuch: false, selbstnutzer: chance(50),
-          });
-          ek.objektZuweisungen.push({ objektId: ve.id, einheitId: einheit.id, rolle: "Eigentümer", status: "werdend" });
-          if (!ek.rollen.includes("Eigentümer")) ek.rollen.push("Eigentümer");
-        }
-      }
-      // Mieter bei nicht-Selbstnutzern + Stellplätzen
-      if (einheit.typ === "Wohneigentum" && !einheit.eigentuemer[0].selbstnutzer && chance(70)) {
-        const m1 = eigentuemerKandidaten[kandIdx % eigentuemerKandidaten.length]; kandIdx++;
-        if (m1.id !== e1.id) {
-          einheit.mieter.push({
-            name: m1.name, von: ddmmyyyy(-randInt(30, 1200)),
-            kontaktId: m1.id,
-          });
-          m1.objektZuweisungen.push({ objektId: ve.id, einheitId: einheit.id, rolle: "Mieter", status: "aktiv" });
-          if (!m1.rollen.includes("Mieter")) m1.rollen.push("Mieter");
-        }
-        // (Ehemalige Mieter werden NICHT mehr als verwaiste objektZuweisung
-        // angelegt — die Mieter-Historie ergibt sich ausschließlich aus dem
-        // Belegungsmodell und wird zentral über objektZuweisungenAusEinheiten
-        // abgeleitet. Ein nur in objektZuweisungen existierender Eintrag ohne
-        // zugehöriges Belegungs-Kapitel wäre inkonsistent.)
-      }
-      // Verwendung der Einheit aus Eigentümer-/Mieter-Situation ableiten:
-      // · Selbstnutzer-Eigentümer  → Eigennutzung
-      // · Vermieter mit aktivem Mieter → Vermietet
-      // · weder Selbstnutzer noch Mieter → Leerstand
-      // · 5 % der Einheiten: Sondereigentumsverwaltung (SEV)
-      // · 4 % der Einheiten: Wohnberechtigt (Wohnrecht eingetragen)
-      // · 3 % der Einheiten: Nießbrauch
-      let verwName = null;
-      if (chance(5))      verwName = "Sondereigentumsverwaltung";
-      else if (chance(4)) verwName = "Wohnberechtigt";
-      else if (chance(3)) verwName = "Nießbrauch";
-      else if (einheit.mieter.length > 0) verwName = "Vermietet";
-      else if (einheit.eigentuemer[0] && einheit.eigentuemer[0].selbstnutzer) verwName = "Eigennutzung";
-      else if (einheit.typ === "Wohneigentum") verwName = "Leerstand";
-      if (verwName) {
-        einheit.verwendung = { name: verwName, status: "aktiv" };
-      }
-      // Bei SEV-Verwendung auch einen echten sev-Eintrag anlegen (sonst Badge
-      // ohne Substanz). Eine HV-Firma fungiert als Sondereigentumsverwaltung;
-      // Vollmacht in ~70 % der Fälle erteilt.
-      if (verwName === "Sondereigentumsverwaltung") {
-        const sevFirmen = firmen.filter(f => f._typ === "hv");
-        if (sevFirmen.length > 0) {
-          const sf = sevFirmen[kandIdx % sevFirmen.length];
-          const eintrag = neueSev(sf.id, sf.name, ddmmyyyy(-randInt(50, 1200)));
-          if (chance(70)) eintrag.vollmacht = { erteilt: true, datum: eintrag.seit };
-          einheit.sev = [eintrag];
-          sf.objektZuweisungen.push({ objektId: ve.id, einheitId: einheit.id,
-            rolle: "Sondereigentumsverwaltung", status: "aktiv" });
-        }
-      }
-    });
-    // 1-3 Verwaltungsbeiräte pro Objekt (aus den Eigentümern)
-    const eigPersonenIds = [...new Set(ve.einheiten.flatMap(e => (e.eigentuemer||[]).map(et => et.kontaktId)))];
-    const anzahlBeirate = Math.min(eigPersonenIds.length, randInt(1, 3));
-    for (let b = 0; b < anzahlBeirate; b++) {
-      const pid = eigPersonenIds[b];
-      const p = personen.find(x => x.id === pid);
-      if (!p) continue;
-      const istVorsitz = b === 0; // erster ist Vorsitz
-      p.objektZuweisungen.push({ objektId: ve.id, einheitId: null, rolle: "Verwaltungsbeirat",
-        status: "aktiv", ...(istVorsitz ? { vorsitz: true } : {}) });
-      if (!p.rollen.includes("Verwaltungsbeirat")) p.rollen.push("Verwaltungsbeirat");
-    }
-    // 0-1 Rechnungsprüfer (aus weiteren Eigentümern)
-    if (chance(60) && eigPersonenIds.length > anzahlBeirate) {
-      const pid = eigPersonenIds[anzahlBeirate];
-      const p = personen.find(x => x.id === pid);
-      if (p) {
-        p.objektZuweisungen.push({ objektId: ve.id, einheitId: null, rolle: "Rechnungsprüfer", status: "aktiv" });
-        if (!p.rollen.includes("Rechnungsprüfer")) p.rollen.push("Rechnungsprüfer");
-      }
-    }
-    // Selten: Nießbraucher (10%)
-    if (chance(10)) {
-      const einheit = pick(ve.einheiten.filter(e => e.typ === "Wohneigentum"));
-      if (einheit) {
-        const niesId = eigentuemerKandidaten[kandIdx % eigentuemerKandidaten.length].id; kandIdx++;
-        const p = personen.find(x => x.id === niesId);
-        if (p) {
-          p.objektZuweisungen.push({ objektId: ve.id, einheitId: einheit.id, rolle: "Nießbraucher", status: "aktiv" });
-          if (!p.rollen.includes("Nießbraucher")) p.rollen.push("Nießbraucher");
-        }
-      }
-    }
-  });
-
-  // ── Firmen den Objekten zuweisen ───────────────────────────────────────
-  const hvFirmen      = firmen.filter(f => f._typ === "hv");
-  const hmFirmen      = firmen.filter(f => f._typ === "hm");
-  const sanitaerFirmen= firmen.filter(f => f._typ === "sanitaer");
-  const elektroFirmen = firmen.filter(f => f._typ === "elektro");
-  const reinigungFirmen = firmen.filter(f => f._typ === "reinigung");
-  const gruenFirmen   = firmen.filter(f => f._typ === "gruen");
-  const versorgerFirmen = firmen.filter(f => f._typ === "versorger");
-  const versicherFirmen = firmen.filter(f => f._typ === "versicher");
-  ves.forEach((ve, idx) => {
-    // Hausverwaltung: rotierend, alle haben eine
-    const hv = hvFirmen[idx % hvFirmen.length];
-    hv.objektZuweisungen.push({ objektId: ve.id, rolle: "Hausverwaltung", status: "aktiv" });
-    // Hausmeister: 80%
-    if (chance(80)) {
-      const hm = hmFirmen[idx % hmFirmen.length];
-      hm.objektZuweisungen.push({ objektId: ve.id, rolle: "Hausmeister", status: "aktiv" });
-    }
-    // Wartung Sanitär: 90%
-    if (chance(90)) {
-      const f = sanitaerFirmen[idx % sanitaerFirmen.length];
-      f.objektZuweisungen.push({ objektId: ve.id, rolle: "Wartung", status: "aktiv" });
-      // ein Vertrag dazu
-      ve.vertraege.push({ id: `v${ve.id}-s`, typ: "Wartungsvertrag",
-        leistung: "Heizungswartung jährlich", firmaId: f.id,
-        ab: ddmmyyyy(-randInt(100, 1500)), bis: "", vertragsnr: `VTR-${ve.id}-S` });
-    }
-    // Elektro: 60%
-    if (chance(60)) {
-      const f = elektroFirmen[idx % elektroFirmen.length];
-      f.objektZuweisungen.push({ objektId: ve.id, rolle: "Wartung", status: "aktiv" });
-    }
-    // Reinigung: 70%
-    if (chance(70)) {
-      const f = reinigungFirmen[idx % reinigungFirmen.length];
-      f.objektZuweisungen.push({ objektId: ve.id, rolle: "Reinigung", status: "aktiv" });
-      ve.vertraege.push({ id: `v${ve.id}-r`, typ: "Reinigungsvertrag",
-        leistung: "Treppenhaus-Reinigung", firmaId: f.id,
-        ab: ddmmyyyy(-randInt(100, 1200)), bis: "", vertragsnr: `VTR-${ve.id}-R` });
-    }
-    // Grünpflege: 50%
-    if (chance(50)) {
-      const f = gruenFirmen[idx % gruenFirmen.length];
-      f.objektZuweisungen.push({ objektId: ve.id, rolle: "Grünpflege", status: "aktiv" });
-    }
-    // Versorger: 100%
-    const vers = versorgerFirmen[idx % versorgerFirmen.length];
-    vers.objektZuweisungen.push({ objektId: ve.id, rolle: "Versorger", status: "aktiv" });
-    ve.vertraege.push({ id: `v${ve.id}-vs`, typ: "Versorgungsvertrag",
-      leistung: "Strom / Gas Allgemeinstrom", firmaId: vers.id, intervall: "laufend",
-      ab: ddmmyyyy(-randInt(200, 1800)), bis: "", vertragsnr: `VTR-${ve.id}-VS` });
-    // Versicherung: 100%
-    const vsi = versicherFirmen[idx % versicherFirmen.length];
-    vsi.objektZuweisungen.push({ objektId: ve.id, rolle: "Versicherung", status: "aktiv" });
-    ve.vertraege.push({ id: `v${ve.id}-vr`, typ: "Versicherungsvertrag",
-      leistung: "Gebäudeversicherung", firmaId: vsi.id, intervall: "jährlich",
-      ab: ddmmyyyy(-randInt(200, 2000)), bis: "", vertragsnr: `VTR-${ve.id}-VR` });
-    // Ehemalige Hausverwaltung gelegentlich (40%): zweite HV als ehemalig
-    if (chance(40)) {
-      const altHv = hvFirmen[(idx + 1) % hvFirmen.length];
-      if (altHv !== hv) {
-        altHv.objektZuweisungen.push({ objektId: ve.id, rolle: "Hausverwaltung", status: "ehemalig" });
-      }
-    }
-  });
-
-  // ── Geschäftsführer & Mitarbeiter: Personen 71..100 ────────────────────
-  const firmaMitarbeiterKand = personen.slice(70, 100);
-  let mIdx = 0;
-  firmen.forEach(f => {
-    // Jede Firma hat 1 GF + 0-2 Mitarbeiter
-    const gf = firmaMitarbeiterKand[mIdx % firmaMitarbeiterKand.length]; mIdx++;
-    gf.objektZuweisungen.push({ firmaId: f.id, rolle: "Geschäftsführer", status: "aktiv" });
-    gf.firmaId = f.id;
-    if (!gf.rollen.includes("Geschäftsführer")) gf.rollen.push("Geschäftsführer");
-    f.ansprechpartner.push({ vorname: gf.vorname, nachname: gf.nachname, funktion: "Geschäftsführer" });
-    const anzMA = randInt(0, 2);
-    for (let m = 0; m < anzMA; m++) {
-      const ma = firmaMitarbeiterKand[mIdx % firmaMitarbeiterKand.length]; mIdx++;
-      if (ma.id === gf.id) continue;
-      const funktionsname = pick(["Mitarbeiter", "Sachbearbeiter", "Ansprechpartner (Firma)"]);
-      ma.objektZuweisungen.push({ firmaId: f.id, rolle: funktionsname, status: "aktiv" });
-      if (!ma.rollen.includes(funktionsname)) ma.rollen.push(funktionsname);
-      f.ansprechpartner.push({ vorname: ma.vorname, nachname: ma.nachname, funktion: funktionsname });
-    }
-  });
-
-  // ── Für die Statusleisten-Demo: 5 Personen rein-ehemalig machen ────────
-  // Alle aktiven/werdenden Zuweisungen dieser Personen werden in "ehemalig"
-  // umgewandelt — so erscheint die "Keine aktiven Beteiligungen"-Statusleiste.
-  const ehemPool = personen.slice(60, 65);
-  ehemPool.forEach(p => {
-    if (p.objektZuweisungen.length === 0) {
-      // Falls noch nichts da, gib ihnen wenigstens eine ehemalig-Zuweisung
-      const beliebige = ves[0];
-      const beliebigeEinheit = beliebige.einheiten[0];
-      p.objektZuweisungen.push({ objektId: beliebige.id, einheitId: beliebigeEinheit.id,
-        rolle: "Mieter", status: "ehemalig" });
-      if (!p.rollen.includes("Mieter")) p.rollen.push("Mieter");
-    } else {
-      p.objektZuweisungen = p.objektZuweisungen.map(z => ({ ...z, status: "ehemalig" }));
-    }
-  });
-
-  // ── Verwalter-IDs in den ve.verwaltung-Feldern setzen ──────────────────
-  // Wir nehmen den GF der zugeordneten HV-Firma als Verwalter
-  ves.forEach(ve => {
-    const hvZuw = firmen.find(f =>
-      f._typ === "hv" && (f.objektZuweisungen || []).some(z =>
-        z.objektId === ve.id && z.rolle === "Hausverwaltung" && z.status === "aktiv"
-      )
-    );
-    if (hvZuw) {
-      const gfPerson = personen.find(p => p.firmaId === hvZuw.id);
-      if (gfPerson) ve.verwaltung.verwalter = gfPerson.id;
-    }
-  });
-
-  // Cleanup: _typ und _defaultRolle aus Firmen entfernen
-  firmen.forEach(f => { delete f._typ; delete f._defaultRolle; });
-
-  // Neue Beziehungs-Felder (besitz/zustaendigkeiten/firmenRollen) aus den
-  // gerade aufgebauten objektZuweisungen ableiten (Schritt 1a).
-  const kontakteMig = [...personen, ...firmen].map(migriereKontaktZuweisungen);
-  return { kontakte: kontakteMig, ves };
-}
-
-
-// ── Kontakt-Zuweisungs-Migration (Mock baut Altformat, hier ins Zielformat) ──
+// ── Kontakt-Zuweisungs-Migration (Altformat → Zielformat) ──
 // Slot einer Rolle direkt aus den Default-Rollen lesen. Bewusst ohne
 // Modul-Level-Cache-Variable, um jede TDZ zu vermeiden (die Migration kann
-// schon bei der Modul-Initialisierung von _MOCK laufen). DEFAULT_ROLLEN ist
+// früh bei der Modul-Initialisierung laufen). DEFAULT_ROLLEN ist
 // klein und die Migration läuft nicht in einer Hot-Loop.
 function slotFuerRolle(name) {
   for (let i = 0; i < DEFAULT_ROLLEN.length; i++) {
@@ -630,9 +225,10 @@ function migriereKontaktZuweisungen(k) {
   return { ...k, besitz, zustaendigkeiten, firmenRollen };
 }
 
-const _MOCK = buildMockData();
-const DEFAULT_KONTAKTE = _MOCK.kontakte;
-const DEFAULT_VES = _MOCK.ves;
+// Blankes Programm: keine Mock-/Fake-Daten mehr. Die App startet leer; echte
+// Daten werden über den JSON-Import (Einstellungen) geladen.
+const DEFAULT_KONTAKTE = [];
+const DEFAULT_VES = [];
 
 
 // ── Default-Settings ────────────────────────────────────────────────────────
@@ -726,7 +322,7 @@ const DEFAULT_SETTINGS = {
     ort: "",
     geburtstag: "", // ISO YYYY-MM-DD
   },
-  userKontaktId: 1,        // Verknüpft mit DEFAULT_KONTAKTE – Profil im persönlichen Menü
+  userKontaktId: null,     // Kein Default-Profil (blankes Programm); wird gesetzt, sobald Daten geladen sind
   dichte: "normal",        // "compact" | "normal" | "relaxed" – globale Schriftgröße/Dichte
   kartenMinBreite: 280,    // Mindest-Kartenbreite px → steuert Spaltenzahl (Übersicht) + Detailbreite (Master-Detail)
   detailFaktor: 1.1,       // Detailbreite als Vielfaches der Kartenbreite (1.0–2.5) → größer = breitere Detailansicht, weniger Master-Spalten
@@ -1109,7 +705,7 @@ function neueBelegung(typ, von, bis) {
 //   { id, kontaktId, name, seit, bis, vollmacht:{ erteilt:bool, datum } }
 // Status wird datumsgesteuert abgeleitet (sevStatus), genau wie bei Eigentümern.
 // SEV-ID ohne Top-Level-let (vermeidet TDZ/const-Hoisting-Falle, da neueSev
-// bereits in buildMockData aufgerufen wird, das früher im Modul steht).
+// früh im Modul referenziert wird).
 function neueSevId() { return "sev_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8); }
 function neueSev(kontaktId, name, seit) {
   return {
@@ -2282,8 +1878,6 @@ function gruppiereRollenkarten(zuweisungen, rollenDefs) {
 
 
 export {
-  buildMockData,
-  _MOCK,
   DEFAULT_KONTAKTE,
   DEFAULT_VES,
   DEFAULT_SETTINGS,

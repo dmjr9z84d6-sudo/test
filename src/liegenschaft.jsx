@@ -5289,7 +5289,7 @@ function VertragZeile({ v, firma, t, accent, editMode, onKontaktClick, onRemove,
 }
 
 
-function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakte, setKontakte, onUpdateKarte, ohneEinheiten = false, onKontaktClick = null, sort = null, ves = [], onVEClick = null, etvStamm = null, onSyncChange = null, lokalEditGesperrt = false, onLokalEditChange = null, akkordeonOffen = null, onAkkordeonToggle = null, alleGeraete = [] }) {
+function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakte, setKontakte, onUpdateKarte, ohneEinheiten = false, onKontaktClick = null, sort = null, ves = [], onVEClick = null, etvStamm = null, onSyncChange = null, lokalEditGesperrt = false, onLokalEditChange = null, akkordeonOffen = null, onAkkordeonToggle = null, alleGeraete = [], aggregierteEinheiten = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const rechnungsadresseAn = useRechnungsadresseAn();
   // "Immer offen" (nicht klappbar): die fixe Stammdaten-Karte sowie ETV-
@@ -5503,53 +5503,109 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
   const wjWertVertrag = (etvStamm && etvStamm.wirtschaftsjahr) ? etvStamm.wirtschaftsjahr : "";
 
   // Stats
-  const wohnM2 = localEinheiten.filter(e => e.typ !== "Teileigentum" && !isStellplatzTyp(e.typ))
+  // Berechnungsbasis: Die fixe Liegenschaft-Stammkarte aggregiert über ALLE
+  // Gebäude (aggregierteEinheiten); jede einzelne Gebäude-/TG-Karte nur ihre
+  // eigenen (localEinheiten). So zeigt „Stammdaten" oben die VE-Summe, die
+  // Gebäudekarte darunter ihren Einzelwert (DESIGN §70.1, Aggregat).
+  const istFixeStammkarte = karte.fixed && karte.kategorie === "stammdaten";
+  const berechnungsEinheiten = (istFixeStammkarte && Array.isArray(aggregierteEinheiten))
+    ? aggregierteEinheiten : localEinheiten;
+  const wohnM2 = berechnungsEinheiten.filter(e => e.typ !== "Teileigentum" && !isStellplatzTyp(e.typ))
     .reduce((s, e) => s + flaecheVon(e), 0);
-  const nutzM2 = localEinheiten.filter(e => e.typ === "Teileigentum")
+  const nutzM2 = berechnungsEinheiten.filter(e => e.typ === "Teileigentum")
     .reduce((s, e) => s + flaecheVon(e), 0);
+  const anzahlBerechnet = berechnungsEinheiten.length;
+  // Einheiten-Aufschlüsselung nach Typ (für die Aggregat-Stammkarte). Wohnen =
+  // Wohneigentum; Teileigentum separat; Garage/Stellplatz getrennt; Carport +
+  // Doppelparker = Sonstige.
+  const zaehleTyp = (pred) => berechnungsEinheiten.filter(e => e && pred(e.typ)).length;
+  const anzWohnen  = zaehleTyp(tp => tp === "Wohneigentum");
+  const anzTeil    = zaehleTyp(tp => tp === "Teileigentum");
+  const anzGarage  = zaehleTyp(tp => tp === "Garage");
+  const anzStellpl = zaehleTyp(tp => tp === "Stellplatz");
+  const anzSonst   = zaehleTyp(tp => tp === "Carport" || tp === "Doppelparker");
 
   // ── Berechnete Stammdaten-Zeilen mit optionalem Override (DESIGN §70.1) ──
-  // Gesamtfläche · Wohnfläche · Nutzfläche · Einheiten erscheinen als read-only,
-  // aber überschreibbare Stammfelder. Der berechnete Wert (aus den Einheiten)
-  // liegt am Feld als `berechnet`; ein manuell gepflegter `value` überschreibt
-  // ihn (auch im Header). Nur auf Karten, die Einheiten tragen.
+  // Gesamtfläche · Wohnfläche · Nutzfläche · Einheiten (+ Aufschlüsselung)
+  // erscheinen als read-only, aber überschreibbare Stammfelder. Der berechnete
+  // Wert liegt am Feld als `berechnet`; ein manuell gepflegter `value`
+  // überschreibt ihn (auch im Header). Nur auf Karten, die Einheiten tragen.
+  // `nurWennWert`: Aufschlüsselungs-Zeilen mit 0 werden ausgeblendet (außer es
+  // gibt einen Override).
   const calcGesamtM2 = wohnM2 + nutzM2;
+  const aufschl = istFixeStammkarte;  // Einheiten-Aufschlüsselung nur auf der Aggregat-Stammkarte
   const CALC_DEFS = [
     { id: "_calc_gesamt", name: "Gesamtfläche", berechnet: calcGesamtM2 > 0 ? Math.round(calcGesamtM2) + " m²" : "" },
     { id: "_calc_wohn",   name: "Wohnfläche",   berechnet: wohnM2 > 0 ? Math.round(wohnM2) + " m²" : "" },
     { id: "_calc_nutz",   name: "Nutzfläche",   berechnet: nutzM2 > 0 ? Math.round(nutzM2) + " m²" : "" },
-    { id: "_calc_einh",   name: "Einheiten",    berechnet: localEinheiten.length > 0 ? String(localEinheiten.length) : "" },
+    { id: "_calc_einh",   name: "Einheiten",    berechnet: anzahlBerechnet > 0 ? String(anzahlBerechnet) : "" },
+  ].concat(aufschl ? [
+    { id: "_calc_einh_wohn",  name: "Einheiten – Wohnen",       berechnet: anzWohnen  > 0 ? String(anzWohnen)  : "", nurWennWert: true },
+    { id: "_calc_einh_teil",  name: "Einheiten – Teileigentum", berechnet: anzTeil    > 0 ? String(anzTeil)    : "", nurWennWert: true },
+    { id: "_calc_einh_gar",   name: "Einheiten – Garagen",      berechnet: anzGarage  > 0 ? String(anzGarage)  : "", nurWennWert: true },
+    { id: "_calc_einh_sp",    name: "Einheiten – Stellplätze",  berechnet: anzStellpl > 0 ? String(anzStellpl) : "", nurWennWert: true },
+    { id: "_calc_einh_sonst", name: "Einheiten – Sonstige",     berechnet: anzSonst   > 0 ? String(anzSonst)   : "", nurWennWert: true },
+  ] : []);
+  // Gewünschte Feld-Reihenfolge (DESIGN §70.3). Felder werden nach dieser Liste
+  // sortiert (Name-basiert); nicht gelistete (eigene Felder) hängen hinten an.
+  // Gilt für Aggregat-Stammkarte UND Gebäudekarte — je nach vorhandenen Feldern.
+  const FELD_REIHENFOLGE = [
+    // Objekt-Stammkarte
+    "VE-Nummer", "Verwaltungsart", "Straße", "PLZ", "Ort",
+    "Abstimmung nach", "Gesamt-MEA", "Wirtschaftsjahr",
+    "Grundbuch", "Flurstück", "Grundstücksfläche",
+    // Gebäudekarte
+    "Baujahr", "Stockwerke", "Vollsanierung", "Aufgänge", "Ein-/Ausgänge",
   ];
-  // Felder für die FieldList: berechnete Zeilen vorne (nur wenn die Karte
-  // Einheiten zeigt), dahinter die übrigen Stamm-/Eigenfelder. Vorhandene
-  // Override-Werte (value) aus allFields übernehmen; berechnet immer frisch.
+  // Calc-Zeilen-IDs in gewünschter Reihenfolge (kommen NACH den oben gelisteten
+  // gepflegten Feldern, vor evtl. eigenen Feldern).
+  const CALC_ORDER = ["_calc_gesamt", "_calc_wohn", "_calc_nutz", "_calc_einh",
+    "_calc_einh_wohn", "_calc_einh_teil", "_calc_einh_gar", "_calc_einh_sp", "_calc_einh_sonst"];
+  const sortRank = (f) => {
+    if (!f) return 9999;
+    const ci = CALC_ORDER.indexOf(f.id);
+    if (ci >= 0) return 1000 + ci;  // Calc-Block nach den Namensfeldern
+    const ni = FELD_REIHENFOLGE.indexOf(f.name);
+    return ni >= 0 ? ni : 2000;     // unbekannte (eigene) Felder ans Ende
+  };
+  const sortiereFelder = (arr) => arr
+    .map((f, i) => ({ f, i }))
+    .sort((a, b) => { const d = sortRank(a.f) - sortRank(b.f); return d !== 0 ? d : a.i - b.i; })
+    .map(x => x.f);
+
+  // Calc-Zeile bauen: berechneten Wert frisch, Override aus vorhandenem Feld.
+  const baueCalc = (quelle) => CALC_DEFS.map(d => {
+    const vorhanden = quelle.find(f => f.id === d.id);
+    return { id: d.id, name: d.name, type: "berechnet_override", _stamm: true,
+      berechnet: d.berechnet, value: vorhanden ? (vorhanden.value || "") : "",
+      nurWennWert: !!d.nurWennWert };
+  });
+  // Aufschlüsselungs-Zeilen mit leerem berechnetem Wert UND ohne Override raus
+  // (nurWennWert). Gesamt/Flächen/Einheiten-gesamt bleiben immer.
+  const sichtbareCalc = (calcArr) => calcArr.filter(f =>
+    !f.nurWennWert || (f.berechnet && String(f.berechnet).trim()) || (f.value && String(f.value).trim()));
+
+  // Felder für die FieldList: berechnete Zeilen + gepflegte Felder zusammen, dann
+  // nach FELD_REIHENFOLGE/CALC_ORDER einsortiert.
   const displayFields = zeigtEinheiten
-    ? [
-        ...CALC_DEFS.map(d => {
-          const vorhanden = allFields.find(f => f.id === d.id);
-          return { id: d.id, name: d.name, type: "berechnet_override", _stamm: true,
-            berechnet: d.berechnet, value: vorhanden ? (vorhanden.value || "") : "" };
-        }),
+    ? sortiereFelder([
+        ...sichtbareCalc(baueCalc(allFields)),
         ...allFields.filter(f => CALC_DEFS.every(d => d.id !== f.id)),
-      ]
+      ])
     : allFields;
   // Schreibt FieldList-Änderungen zurück: berechnete Zeilen nur behalten, wenn
   // ein Override gepflegt ist (sonst nicht persistieren — sie werden bei jedem
   // Render frisch erzeugt). Übrige Felder unverändert übernehmen.
   const setDisplayFields = !zeigtEinheiten ? setAllFields : (updater) => {
     setAllFields(prev => {
-      const prevDisplay = [
-        ...CALC_DEFS.map(d => {
-          const vorhanden = prev.find(f => f.id === d.id);
-          return { id: d.id, name: d.name, type: "berechnet_override", _stamm: true,
-            berechnet: d.berechnet, value: vorhanden ? (vorhanden.value || "") : "" };
-        }),
+      const prevDisplay = sortiereFelder([
+        ...sichtbareCalc(baueCalc(prev)),
         ...prev.filter(f => CALC_DEFS.every(d => d.id !== f.id)),
-      ];
+      ]);
       const next = typeof updater === "function" ? updater(prevDisplay) : updater;
       const calcMitOverride = next
         .filter(f => CALC_DEFS.some(d => d.id === f.id) && f.value && String(f.value).trim())
-        .map(f => { const { berechnet, ...rest } = f; return rest; });
+        .map(f => { const { berechnet, nurWennWert, ...rest } = f; return rest; });
       const rest = next.filter(f => CALC_DEFS.every(d => d.id !== f.id));
       return [...calcMitOverride, ...rest];
     });
@@ -5570,7 +5626,7 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
   const einhOverride = calcOverride("_calc_einh");
   const einhAnzeigeText = einhOverride
     ? (einhOverride.match(/einheit/i) ? einhOverride : einhOverride + " Einheiten")
-    : (localEinheiten.length > 0 ? localEinheiten.length + " Einheiten" : "");
+    : (anzahlBerechnet > 0 ? anzahlBerechnet + " Einheiten" : "");
 
   // Karten werden IMMER angezeigt — auch ohne Inhalt. Eine leere Karte zeigt,
   // dass es den Bereich gibt, und signalisiert ggf. Handlungsbedarf. (Früher
@@ -5586,7 +5642,7 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
         onSetIcon={(ic) => onUpdateKarte && onUpdateKarte({ ...karte, icon: ic })}
         onPickerOpenChange={setIconPickerAuf}
         expanded={effExpanded} setExpanded={toggleExpanded} sort={sort} immerOffen={immerOffen}
-        wohnM2={wohnM2} nutzM2={nutzM2} anzahlEinheiten={localEinheiten.length}
+        wohnM2={wohnM2} nutzM2={nutzM2} anzahlEinheiten={anzahlBerechnet}
         wohnText={zeigtEinheiten ? wohnAnzeigeText : null}
         nutzText={zeigtEinheiten ? nutzAnzeigeText : null}
         einhText={zeigtEinheiten ? einhAnzeigeText : null}
@@ -5746,6 +5802,13 @@ function KartenList({ karten, setKarten, t, accent, editMode, kontakte, setKonta
   const alleGeraete = (karten || [])
     .filter(k => k && k.kategorie === "technik")
     .reduce((acc, k) => acc.concat((k.technikGeraete || []).map(ergaenzeTechnikGeraetFelder)), []);
+  // Alle Einheiten des Objekts (über alle einheiten-haltenden Karten: Gebäude,
+  // Tiefgaragen/Stellplätze). Wird an die fixe Stammdaten-Karte gereicht, damit
+  // deren berechnete Zeilen (Gesamtfläche/Wohn/Nutz/Einheiten) die VE-weite
+  // Summe über ALLE Gebäude zeigen — nicht nur eines (DESIGN §70.1, Aggregat).
+  const aggregierteEinheiten = (karten || [])
+    .filter(k => k && Array.isArray(k.einheiten) && !(k.fixed && k.kategorie === "stammdaten"))
+    .flatMap(k => k.einheiten);
   // Verschiebt eine (nicht-fixe) Karte zum nächsten nicht-fixen Nachbarn in
   // Richtung (-1 hoch / +1 runter). Fixe Karten werden übersprungen.
   // Der Scroll bleibt erhalten — zentrale Logik im setKarten-Wrapper.
@@ -5791,6 +5854,7 @@ function KartenList({ karten, setKarten, t, accent, editMode, kontakte, setKonta
             <GebaeudeKarte karte={karte} t={t} accent={accent} editMode={editMode}
               kontakte={kontakte} setKontakte={setKontakte}
               alleGeraete={alleGeraete}
+              aggregierteEinheiten={aggregierteEinheiten}
               ohneEinheiten={ohneEinheiten} onKontaktClick={onKontaktClick}
               ves={ves} onVEClick={null}
               etvStamm={etvStamm} onSyncChange={onSyncChange}
@@ -6547,10 +6611,21 @@ function ergaenzeStammSyncFelder(karten) {
     const vorhandeneKeys = {};
     stamm.forEach(f => { if (f && f.syncKey) vorhandeneKeys[f.syncKey] = true; });
     const fehlen = STAMM_SYNC_FELDER.filter(sf => !vorhandeneKeys[sf.syncKey]);
-    if (fehlen.length === 0 && stamm.length === k.stamm.length) return k;
-    const maxId = stamm.reduce((m, f) => Math.max(m, (f && f.id) || 0), 0);
-    const neue = fehlen.map((sf, i) => ({ id: maxId + 1 + i, ...sf }));
-    return { ...k, stamm: stamm.concat(neue) };
+    // Grundbuch/Flurstück/Grundstücksfläche auf Objekt-Ebene ergänzen (§70.3),
+    // falls noch nicht vorhanden — leer; gepflegt werden sie vom Nutzer/Import.
+    const OBJEKT_GRUNDFELDER = [
+      { name: "Grundbuch",         value: "", type: "text" },
+      { name: "Flurstück",         value: "", type: "text" },
+      { name: "Grundstücksfläche", value: "", type: "number" },
+    ];
+    const vorhandeneNamen = {};
+    stamm.forEach(f => { if (f && f.name) vorhandeneNamen[f.name] = true; });
+    const fehlenGrund = OBJEKT_GRUNDFELDER.filter(gf => !vorhandeneNamen[gf.name]);
+    if (fehlen.length === 0 && fehlenGrund.length === 0 && stamm.length === k.stamm.length) return k;
+    let maxId = stamm.reduce((m, f) => Math.max(m, (f && f.id) || 0), 0);
+    const neue = fehlen.map((sf) => ({ id: ++maxId, ...sf }));
+    const neueGrund = fehlenGrund.map((gf) => ({ id: ++maxId, ...gf }));
+    return { ...k, stamm: stamm.concat(neue).concat(neueGrund) };
   });
 }
 
@@ -6572,6 +6647,11 @@ function buildInitialKarten(ve) {
         { id: 7, name: "Abstimmung nach", value: "MEA", type: "select", optionen: ["MEA", "Objekt", "Kopf"], immerSichtbar: true, syncKey: "abstimmung" },
         { id: 8, name: "Gesamt-MEA",     value: "1000", type: "select", optionen: ["1000", "10000"], freitextBei: "Andere…", freitextTyp: "number", immerSichtbar: true, syncKey: "gesamtanteile" },
         { id: 9, name: "Wirtschaftsjahr", value: "Kalenderjahr", type: "select", optionen: ["Kalenderjahr"], freitextBei: "Selbst definieren…", freitextTyp: "zeitraum", immerSichtbar: true, syncKey: "wirtschaftsjahr" },
+        // Grundbuch/Flurstück/Grundstücksfläche = Objekt-Ebene (eine WEG = i.d.R.
+        // ein Grundbuchblatt/Grundstück, auch bei mehreren Häusern). DESIGN §70.3.
+        { id: 10, name: "Grundbuch",          value: "", type: "text" },
+        { id: 11, name: "Flurstück",          value: "", type: "text" },
+        { id: 12, name: "Grundstücksfläche",  value: "", type: "number" },
       ],
       einheiten: [],
     },
@@ -6579,6 +6659,7 @@ function buildInitialKarten(ve) {
       stamm: [
         { id: 1, name: "Baujahr",       value: "",  type: "number", required: true },
         { id: 2, name: "Stockwerke",    value: "",  type: "number" },
+        { id: 5, name: "Vollsanierung", value: "",  type: "text" },
         { id: 3, name: "Aufgänge",      value: "",  type: "number" },
         { id: 4, name: "Ein-/Ausgänge", value: "",  type: "number" },
       ],
