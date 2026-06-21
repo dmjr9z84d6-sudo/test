@@ -921,7 +921,7 @@ function Avatar({ name, firma = false, size = 32, accent = KONTAKTE_FARBE, zuwei
         const status = z.status || "aktiv";
         const cur = proRolle[z.rolle];
         if (!cur || PRIO[status] > PRIO[cur.status]) {
-          proRolle[z.rolle] = { rolle: z.rolle, status, vorsitz: !!z.vorsitz, vertrag: !!z.vertrag };
+          proRolle[z.rolle] = { rolle: z.rolle, status, vorsitz: !!z.vorsitz, vertrag: !!z.vertrag, selbstnutzend: !!z.selbstnutzend };
         }
       });
       // Schritt 2: jede (deduplizierte) Rolle deterministisch in IHRE Ecke
@@ -938,7 +938,7 @@ function Avatar({ name, firma = false, size = 32, accent = KONTAKTE_FARBE, zuwei
         const pos = rolleEckPosition(def);
         const cur = eckBadges[pos];
         if (!cur || PRIO[r.status] > PRIO[cur.status]) {
-          eckBadges[pos] = { rolle: r.rolle, status: r.status, vorsitz: r.vorsitz, vertrag: r.vertrag };
+          eckBadges[pos] = { rolle: r.rolle, status: r.status, vorsitz: r.vorsitz, vertrag: r.vertrag, selbstnutzend: r.selbstnutzend };
         }
       });
     }
@@ -1004,7 +1004,7 @@ function Avatar({ name, firma = false, size = 32, accent = KONTAKTE_FARBE, zuwei
           {istVerwendungsModus
             ? <VerwendungBadge verwendung={eckBadges.OL.verwendung} size={badgeSize} status={eckBadges.OL.status}/>
             : <RolleBadge rolle={eckBadges.OL.rolle} size={badgeSize}
-                status={eckBadges.OL.status} vorsitz={eckBadges.OL.vorsitz} vertrag={eckBadges.OL.vertrag}/>}
+                status={eckBadges.OL.status} vorsitz={eckBadges.OL.vorsitz} vertrag={eckBadges.OL.vertrag} selbstnutzend={eckBadges.OL.selbstnutzend}/>}
         </div>
       )}
       {eckBadges.OR && (
@@ -1015,7 +1015,7 @@ function Avatar({ name, firma = false, size = 32, accent = KONTAKTE_FARBE, zuwei
           {istVerwendungsModus
             ? <VerwendungBadge verwendung={eckBadges.OR.verwendung} size={badgeSize} status={eckBadges.OR.status}/>
             : <RolleBadge rolle={eckBadges.OR.rolle} size={badgeSize}
-                status={eckBadges.OR.status} vorsitz={eckBadges.OR.vorsitz} vertrag={eckBadges.OR.vertrag}/>}
+                status={eckBadges.OR.status} vorsitz={eckBadges.OR.vorsitz} vertrag={eckBadges.OR.vertrag} selbstnutzend={eckBadges.OR.selbstnutzend}/>}
         </div>
       )}
       {eckBadges.UL && (
@@ -1026,7 +1026,7 @@ function Avatar({ name, firma = false, size = 32, accent = KONTAKTE_FARBE, zuwei
           {istVerwendungsModus
             ? <VerwendungBadge verwendung={eckBadges.UL.verwendung} size={badgeSize} status={eckBadges.UL.status}/>
             : <RolleBadge rolle={eckBadges.UL.rolle} size={badgeSize}
-                status={eckBadges.UL.status} vorsitz={eckBadges.UL.vorsitz} vertrag={eckBadges.UL.vertrag}/>}
+                status={eckBadges.UL.status} vorsitz={eckBadges.UL.vorsitz} vertrag={eckBadges.UL.vertrag} selbstnutzend={eckBadges.UL.selbstnutzend}/>}
         </div>
       )}
       {eckBadges.UR && (
@@ -1037,7 +1037,7 @@ function Avatar({ name, firma = false, size = 32, accent = KONTAKTE_FARBE, zuwei
           {istVerwendungsModus
             ? <VerwendungBadge verwendung={eckBadges.UR.verwendung} size={badgeSize} status={eckBadges.UR.status}/>
             : <RolleBadge rolle={eckBadges.UR.rolle} size={badgeSize}
-                status={eckBadges.UR.status} vorsitz={eckBadges.UR.vorsitz} vertrag={eckBadges.UR.vertrag}/>}
+                status={eckBadges.UR.status} vorsitz={eckBadges.UR.vorsitz} vertrag={eckBadges.UR.vertrag} selbstnutzend={eckBadges.UR.selbstnutzend}/>}
         </div>
       )}
     </div>

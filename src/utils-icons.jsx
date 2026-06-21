@@ -11,8 +11,8 @@ import {
 } from "./utils-basis.js";
 import {
   DEFAULT_SETTINGS, ausgehendeBefugnisse, belegPhaseZuStatus, belegungsPhase,
-  bewohnerRecht, istVertragspartei, migriereKontaktZuweisungen, objektInGruppe,
-  teileVon
+  bewohnerRecht, istSelbstnutzerInEinheit, istVertragspartei,
+  migriereKontaktZuweisungen, objektInGruppe, teileVon
 } from "./datenmodell.js";
 
 // ╔═════════════════════════════════════════════════════════════════════════╗
@@ -1159,7 +1159,17 @@ function zuweisungenFuerAvatar(k, objektId, alleKontakte, ves) {
   const out = [...belegung];
   (k.besitz || []).forEach(b => {
     if (objektId && b.objektId !== objektId) return;
-    out.push({ rolle: b.rolle, status: b.status || "aktiv", vorsitz: false });
+    // Goldener Ring am Eck-Avatar bei Eigentümer-Selbstnutzung — analog zum Ring
+    // an der Eigentümer-Rollenkarte (DESIGN §69.1). Quelle ist die Belegung der
+    // zugehörigen Einheit (istSelbstnutzerInEinheit), nicht ein Flag.
+    let selbstnutzend = false;
+    if (!b.bis && Array.isArray(ves)) {
+      const ve = ves.find(v => v && v.id === b.objektId);
+      const einheit = ve && Array.isArray(ve.einheiten)
+        ? ve.einheiten.find(e => e && e.id === b.einheitId) : null;
+      if (einheit) selbstnutzend = istSelbstnutzerInEinheit(einheit, k.id);
+    }
+    out.push({ rolle: b.rolle || "Eigentümer", status: b.status || "aktiv", vorsitz: false, selbstnutzend });
   });
   (k.zustaendigkeiten || []).forEach(z => {
     const ziel = z.ziel || {};

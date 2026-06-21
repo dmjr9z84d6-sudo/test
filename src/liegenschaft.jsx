@@ -2117,6 +2117,58 @@ function EinheitDetail({ einheit, t, accent, editMode, belegungEdit = false, onC
             </div>
           )}
 
+          {/* Räume + rechtliche Stellung bei NICHT unterteilten Einheiten (genau ein Teil).
+              Bisher wurden Räume nur im unterteilt-Zweig gezeigt → bei der Normaleinheit
+              (ein Teil) blieben hinterlegte Räume unsichtbar. Block A (v11.93): Raumliste,
+              Sondereigentum-Stellung und verknüpfter Stellplatz auch hier anzeigen.
+              Stellplätze haben ihren eigenen „Rechtliche Stellung"-Block weiter unten. */}
+          {!unterteilt && !isStellplatz && teile[teilIdxSicher] && (
+            <div style={{ marginTop: 12, padding: "10px 12px", background: t.bg,
+              border: `1px solid ${t.border}`, borderRadius: RAD.md }}>
+              <TeilRaeume raeume={teile[teilIdxSicher].raeume} t={t} accent="#0080FF" editMode={strukturEdit}
+                teilFlaeche={teile[teilIdxSicher].flaeche}
+                onUebernehmeFlaeche={(summe) => { setTeilFeld(teilIdxSicher, "flaeche", String(summe));
+                  setFields(fields.map(f => f.name === "Fläche" ? { ...f, value: String(summe) } : f)); }}
+                onAdd={(name) => setTeile(fuegeTeilRaum(teile, teilIdxSicher, name, ""))}
+                onChange={(raumId, daten) => setTeile(aendereTeilRaum(teile, teilIdxSicher, raumId, daten))}
+                onRemove={(raumId) => setTeile(entferneTeilRaum(teile, teilIdxSicher, raumId))}
+                onZaehlerAdd={(raumId) => setTeile(fuegeRaumZaehler(teile, teilIdxSicher, raumId))}
+                onZaehlerChange={(raumId, zId, daten) => setTeile(aendereRaumZaehler(teile, teilIdxSicher, raumId, zId, daten))}
+                onZaehlerRemove={(raumId, zId) => setTeile(entferneRaumZaehler(teile, teilIdxSicher, raumId, zId))}/>
+            </div>
+          )}
+
+          {/* Sondereigentum-Stellung NUR zeigen, wenn sie von „eigenständig" abweicht
+              oder ein Stellplatz verknüpft ist (Block A v11.93). Bei der Standard-Einheit
+              (eigenständig, kein verknüpfter SP) bleibt die Anzeige bewusst leer —
+              „überraschen, nicht überfordern". Read-only; Bearbeiten läuft über den
+              Stellplatz-Block bzw. künftige Editoren. */}
+          {!isStellplatz && (spStellung !== "eigenstaendig" || spEinheitId != null) && (
+            <div style={{ marginTop: 12, padding: "10px 12px", background: t.bg,
+              border: `1px solid ${t.border}`, borderRadius: RAD.md }}>
+              <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                Rechtliche Stellung
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontSize: FS.s, color: t.sub }}>Sondereigentum</span>
+                <span style={{ fontSize: FS.s, color: t.text, fontWeight: FW.medium, textAlign: "right" }}>
+                  {spStellung === "se_bestandteil" ? "SE-Bestandteil einer Einheit"
+                    : spStellung === "ge_snr" ? "Gemeinschaft + Sondernutzungsrecht"
+                    : "Eigenständig"}
+                </span>
+              </div>
+              {spVerknuepfteEinheit && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 5 }}>
+                  <span style={{ fontSize: FS.s, color: t.sub }}>Verknüpft mit</span>
+                  <span style={{ fontSize: FS.s, color: t.text, fontWeight: FW.medium, textAlign: "right" }}>
+                    Einheit {spVerknuepfteEinheit.nr || spVerknuepfteEinheit.id}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Pro-Teil-Stammdaten — nur bei Unterteilung. Pill-Zeile (Teile wählen)
               + runder „+" rechts; darunter nur die aktive Teil-Karte. Fläche/Zimmer/
               Lage je Teil; Eigentümer/MEA/VerwNr bleiben gemeinsam (oben). */}
