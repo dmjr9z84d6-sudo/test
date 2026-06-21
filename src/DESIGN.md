@@ -2834,3 +2834,142 @@ verschwindet die EN überall gleichzeitig.
 
 **Goldener Ring bleibt:** Er hängt an `karteIstSelbstnutzend` → `istSelbstnutzerInEinheit`, das
 direkt die Belegung liest — unabhängig von der (jetzt unterdrückten) abgeleiteten Rolle.
+
+### §69.5 „Eigennutzer" ist gar keine Rolle mehr — generelle Entfernung (v11.92)
+**Entscheidung (Benny):** „Eigennutzer" soll **komplett aus den Rollen raus**. Die Selbstnutzung
+reicht über den goldenen Ring an der Eigentümer-Karte (§69.1) und „selbst bewohnt" an der Einheit
+(§69.2) — eine eigene Rolle/Badge ist überflüssig und verwirrend. Erweitert §69.4 (das nur den
+Spezialfall Eigentümer⇄Selbstnutzer abdeckte) auf den generellen Fall.
+
+**Drei Änderungen:**
+1. **`constants.js` — `DEFAULT_ROLLEN`:** Der Eintrag `{ name:"Eigennutzer", … }` (slot ve) ist
+   entfernt. Damit erscheint „Eigennutzer" nicht mehr in der Rollen-Verwaltung
+   (Einstellungen → Rollen, Gruppe „Einheit / Nutzung") und ist nirgends mehr als Rolle wählbar.
+2. **`utils-icons.jsx` — `belegungsRollenFuerKontakt`:** Mitglieder mit `recht==="eigennutzer"`
+   werden GENERELL übersprungen (vorher: nur bei Eigentümer-Identität). Speist Eck-Avatar UND
+   Rollenkarte → EN verschwindet an beiden Anzeigewegen für JEDEN, der das Recht trägt.
+3. **`datenmodell.js` — `objektZuweisungenAusEinheiten`:** Gleiche generelle Unterdrückung im
+   gespeicherten `objektZuweisungen`-Index (`recht==="eigennutzer"` → keine Zuweisung). Damit
+   greift es auch in Filtern/Listen, die über den Index laufen.
+
+**Settings-Migration:** `bereinigeRollenSettings` (utils-icons.jsx) hat „Eigennutzer" im
+`ENTFERNEN`-Set — eine eventuell gespeicherte `settings.rollen`-Liste verliert den Alt-Eintrag
+automatisch beim Laden (analog zur früheren „Bewohner"-Rolle). Kein separates Migrationsskript.
+
+**Was BLEIBT (bewusst unangetastet):** Das Bewohner-**Recht** `eigennutzer` in `BEWOHNER_RECHTE`
+(`datenmodell.js`) inkl. `label:"Eigennutzer"`. Es ist weiterhin Quelle für: goldenen Ring
+(`istSelbstnutzerInEinheit`/`karteIstSelbstnutzend`), „selbst bewohnt"-Chip, die „Eigennutzer"-
+Zeile in den Einheit-Stammdaten (`liegenschaft.jsx` nutzerLabel) sowie Klingelschild/Bewohnerlisten
+(`listen-tools.jsx`). „Eigennutzer" ist also ein **Recht**, keine **Rolle** — diese Trennung ist
+ab v11.92 die kanonische.
+
+> **Verifiziert mit echten Exportdaten (Andreas+Petra, beide 50%-Eigentümer + selbstnutzend in
+> Einheit e2):** Rolle aus DEFAULT_ROLLEN weg; `belegungsRollenFuerKontakt` liefert für beide `[]`;
+> `objektZuweisungenAusEinheiten`-Index enthält nur Eigentümer/Mieter/Nießbraucher (kein
+> Eigennutzer); Mieter bleibt erhalten; `bereinigeRollenSettings` entfernt Alt-Eintrag.
+
+### §69.6 Goldener Ring auch am Eck-Avatar (oben am Kontaktkopf) (v11.93)
+**Problem:** Der goldene Selbstnutzer-Ring (§69.1) erschien nur an der Eigentümer-**Rollenkarte**,
+nicht am **Eck-Avatar** oben neben dem Namen. Inkonsistent: dieselbe Eigentümer-Selbstnutzung,
+zwei Anzeigeorte, nur einer mit Ring.
+
+**Ursache:** Der Kopf-Avatar bezieht seine Eck-Badges aus `zuweisungenFuerAvatar()`. Die
+Eigentümer-Zuweisung (Quelle `kontakt.besitz[]`) trug aber **kein** `selbstnutzend`-Signal — anders
+als die Rollenkarte, die es über `karteIstSelbstnutzend` selbst berechnet. Der `RolleBadge` kann den
+goldRing bei `selbstnutzend` rendern (Bedingung `vorsitz || vertrag || selbstnutzend`), bekam das
+Flag am Eck aber nie.
+
+**Fix (3 Stellen, alle additiv):**
+1. `utils-icons.jsx` · `zuweisungenFuerAvatar`: pro `besitz`-Eintrag wird `selbstnutzend` gesetzt
+   (`istSelbstnutzerInEinheit(einheit, k.id)`, Einheit über `besitz.objektId/einheitId` aufgelöst).
+   Nebenbei `rolle: b.rolle || "Eigentümer"` (besitz-Einträge tragen kein `rolle`-Feld).
+2. `components.jsx` · `Avatar`: `selbstnutzend` wird durch `proRolle` → `eckBadges` → alle vier
+   Eck-`RolleBadge`-Aufrufe (OL/OR/UL/UR) durchgereicht.
+3. `RolleBadge` selbst unverändert — konnte den Ring schon.
+
+Der Ring hängt weiter an `istSelbstnutzerInEinheit` (Belegung, §69.3), nicht an einem Flag. Mieter
+und fremde Eigentümer (nicht selbstnutzend) bekommen erwartungsgemäß keinen Ring.
+
+---
+
+## §70 Einheit-Stammdaten: Räume + Sondereigentum-Stellung sichtbar (v11.93, „Block A")
+
+**Anlass:** Die Einheit-Stammdaten zeigten nur 7 Stammfelder (Nr., Verwaltungsnr., Typ, Fläche,
+MEA, Lage, Zimmer). Hinterlegte **Räume** (Name, Art, Lage, Fläche — z. B. 7 Räume je Wohnung)
+waren komplett unsichtbar, obwohl im Datenmodell vorhanden (`teil.raeume[]`).
+
+**Ursache:** Der Räume-Block (`TeilRaeume`) wurde nur im `unterteilt`-Zweig gerendert — also nur bei
+Einheiten mit ≥2 Teilen. Die Normaleinheit (genau ein Teil) erreichte den Block nie. `TeilRaeume`
+selbst zeigt Räume auch read-only korrekt (mit „Keine Räume hinterlegt"-Fallback).
+
+**Block A (umgesetzt v11.93):**
+- **Räume immer zeigen:** Bei `!unterteilt && !isStellplatz` wird `TeilRaeume` mit `teile[0]`
+  separat gerendert (direkt nach der FieldList, vor dem `unterteilt`-Zweig). Liste mit Name,
+  Fläche, Zähleranzahl, „nicht abrechenbar"-Markierung; im Edit Σ-Raumflächen + „Als Teilfläche
+  übernehmen". Sondernutzung an Räumen (`snrAn`) erscheint mit, sobald gesetzt.
+- **Rechtliche Stellung:** Sektion „Sondereigentum" + „Verknüpft mit Einheit N", aber **nur wenn**
+  `spStellung !== "eigenstaendig"` ODER `spEinheitId != null`. Bei der Standard-Einheit
+  (eigenständig, kein verknüpfter Stellplatz) bleibt sie bewusst leer — „überraschen, nicht
+  überfordern".
+
+**Block B (NICHT umgesetzt, Roadmap — echte Modell-Lücken laut Lücken-Analyse TE):** L1
+Eigentumsquote pro Miteigentümer (über Verteilerschlüssel weitgehend entschärft), L3 Erbbaurecht,
+L4 Pacht/Gewerbe-Nutzungsart strukturiert. Diese brauchen Datenmodell-Erweiterungen, kein Schnellschuss.
+
+> Verifiziert (echte Daten, Einheit e2 mit 7 Räumen): „Räume (7)"-Header + Wohnzimmer + Terrasse
+> im gerenderten Stammdaten-Tab sichtbar, ERR=0.
+
+### §70.1 Berechnete Stammdaten-Zeilen mit Override: Gesamtfläche · Wohnfläche · Nutzfläche · Einheiten (v11.94)
+
+**Anlass:** Der Gebäudekarten-Header (`GebaeudeKopf`) zeigte „513 m² Wohnfl. · 118 m² Nutzfl. ·
+7 Einheiten" als reine Live-Berechnung aus den Einheiten. Unten in den Stammdaten tauchten diese
+Werte gar nicht auf — sie existierten nur im Header, nicht als gepflegte Felder.
+
+**Lösung — neuer Feldtyp `berechnet_override` (datenmodell.js `FIELD_TYPES`):** ein berechneter Wert
+mit optionalem manuellem Override. Bewusst **nicht** in `ANLEGE_FELDTYPEN` (nicht manuell anlegbar).
+- **Lesemodus:** zeigt den Override-Wert (`field.value`), falls gepflegt, sonst den berechneten Wert
+  (`field.berechnet`). Kein „(berechnet)"-Zusatz.
+- **Edit-Modus:** Eingabefeld mit dem berechneten Wert als Platzhalter; darunter ein dezenter Hinweis
+  „berechnet: 513 m²" (+ „(wird angezeigt)", solange kein Override gesetzt ist). Leer lassen = der
+  berechnete Wert gilt weiter.
+- Render in `FieldRow` (components.jsx) als eigener Zweig nach `istBerechnet`; `istLeer` in
+  `FieldList` lässt diese Felder im Lesemodus **immer** sichtbar (zeigen mind. den berechneten Wert).
+  Der `computed`/`readOnly`-Zweig bleibt strikt read-only — `berechnet_override` ist davon getrennt.
+
+**Einspeisung (liegenschaft.jsx `GebaeudeKarte`):** Auf Karten, die Einheiten tragen
+(`zeigtEinheiten`), werden vier Zeilen **vorne** in die Stammdaten gehängt — Reihenfolge
+**Gesamtfläche · Wohnfläche · Nutzfläche · Einheiten** (feste IDs `_calc_gesamt/_calc_wohn/
+_calc_nutz/_calc_einh`). Berechnung wie im Header: Wohnfläche = Σ `flaecheVon` der Nicht-
+Teileigentum/Nicht-Stellplatz-Einheiten, Nutzfläche = Σ Teileigentum, Gesamtfläche = Summe beider,
+Einheiten = Anzahl. Die berechneten Zeilen werden bei jedem Render frisch erzeugt; **nur** wenn ein
+Override gepflegt ist, wird das Feld als normales Stammfeld (`stamm[]`) persistiert — kein neues
+Datenmodell-Feld nötig. Auf Karten ohne Einheiten (Technik/Verträge/Versicherungen) erscheinen die
+Zeilen nicht.
+
+**Header zeigt den Override:** `GebaeudeKopf` nimmt optionale fertige Anzeige-Strings (`wohnText`/
+`nutzText`/`einhText`) entgegen — ist ein Override gepflegt, steht er auch oben im Header statt der
+Teilesumme. Fehlen die Props (z. B. Technik-Karte), greift der alte Zahlen-Fallback. Abwärtskompatibel.
+
+> Verifiziert (isolierter Mit-Daten-Render, Einheiten 200+313 m² Wohn + 118 m² Nutz): Lese ohne
+> Override zeigt „513"/„118"/„3" ohne Hinweis; Edit zeigt „berechnet:"-Hinweis; Lese+Override (Wohn=
+> „520 m²") zeigt „520" statt „513"; Edit+Override zeigt Override + berechnet-Hinweis gleichzeitig.
+> Mount ERR=0, DOM 750.
+
+### §70.2 Räume-Abrechenbar im Lesemodus symmetrisch (v11.94)
+
+**Anlass:** Im Raum-Lesemodus (`TeilRaeume`) erschien nur „nicht abrechenbar" (kursiv-grau), wenn
+`abrechnungsrelevant === false`. Abrechenbare Räume zeigten **nichts** — die Pflege war stumm, man
+konnte „abrechenbar" nicht von „noch nicht gesetzt" unterscheiden.
+
+**Lösung:** Symmetrische Anzeige je Raum: „abrechenbar" in Grün (#10B981) bei
+`abrechnungsrelevant !== false`, „nicht abrechenbar" in `t.muted` (grau) bei `=== false` — **beide
+kursiv** (`FS.xs`). Default greift weiter (`!== false` → abrechenbar; App-Default `true`).
+
+**Editierbarkeit war schon vorhanden:** Über den Einheit-Stift (`strukturEdit = editMode ||
+belegungEdit`, §21.4) wird `TeilRaeume` editierbar; je Raum gibt es die Checkbox „Abrechnungsrelevant".
+Kein Umbau — nur der Lesemodus wurde klarer. Die Außenflächen-Regel (Balkon/Terrasse/Loggia/
+Dachterrasse/Garten = nicht abrechenbar, Innenräume = abrechenbar) ist eine **Daten**-Konvention,
+keine Code-Logik; sie gehört in den JSON-Bauplan (`AUFTRAG_AllesDa_JSON_bauen.md`).
+
+> Verifiziert (isolierter Render): 3 Räume → 2× „abrechenbar" (inkl. Raum ohne Flag), 1× „nicht
+> abrechenbar" (Balkon), Grün present; Edit zeigt 3 Checkboxen, keine Lese-Hinweise. ERR=0.

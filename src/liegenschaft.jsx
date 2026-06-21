@@ -1747,9 +1747,10 @@ function TeilRaeume({ raeume, t, accent, editMode, onAdd, onChange, onRemove,
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ flex: 1, fontSize: FS.m, color: t.text, fontWeight: FW.semi }}>{r.name}</span>
                   {r.flaeche && <span style={{ fontSize: FS.s, color: t.sub }}>{r.flaeche} m²</span>}
-                  {r.abrechnungsrelevant === false && (
-                    <span style={{ fontSize: FS.xs, color: t.muted, fontStyle: "italic" }}>nicht abrechenbar</span>
-                  )}
+                  <span style={{ fontSize: FS.xs, fontStyle: "italic",
+                    color: r.abrechnungsrelevant === false ? t.muted : "#10B981" }}>
+                    {r.abrechnungsrelevant === false ? "nicht abrechenbar" : "abrechenbar"}
+                  </span>
                   {anzZaehler > 0 && (
                     <span style={{ fontSize: FS.xs, color: accent }}>{anzZaehler} Zähler</span>
                   )}
