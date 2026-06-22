@@ -5555,7 +5555,7 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
     "Abstimmung nach", "Gesamt-MEA", "Wirtschaftsjahr",
     "Grundbuch", "Flurstück", "Grundstücksfläche",
     // Gebäudekarte
-    "Baujahr", "Stockwerke", "Vollsanierung", "Aufgänge", "Ein-/Ausgänge",
+    "Baujahr", "Vollsanierung", "Stockwerke", "Aufgänge", "Ein-/Ausgänge",
   ];
   // Calc-Zeilen-IDs in gewünschter Reihenfolge (kommen NACH den oben gelisteten
   // gepflegten Feldern, vor evtl. eigenen Feldern).
