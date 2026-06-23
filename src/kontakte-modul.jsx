@@ -3896,6 +3896,9 @@ function IconLegende({ kontakte = [], t, accent, listenAnsicht = "karten", onEin
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: FS.s, color: t.text }}>
                   <RolleBadge rolle="Verwaltungsbeirat" size={22} status="aktiv" vertrag={true}/> mit Vertrag
                 </div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: FS.s, color: t.text }}>
+                  <RolleBadge rolle="Eigentümer" size={22} status="aktiv" selbstnutzend={true}/> selbst bewohnt
+                </div>
               </div>
             </>
           )}

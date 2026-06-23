@@ -2705,7 +2705,7 @@ function FieldRow({ field, index, t, accent, editMode, setFields, kontakte = [],
     <div
       style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 2px",
         borderBottom: `1px solid ${t.border}40`, transition: "background 0.1s", position: "relative" }}>
-      <div style={{ width: 112, fontSize: FS.s, color: t.sub, flexShrink: 0, display: "flex", alignItems: "center", minWidth: 0 }}>
+      <div style={{ minWidth: 112, maxWidth: "62%", fontSize: FS.s, color: t.sub, flexShrink: 0, display: "flex", alignItems: "center" }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {field.name}{field.required && <span style={{ color: "#EF4444" }}>*</span>}
         </span>

@@ -5554,7 +5554,7 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
   const calcGesamtM2 = wohnM2 + nutzM2;
   const aufschl = istFixeStammkarte;  // Einheiten-Aufschlüsselung nur auf der Aggregat-Stammkarte
   const CALC_DEFS = [
-    { id: "_calc_gesamt", name: "Gesamtfläche", berechnet: calcGesamtM2 > 0 ? Math.round(calcGesamtM2) + " m²" : "" },
+    { id: "_calc_gesamt", name: "Gesamtfläche (Wohn + Nutz)", berechnet: calcGesamtM2 > 0 ? Math.round(calcGesamtM2) + " m²" : "" },
     { id: "_calc_wohn",   name: "Wohnfläche",   berechnet: wohnM2 > 0 ? Math.round(wohnM2) + " m²" : "" },
     { id: "_calc_nutz",   name: "Nutzfläche",   berechnet: nutzM2 > 0 ? Math.round(nutzM2) + " m²" : "" },
     { id: "_calc_einh",   name: "Einheiten",    berechnet: anzahlBerechnet > 0 ? String(anzahlBerechnet) : "" },

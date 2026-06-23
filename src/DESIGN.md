@@ -543,6 +543,7 @@ Eine Rolle hat: `{ name, kuerzel, color, slot, aktiv }`. Reihenfolge im Array z�
 
 - `<RolleBadge rolle="Eigentümer" size={20} status="aktiv" vorsitz={false} selbstnutzend={false}/>` — eine einzelne farbige Pille mit Kürzel.
 - **Goldener Ring** bei `vorsitz` (VBR) ODER `vertrag` (Firmen-Zuständigkeit) ODER `selbstnutzend` (Eigentümer wohnt selbst). Alle drei markieren eine „besondere Stellung" und kollidieren nie am selben Badge (Eigentümer ist nie zugleich Vorsitz/Vertrag an DEMSELBEN Badge). `selbstnutzend` wird in `RollenkarteBox` LIVE aus der Belegung abgeleitet (`karteIstSelbstnutzend`), nie gespeichert — das tote `selbstnutzer`-Flag bleibt tot.
+- **Legende-Pflicht:** Jede der drei Ring-Bedingungen MUSS in `IconLegende` einen eigenen Eintrag haben (Vorsitz/VBV, mit Vertrag, „selbst bewohnt"). Wer am Ring oder an einer anderen Badge-Bedingung baut, pflegt die Legende mit (siehe §48.3).
 - Avatar-Eck-Badges entstehen automatisch über `<Avatar zuweisungen={...}/>`.
 - (Hinweis v9.66: das ungenutzte Plural-Wrapper `RollenBadges` wurde bei der Tot-Code-Bereinigung entfernt.)
 
@@ -2214,6 +2215,24 @@ der Sektions-ID (objekte | kontakte | kalender), optional Scroll zu `anker`.
   Buttons sind ungültiges HTML).
 - Kalender-Legende feuert `sektion:"kalender"`, Kontakte-Legende
   `sektion:"kontakte"`. Objekte-Screen behält seine bestehende Inline-Logik.
+
+### 48.3 Legende synchron zur Symbolik halten (PFLICHT, ab v12.01)
+Die Legenden sind die einzige Erklärung der am Avatar/an der Einheit genutzten
+Symbole — sie müssen **vollständig und ohne Überschuss** sein. Regel: Wer an der
+Symbolik baut (Rollen-Badges, Status-Stile, Ring-Auslöser, Verwendungs-Badges),
+passt die zuständige Legende mit an oder prüft mindestens, dass sie alle real
+verwendeten Symbole zeigt — und nichts Totes mehr listet.
+- `IconLegende` (Kontakte, in `kontakte-modul.jsx`): Rollen-Kürzel (dynamisch aus
+  genutzten Rollen), Status (aktiv/werdend/ehemalig), Goldener Ring. Der Ring hat
+  DREI Auslöser → drei Einträge: **Vorsitz (VBV)**, **mit Vertrag**,
+  **„selbst bewohnt"** (`selbstnutzend`). Letzterer fehlte bis v12.00 und wurde in
+  v12.01 ergänzt — Lehre: bei jeder neuen Badge-Bedingung sofort den passenden
+  Legenden-Eintrag setzen.
+- `ObjektLegende` (Objekte/Einheiten): Verwendungs-Badges an Einheiten — analog
+  mitdenken, wenn sich Verwendungen/Belegungs-Badges ändern.
+- Prüf-Methode: isolierter Mit-Daten-Render der aufgeklappten Legende (auslösenden
+  `offen`-State setzen) und gegen die Bedingungen in `RolleBadge` / dem
+  Verwendungs-Badge abgleichen.
 
 ## §49 „Detail bleibt offen" beim Screen-Wechsel (v11.05)
 
