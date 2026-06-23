@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  ACCENT, FS, FW, RAD, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
+  ACCENT, FS, FW, RAD, KACHEL_GRID, KACHEL_W, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
 } from "./constants.js";
 import {
   datumDe, istEmailGueltig, istPlzGueltig, istTelefonGueltig, istUrlGueltig, joinPlzOrt
@@ -3671,6 +3671,11 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
       border: ohneRahmen ? "none" : `1px solid ${bc}`,
       borderRadius: ohneRahmen ? 0 : RAD.lg,
       overflow: "hidden",
+      // Karte füllt ihre Grid-Zelle in voller Höhe (das Grid streckt die Zellen
+      // auf gleiche Höhe). So klebt die Statusleiste unten und es bleibt KEIN
+      // dunkler Grid-Hintergrund-Streifen unter kürzeren Karten.
+      height: "100%", display: "flex", flexDirection: "column",
+      background: istFirma ? t.surface : t.card,
       scrollMarginTop: "var(--ad-header-h, 200px)" }}
       onMouseEnter={e => { if (!aktiv) e.currentTarget.style.transform = "translateY(-1px)"; }}
       onMouseLeave={e => { if (!aktiv) e.currentTarget.style.transform = "none"; }}>
@@ -3678,7 +3683,7 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
         display: "flex", alignItems: "center", gap: 12,
         padding: "10px 12px", boxSizing: "border-box",
         background: istFirma ? t.surface : t.card,
-      }}>
+        flex: 1, minHeight: 0 }}>
         {/* Links: Avatar — Wrapper 48px (38 Avatar + 10 Spielraum für Eck-Badges) */}
         <div style={{ width: 48, flexShrink: 0, display: "flex",
           alignItems: "center", justifyContent: "center" }}>
@@ -3691,6 +3696,9 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
           <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: farbe,
             textDecoration: istFirma ? "underline" : "none", textDecorationColor: farbe,
             textDecorationThickness: 2, textUnderlineOffset: 4,
+            // overflow:hidden (für Ellipsis) clippt sonst die 4px tiefer liegende
+            // Unterstreichung weg → bei Firmen etwas Unterkante schaffen.
+            paddingBottom: istFirma ? 4 : 0,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {name || "—"}
           </div>
@@ -4209,14 +4217,24 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   const personenGef = sortKontakte(gefiltert.filter(k => k.typ === "person"), sortSet);
   const firmenGef   = sortKontakte(gefiltert.filter(k => k.typ === "firma"),   sortSet);
 
-  // Auto-Grid: Spalten sind exakt minmax(280px, 1fr); bei wenig Inhalt füllen
-  // leere Slots den Rest, sodass die vorhandenen Karten nicht aufgeblasen werden.
-  const wrapStyle = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-    gap: 10,
-    gridAutoFlow: "dense",
-  };
+  // Kontakt-Legende: steht in ALLEN Zuständen (auch bei offener Detailkarte),
+  // damit man jederzeit nachschlagen kann — analog zur Objekt-Legende.
+  // Ausblendbar via settings.legendeKontakte (Prop legendeAn).
+  const kontaktLegendeEl = (legendeAn && (personenGef.length > 0 || firmenGef.length > 0)) ? (
+    <IconLegende kontakte={[...personenGef, ...firmenGef]} t={t} accent={accent}
+      listenAnsicht={listenAnsicht}
+      onEinstellen={() => {
+        try {
+          window.dispatchEvent(new CustomEvent("allesda:goto-einstellungen",
+            { detail: { sektion: "kontakte" } }));
+        } catch (err) {}
+      }}/>
+  ) : null;
+
+  // Einheitliches KACHEL_GRID (feste Kachelbreite, nie gedehnt) — identisch zu
+  // Objekten/Einstellungen. Bei wenig Inhalt bleibt rechts Abstand statt
+  // breitgezogener Karten.
+  const wrapStyle = { ...KACHEL_GRID, gridAutoFlow: "dense" };
 
   // Master-Detail: linke schmale Spalte mit Karten, rechts Detail
   const windowW = useWindowWidth();
@@ -4237,9 +4255,7 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
       {zeigePersonen && personenGef.length > 0 && (
         <div style={istListe
           ? { display: "flex", flexDirection: "column", gap: 6 }
-          : { display: "grid",
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              gap: 8, alignContent: "start" }}>
+          : { ...KACHEL_GRID, alignContent: "start" }}>
           {personenGef.map(k => renderKontaktItem(k, aktiv,
             () => setAktiv(aktiv === k.id ? null : k.id), false))}
         </div>
@@ -4248,9 +4264,7 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
         <div style={istListe
           ? { display: "flex", flexDirection: "column", gap: 6,
               marginTop: (zeigePersonen && personenGef.length > 0) ? 12 : 0 }
-          : { display: "grid",
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              gap: 8, alignContent: "start",
+          : { ...KACHEL_GRID, alignContent: "start",
               marginTop: (zeigePersonen && personenGef.length > 0) ? 12 : 0 }}>
           {firmenGef.map(k => renderKontaktItem(k, aktiv,
             () => setAktiv(aktiv === k.id ? null : k.id), false))}
@@ -4269,8 +4283,9 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
 
   if (hatOffen && istDesktop) {
     return (
-      <>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, minWidth: 0 }}>
       <KbZurueckHook onClick={() => setAktiv(null)}/>
+      {kontaktLegendeEl}
       <KontakteMasterDetail
         cardWidth={cardWidth}
         detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil}
@@ -4282,7 +4297,7 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
         onVEClick={onVEClick} setAktiv={setAktiv}
         updateKontakt={updateKontakt}
         onDelete={deleteKontakt}/>
-      </>
+      </div>
     );
   }
 
@@ -4337,16 +4352,7 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   return (
     <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
       {/* Aufklappbare Legende — erklärt die genutzten Rollen-Badges, Status & Ring. */}
-      {legendeAn && (personenGef.length > 0 || firmenGef.length > 0) && (
-        <IconLegende kontakte={[...personenGef, ...firmenGef]} t={t} accent={accent}
-          listenAnsicht={listenAnsicht}
-          onEinstellen={() => {
-            try {
-              window.dispatchEvent(new CustomEvent("allesda:goto-einstellungen",
-                { detail: { sektion: "kontakte" } }));
-            } catch (err) {}
-          }}/>
-      )}
+      {kontaktLegendeEl}
       {/* Personen — kein Section-Header mehr, die Filter-Buttons oben
           dienen als Gliederung. */}
       {zeigePersonen && personenGef.length > 0 && renderGruppe(personenGef, "person")}

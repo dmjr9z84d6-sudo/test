@@ -31,6 +31,24 @@ export const RAD = { sm: 6, ms: 8, md: 9, ml: 10, lg: 12, xl: 16, pill: 999, ful
 export const FS  = { xxs: 9, xs: 10, s: 11, m: 12, l: 13, xl: 14, input: 16, icon: 18, xxl: 20 };
 export const FW  = { regular: 400, semi: 500, medium: 600, bold: 700, heavy: 800 };
 
+// ── Einheitliche Kachel-Breite (systemweit) ─────────────────────────────────
+// Objekt-/Kontakt-Kacheln haben IMMER dieselbe feste Breite und werden NIE
+// gedehnt (kein 1fr). So sehen sie in Liste, Master-Detail, Kontakten und
+// Einstellungen identisch aus; bei viel Platz bleibt rechts Abstand statt
+// breitgezogener Karten. Auf schmalen Schirmen (Mobil) fällt das Grid über
+// `KACHEL_GRID` automatisch auf eine volle Spalte zurück.
+export const KACHEL_W = 340;
+// Grid-Style für gleich breite Kacheln: so viele KACHEL_W-Spalten wie passen,
+// linksbündig, Rest bleibt leer. `minmax(min(100%, KACHEL_W), KACHEL_W)` hält
+// die Spalte exakt auf KACHEL_W (kein Dehnen), lässt sie aber auf schmalen
+// Containern (Mobil < KACHEL_W) auf 100 % schrumpfen statt überzulaufen.
+export const KACHEL_GRID = {
+  display: "grid",
+  gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${KACHEL_W}px), ${KACHEL_W}px))`,
+  justifyContent: "start",
+  gap: 10,
+};
+
 // ── Zentrale Eingabefeld-/Label-Styles ──────────────────────────────────────
 // Vermeidet ~40 byte-gleiche Inline-Style-Objekte in Formularen. Die Varianten
 // unterscheiden sich nur in padding/fontSize/borderRadius — daher parametriert.
@@ -56,7 +74,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "12.03";
+export const APP_VERSION = "12.07";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────

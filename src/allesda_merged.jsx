@@ -112,7 +112,7 @@ import React, { useState, useRef, useEffect, createContext, useContext, Fragment
 // ═════════════════════════════════════════════════════════════════════════════
 
 import {
-  ACCENT, APP_VERSION, DARK, DEFAULT_GEWERKE_LISTE, DEFAULT_KATEGORIEN, DEFAULT_LEISTUNGEN, DEFAULT_ROLLEN, DEFAULT_VERWENDUNGEN, FIRMEN_FARBE, FONT, FONT_URL, FS, FW, KONTAKTE_FARBE, LIGHT, PALETTE_FARBEN, RAD, SERIOES_GRAU, SLOT_TO_ECK, effColor, effKuerzel, feldInput, feldLabel, formatKontaktName, getContrastColor, kategorieVon, mischeRichtungGrau, rolleBadgeSichtbar, rolleEckPosition, rolleEckSichtbar, setFarbIntensitaet, sortKontakte, toGrau, verwendungBadgeSichtbar, verwendungEckPosition, verwendungEckSichtbar
+  ACCENT, APP_VERSION, DARK, DEFAULT_GEWERKE_LISTE, DEFAULT_KATEGORIEN, DEFAULT_LEISTUNGEN, DEFAULT_ROLLEN, DEFAULT_VERWENDUNGEN, FIRMEN_FARBE, FONT, FONT_URL, FS, FW, KACHEL_GRID, KACHEL_W, KONTAKTE_FARBE, LIGHT, PALETTE_FARBEN, RAD, SERIOES_GRAU, SLOT_TO_ECK, effColor, effKuerzel, feldInput, feldLabel, formatKontaktName, getContrastColor, kategorieVon, mischeRichtungGrau, rolleBadgeSichtbar, rolleEckPosition, rolleEckSichtbar, setFarbIntensitaet, sortKontakte, toGrau, verwendungBadgeSichtbar, verwendungEckPosition, verwendungEckSichtbar
 } from "./constants.js";
 import {
   datumDe, isoHeute, istDatumGueltig, istEmailGueltig, istIbanGueltig,
@@ -570,8 +570,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
           flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
           <div data-ad-auslauf="1" style={{ flex: `0 1 ${mdLayout.masterWidth}px`, minWidth: 0, overflowY: "auto",
             padding: 2, boxSizing: "border-box",
-            display: "grid", alignContent: "start",
-            gridTemplateColumns: istListe ? "1fr" : `repeat(${setKartenCols}, minmax(0, 1fr))`, gap: 8 }}>
+            ...(istListe ? { display: "grid", alignContent: "start", gridTemplateColumns: "1fr", gap: 8 } : { ...KACHEL_GRID, alignContent: "start" }) }}>
             {sortierteSektionen.map((s, i) => (
               <SektionKachel key={s.id} sektion={s}
                 aktiv={offenSektion && offenSektion.id === s.id} t={t} id={"set-" + s.id}
@@ -599,10 +598,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
       {!offenSektion && (
         <div ref={mdRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: istListe ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: 10 }}>
+          <div style={istListe ? { display: "grid", gridTemplateColumns: "1fr", gap: 10 } : KACHEL_GRID}>
             {sortierteSektionen.map((s, i) => (
               <SektionKachel key={s.id} sektion={s} aktiv={false} t={t}
                 id={"set-" + s.id}
@@ -1201,8 +1197,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
         )}
         <div style={listenAnsicht === "liste"
           ? { display: "flex", flexDirection: "column", gap: 6 }
-          : { display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+          : KACHEL_GRID}>
           {(ves || []).map(veObj => listenAnsicht === "liste" ? (
             <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={accent}
               aktiv={false} kbItem id={"objliste-" + veObj.id}
@@ -2084,8 +2079,7 @@ export default function App() {
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           <div style={istListe
             ? { display: "flex", flexDirection: "column", gap: 6 }
-            : { display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+            : KACHEL_GRID}>
             {gefiltert.map(ve => istListe ? (
               <VEListenZeile key={ve.id} ve={ve} t={t} accent={objektAccent}
                 aktiv={false} kbItem id={"obj-" + ve.id}
@@ -3204,7 +3198,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "listen") || {}).farbe || "#0E7490"}/>
         )}
         {!suchErg && screen === "schnelleingabe" && (
-          <SchnelleingabeScreen ves={vesSichtbar} setVes={setVes} t={t}
+          <SchnelleingabeScreen ves={vesSichtbar} setVes={setVes} kontakte={kontakteSichtbar} t={t}
             accent={(effectiveSettings.kacheln.find(k => k.id === "schnelleingabe") || {}).farbe || "#0080FF"}/>
         )}
         {!suchErg && screen === "statistik" && (

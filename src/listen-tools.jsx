@@ -1,13 +1,13 @@
 import React, { useState } from "react";
-import { FS, FW, RAD, getContrastColor } from "./constants.js";
+import { FS, FW, RAD, KACHEL_GRID, getContrastColor } from "./constants.js";
 import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
   VERWALTUNGSARTEN, aktiveBelegung, aktiverTeil, belegungsTyp, bewohnerRecht,
-  eigStatus, extractNachname, flaecheVon, isStellplatzTyp, objektOrt,
-  parseFlaeche, teileVon
+  eigStatus, extractNachname, flaecheVon, heuteLaufendeBelegung, isStellplatzTyp, neueBelegung,
+  neuesHhMitglied, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon
 } from "./datenmodell.js";
 import {
-  DESKTOP_MIN_WIDTH, I, StickySectionHeader, useWindowWidth, veKartenFeldWert
+  DESKTOP_MIN_WIDTH, I, StickySectionHeader, useMasterDetailLayout, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
@@ -714,741 +714,374 @@ function seBaueZeilen(schema, params) {
   return rows;
 }
 
-function SchnelleingabeScreen({ ves, setVes, t, accent }) {
+function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
-  const [objektId, setObjektId] = useState(ves && ves[0] ? ves[0].id : null);
-  const [schema, setSchema] = useState("fortlaufend"); // fortlaufend | etagen | stellplatz
-  const [praefix, setPraefix] = useState("WE");
-  const [start, setStart] = useState("1");
-  const [anzahl, setAnzahl] = useState("4");
-  const [breite, setBreite] = useState("2");
-  const [etagen, setEtagen] = useState(SE_ETAGEN_VORLAGE.slice(0, 3));
-  const [seiten, setSeiten] = useState(SE_SEITEN_VORLAGE.slice());
-  const [rows, setRows] = useState([]);
-  const [erfolg, setErfolg] = useState(0); // Anzahl zuletzt angelegter Einheiten
+  const [objektId, setObjektId] = useState(null); // null = Raster (Objektauswahl)
 
-  // ── Ziel im Neu-Modus: neues Objekt (Standard) oder bestehendes ──
-  const [zielArt, setZielArt] = useState("neuesObjekt"); // "neuesObjekt" | "bestehend"
-  const [neuNr, setNeuNr] = useState("");
-  const [neuStrasse, setNeuStrasse] = useState("");
-  const [neuPlz, setNeuPlz] = useState("");
-  const [neuOrt, setNeuOrt] = useState("");
-  const [neuVerwArt, setNeuVerwArt] = useState("weg");
+  // Welche Spalten sind aktiv — in KLICK-Reihenfolge (links→rechts). Die fixe
+  // Spalte „Einheit" steht immer ganz links und ist NICHT in dieser Liste.
+  const [spalten, setSpalten] = useState([]); // z.B. ["nr","typ","mea"]
 
-  // ── Modus & Bearbeiten-State ──
-  const [modus, setModus] = useState("neu"); // "neu" | "bearbeiten"
-  const [ebene, setEbene] = useState("einheiten"); // "einheiten" | "objekte"
-  const [filterObjektId, setFilterObjektId] = useState(""); // "" = alle Objekte
-  const [filterTyp, setFilterTyp] = useState(""); // "" = alle Typen
-  const [auswahl, setAuswahl] = useState({}); // { "<veId>::<einheitId>": true } bzw { "<veId>": true }
-  const [bulkFeld, setBulkFeld] = useState("typ");
-  const [bulkAktion, setBulkAktion] = useState("setzen"); // setzen | leeren | wennLeer
-  const [bulkWert, setBulkWert] = useState("");
-  const [vorschauAuf, setVorschauAuf] = useState(false);
-  const [undoSnap, setUndoSnap] = useState(null); // { betroffen:[{veId,einheitId?,vorher}], anzahl }
-  const [bulkErfolg, setBulkErfolg] = useState(0);
+  const ve = (ves || []).find(v => v && v.id === objektId) || null;
+  const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
 
-  const ve = (ves || []).find(v => v && v.id === objektId) || (ves && ves[0]) || null;
-  const bestand = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten.length : 0;
-
-  const toggleEtage = (et) => {
-    setEtagen(prev => prev.indexOf(et) >= 0 ? prev.filter(x => x !== et) : [...prev, et]);
-  };
-  const toggleSeite = (se) => {
-    setSeiten(prev => prev.indexOf(se) >= 0 ? prev.filter(x => x !== se) : [...prev, se]);
-  };
-
-  const generieren = () => {
-    const params = { praefix: praefix, start: start, anzahl: anzahl, breite: breite,
-      etagen: etagen, seiten: seiten };
-    setRows(seBaueZeilen(schema, params));
-    setErfolg(0);
-  };
-
-  const setRowFeld = (idx, feld, wert) => {
-    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [feld]: wert } : r));
-  };
-  const removeRow = (idx) => setRows(prev => prev.filter((_, i) => i !== idx));
-  const addRow = () => setRows(prev => [...prev, { nr: "", typ: "Wohneigentum",
-    lage: "", flaeche: "", zimmer: "", mea: "" }]);
-
-  const gueltigeRows = rows.filter(r => r.nr && r.nr.trim());
-  const neuesObjektValid = neuNr.trim().length > 0 && neuStrasse.trim().length > 0;
-  const kannAnlegen = zielArt === "neuesObjekt"
-    ? neuesObjektValid && gueltigeRows.length > 0
-    : !!ve && gueltigeRows.length > 0;
-
-  const anlegen = () => {
-    if (!setVes || !kannAnlegen) return;
-    const ts = Date.now();
-    const neueEinheiten = gueltigeRows.map((r, i) => {
-      const fl = (r.flaeche || "").trim();
-      const flaeche = fl ? (fl.endsWith("²") ? fl : `${fl} m²`) : "";
-      const ein = {
-        id: `e-${ts}-${i}`,
-        nr: r.nr.trim(),
-        verwNr: "",
-        typ: r.typ || "Wohneigentum",
-        flaeche: flaeche,
-        mea: (r.mea || "").trim(),
-        lage: (r.lage || "").trim(),
-        zimmer: (r.zimmer || "").trim(),
-        eigentuemer: [], mieter: [],
-      };
-      if (isStellplatzTyp(ein.typ)) { ein.spStellung = "eigenstaendig"; ein.spEinheitId = null; }
-      return ein;
-    });
-    if (zielArt === "neuesObjekt") {
-      // Neues Objekt mit Einheiten in einem Rutsch — Schema identisch zum
-      // regulären Objekt-Anlegen-Dialog (ObjektAnlegen, ve-<ts>).
-      const plzOrt = joinPlzOrt(neuPlz, neuOrt);
-      const adresse = plzOrt ? `${neuStrasse.trim()}, ${plzOrt}` : neuStrasse.trim();
-      const neuesVe = {
-        id: "ve-" + ts,
-        nr: neuNr.trim(),
-        adresse: adresse,
-        verwaltungsart: neuVerwArt,
-        einheiten: neueEinheiten,
-        verwaltung: {
-          beginn: "", bestelltBis: "",
-          verwalter: null, buchhalter: null, uebernommenVon: null,
-          verwZustimmung: false,
-          naechsteETV: "", naechsteWahl: "",
-        },
-        vertraege: [],
-        etvHistorie: [],
-      };
-      setVes(prev => [...prev, neuesVe]);
-      setErfolg(neueEinheiten.length);
-      setRows([]);
-      return;
-    }
-    setVes(prev => prev.map(v => v.id === ve.id
-      ? { ...v, einheiten: [...(Array.isArray(v.einheiten) ? v.einheiten : []), ...neueEinheiten] }
-      : v));
-    setErfolg(neueEinheiten.length);
-    setRows([]);
-  };
-
-  // ── BEARBEITEN: gefilterte Kandidatenliste ──
-  // Einheiten objektübergreifend: [{ veId, veName, einheit }]
-  const einheitenKandidaten = [];
-  (ves || []).forEach(v => {
-    if (filterObjektId && v.id !== filterObjektId) return;
-    (Array.isArray(v.einheiten) ? v.einheiten : []).forEach(e => {
-      if (filterTyp && e.typ !== filterTyp) return;
-      einheitenKandidaten.push({ veId: v.id, veName: v.name || v.nr || v.id, einheit: e });
-    });
-  });
-  // Objekte: [{ ve }]
-  const objektKandidaten = (ves || []).filter(v => !filterObjektId || v.id === filterObjektId);
-
-  const auswahlKey = (veId, einheitId) => einheitId ? `${veId}::${einheitId}` : `${veId}`;
-  const toggleAuswahl = (key) => setAuswahl(prev => {
-    const next = { ...prev };
-    if (next[key]) delete next[key]; else next[key] = true;
-    return next;
-  });
-  const alleKeys = ebene === "einheiten"
-    ? einheitenKandidaten.map(k => auswahlKey(k.veId, k.einheit.id))
-    : objektKandidaten.map(v => auswahlKey(v.id, null));
-  const anzahlGewaehlt = alleKeys.filter(k => auswahl[k]).length;
-  const alleGewaehlt = alleKeys.length > 0 && anzahlGewaehlt === alleKeys.length;
-  const setzeAlle = (an) => {
-    const next = {};
-    if (an) alleKeys.forEach(k => { next[k] = true; });
-    setAuswahl(next);
-  };
-
-  // Feld-Definitionen je Ebene
-  const EINHEIT_FELDER = [
-    { id: "typ", label: "Typ", typ: "select", optionen: SE_TYP_OPTIONEN },
-    { id: "lage", label: "Lage", typ: "text" },
-    { id: "flaeche", label: "Fläche", typ: "flaeche" },
-    { id: "zimmer", label: "Zimmer", typ: "text" },
-    { id: "mea", label: "MEA", typ: "text" },
+  // ── Verfügbare Spalten (Pillen). Welle 1: direkt an der Einheit tippbare
+  //    Felder. Eigentümer/Mieter/Telefon folgen in Welle 2. ──
+  const SPALTEN_KATALOG = [
+    { id: "nr",      label: "Nr.",     breite: 120, art: "text" },
+    { id: "typ",     label: "Typ",     breite: 170, art: "typ" },
+    { id: "lage",    label: "Lage",    breite: 160, art: "text" },
+    { id: "mea",     label: "MEA",     breite: 110, art: "num" },
+    { id: "flaeche", label: "Fläche",  breite: 110, art: "num" },
+    { id: "mieter",  label: "Mieter",  breite: 200, art: "kontakt" },
+    { id: "telefon", label: "Telefon", breite: 160, art: "ablesen" },
   ];
-  const OBJEKT_FELDER = [
-    { id: "verwaltungsart", label: "Verwaltungsart", typ: "select",
-      optionen: VERWALTUNGSARTEN.map(a => a.id), optionLabel: (id) => {
-        const a = VERWALTUNGSARTEN.find(x => x.id === id); return a ? a.label : id; } },
-  ];
-  const aktuelleFelder = ebene === "einheiten" ? EINHEIT_FELDER : OBJEKT_FELDER;
-  const feldDef = aktuelleFelder.find(f => f.id === bulkFeld) || aktuelleFelder[0];
+  const kontakteListe = Array.isArray(kontakte) ? kontakte : [];
+  const kontaktById = (id) => kontakteListe.find(k => k && String(k.id) === String(id)) || null;
+  const kontaktName = (k) => k ? (k.name || [k.vorname, k.nachname].filter(Boolean).join(" ") || "Kontakt") : "";
+  const kontaktTelefon = (k) => k ? (k.telefon || k.mobil || k.tel || "") : "";
+  const spalteDef = (id) => SPALTEN_KATALOG.find(s => s.id === id) || null;
 
-  // Wert-Normalisierung (Fläche bekommt m²-Suffix wie sonst)
-  const normWert = (feld, roh) => {
-    const w = (roh || "").trim();
-    if (!w) return "";
-    if (feld === "flaeche") return w.endsWith("²") ? w : `${w} m²`;
-    return w;
+  const toggleSpalte = (id) => {
+    setSpalten(prev => prev.indexOf(id) >= 0
+      ? prev.filter(x => x !== id)        // abwählen
+      : [...prev, id]);                   // anhängen (rechts)
   };
 
-  // Anzeigewert für Vorschau (Verwaltungsart als Label)
-  const zeigeWert = (feld, roh) => {
-    if (feld === "verwaltungsart") {
-      const a = VERWALTUNGSARTEN.find(x => x.id === roh); return a ? a.label : (roh || "—");
-    }
-    return (roh && String(roh).trim()) ? roh : "—";
-  };
-
-  // Liefert das aktuelle Feld-Rohwert eines Datensatzes
-  const leseFeld = (obj, feld) => (obj && obj[feld] != null) ? obj[feld] : "";
-
-  // Berechnet die konkreten Änderungen (Vorschau-Daten)
-  const berechneAenderungen = () => {
-    const neuRoh = bulkAktion === "leeren" ? "" : normWert(feldDef.id, bulkWert);
-    const liste = [];
-    if (ebene === "einheiten") {
-      einheitenKandidaten.forEach(k => {
-        if (!auswahl[auswahlKey(k.veId, k.einheit.id)]) return;
-        const alt = leseFeld(k.einheit, feldDef.id);
-        if (bulkAktion === "wennLeer" && String(alt).trim()) return; // nur leere füllen
-        if (String(alt) === String(neuRoh)) return; // keine echte Änderung
-        liste.push({ veId: k.veId, einheitId: k.einheit.id,
-          label: `${k.veName} · ${k.einheit.nr || k.einheit.id}`, alt: alt, neu: neuRoh });
-      });
-    } else {
-      objektKandidaten.forEach(v => {
-        if (!auswahl[auswahlKey(v.id, null)]) return;
-        const alt = leseFeld(v, feldDef.id);
-        if (bulkAktion === "wennLeer" && String(alt).trim()) return;
-        if (String(alt) === String(neuRoh)) return;
-        liste.push({ veId: v.id, einheitId: null,
-          label: v.name || v.nr || v.id, alt: alt, neu: neuRoh });
-      });
-    }
-    return liste;
-  };
-
-  const aenderungen = vorschauAuf ? berechneAenderungen() : [];
-  const bulkWertNoetig = bulkAktion !== "leeren";
-  const kannVorschau = anzahlGewaehlt > 0 && (!bulkWertNoetig || bulkWert.trim());
-
-  // Anwenden: schreibt Änderungen + legt Undo-Snapshot an
-  const wendeAn = () => {
-    if (!setVes) return;
-    const changes = berechneAenderungen();
-    if (!changes.length) { setVorschauAuf(false); return; }
-    const feld = feldDef.id;
-    const snapBetroffen = changes.map(c => ({ veId: c.veId, einheitId: c.einheitId, vorher: c.alt }));
-    setVes(prev => prev.map(v => {
-      const relevant = changes.filter(c => c.veId === v.id);
-      if (!relevant.length) return v;
-      if (ebene === "objekte") {
-        const c = relevant[0];
-        return { ...v, [feld]: c.neu };
-      }
-      const idMap = {};
-      relevant.forEach(c => { idMap[c.einheitId] = c.neu; });
-      return { ...v, einheiten: (Array.isArray(v.einheiten) ? v.einheiten : []).map(e =>
-        (e.id in idMap) ? { ...e, [feld]: idMap[e.id] } : e) };
+  // ── Eine Einheit im Objekt patchen (immutabel zurückschreiben). ──
+  const patchEinheit = (einheitId, mut) => {
+    setVes(prev => (prev || []).map(v => {
+      if (!v || v.id !== objektId) return v;
+      const neueEinheiten = (v.einheiten || []).map(e =>
+        (e && e.id === einheitId) ? mut(e) : e);
+      return { ...v, einheiten: neueEinheiten };
     }));
-    setUndoSnap({ feld: feld, ebene: ebene, betroffen: snapBetroffen, anzahl: changes.length });
-    setBulkErfolg(changes.length);
-    setVorschauAuf(false);
-    setAuswahl({});
   };
 
-  // Undo: spielt Snapshot zurück
-  const macheUndo = () => {
-    if (!undoSnap || !setVes) return;
-    const feld = undoSnap.feld;
-    const snapEbene = undoSnap.ebene;
-    setVes(prev => prev.map(v => {
-      const relevant = undoSnap.betroffen.filter(b => b.veId === v.id);
-      if (!relevant.length) return v;
-      if (snapEbene === "objekte") {
-        return { ...v, [feld]: relevant[0].vorher };
+  // ── Mieter (kontakt-verknüpft) lesen: aktiver Teil → aktive Belegung →
+  //    erstes benanntes Mitglied mit recht "mieter" (sonst erstes mit kontaktId). ──
+  const mieterMitgliedVon = (einheit) => {
+    const teil = aktiverTeil(einheit);
+    const beleg = teil ? (heuteLaufendeBelegung(teil) || aktiveBelegung(teil)) : null;
+    const mitglieder = (beleg && beleg.haushalt && Array.isArray(beleg.haushalt.mitglieder))
+      ? beleg.haushalt.mitglieder : [];
+    const benannt = mitglieder.filter(m => m && m.kontaktId != null);
+    const mieter = benannt.find(m => m.recht === "mieter");
+    return mieter || benannt[0] || null;
+  };
+  const mieterKontaktIdVon = (einheit) => {
+    const m = mieterMitgliedVon(einheit);
+    return m ? m.kontaktId : null;
+  };
+
+  // ── Mieter setzen: aktiven Teil holen; aktive (Vermietungs-)Belegung finden
+  //    oder eine anlegen; im Haushalt das benannte Mieter-Mitglied auf die
+  //    gewählte kontaktId setzen (vorhandenes ersetzen, sonst hinzufügen). Leere
+  //    Auswahl entfernt das benannte Mieter-Mitglied wieder. ──
+  const schreibeMieter = (einheitId, kontaktId) => {
+    patchEinheit(einheitId, (e) => {
+      const teile = teileVon(e);
+      if (!Array.isArray(teile) || teile.length === 0) return e;
+      const aktiv = aktiverTeil(e) || teile[0];
+      let beleg = heuteLaufendeBelegung(aktiv) || aktiveBelegung(aktiv);
+      const istStellplatz = isStellplatzTyp(e.typ);
+      if (istStellplatz) return e; // Stellplätze haben keinen Mieter-Haushalt
+      // Belegung sicherstellen (Vermietung, wenn keine passende existiert).
+      let belegungen = Array.isArray(aktiv.belegungen) ? aktiv.belegungen.slice() : [];
+      if (!beleg) {
+        beleg = neueBelegung("vermietung", "");
+        belegungen = belegungen.concat([beleg]);
       }
-      const idMap = {};
-      relevant.forEach(b => { idMap[b.einheitId] = b.vorher; });
-      return { ...v, einheiten: (Array.isArray(v.einheiten) ? v.einheiten : []).map(e =>
-        (e.id in idMap) ? { ...e, [feld]: idMap[e.id] } : e) };
-    }));
-    setUndoSnap(null);
-    setBulkErfolg(0);
+      const neueBelegungen = belegungen.map(b => {
+        if (b.id !== beleg.id) return b;
+        const hh = (b.haushalt && Array.isArray(b.haushalt.mitglieder))
+          ? { ...b.haushalt, mitglieder: b.haushalt.mitglieder.slice() }
+          : { mitglieder: [] };
+        // Vorhandenes benanntes Mieter-Mitglied finden.
+        const idx = hh.mitglieder.findIndex(m => m && m.kontaktId != null && m.recht === "mieter");
+        if (kontaktId == null || kontaktId === "") {
+          // Auswahl geleert → benanntes Mieter-Mitglied entfernen.
+          if (idx >= 0) hh.mitglieder.splice(idx, 1);
+        } else {
+          const k = kontaktById(kontaktId);
+          const nm = neuesHhMitglied(kontaktId, kontaktName(k), "mieter");
+          if (idx >= 0) hh.mitglieder[idx] = { ...hh.mitglieder[idx], kontaktId: kontaktId, name: kontaktName(k), recht: "mieter" };
+          else hh.mitglieder.push(nm);
+        }
+        return { ...b, haushalt: hh };
+      });
+      const neueTeile = e.teile.map(teil => teil === aktiv ? { ...aktiv, belegungen: neueBelegungen } : teil);
+      return { ...e, teile: neueTeile };
+    });
   };
 
-  // Modus-/Ebenenwechsel räumt transienten Zustand auf
-  const wechsleModus = (m) => { setModus(m); setVorschauAuf(false); };
-  const wechsleEbene = (e) => {
-    setEbene(e); setAuswahl({}); setVorschauAuf(false);
-    setBulkFeld(e === "einheiten" ? "typ" : "verwaltungsart");
-    setBulkWert("");
+  // ── Wert einer Zelle lesen ──
+  const leseWert = (einheit, sid) => {
+    if (sid === "nr")      return einheit.nr || "";
+    if (sid === "typ")     return einheit.typ || "";
+    if (sid === "lage")    return einheit.lage || "";
+    if (sid === "mea")     return einheit.mea || "";
+    if (sid === "flaeche") return flaecheVon(einheit) ? String(flaecheVon(einheit)) : (einheit.flaeche || "");
+    if (sid === "mieter")  { const id = mieterKontaktIdVon(einheit); return id == null ? "" : String(id); }
+    if (sid === "telefon") { const id = mieterKontaktIdVon(einheit); return kontaktTelefon(kontaktById(id)); }
+    return "";
   };
 
-  // ── Styles (lokal, an Token-System angelehnt) ──
-  const inputStil = { background: t.surface, border: `1px solid ${t.border}`,
-    borderRadius: RAD.sm, padding: "6px 8px", fontSize: FS.input, color: t.text,
-    outline: "none", fontFamily: "inherit", width: "100%", boxSizing: "border-box" };
-  const labelStil = { fontSize: FS.xs, fontWeight: FW.semibold, color: t.sub,
-    marginBottom: 4, display: "block" };
-  const segBtn = (aktiv) => ({ flex: 1, padding: "8px 10px", borderRadius: RAD.sm,
-    border: `1px solid ${aktiv ? accent : t.border}`,
-    background: aktiv ? accent + "18" : "transparent",
-    color: aktiv ? accent : t.sub, fontSize: FS.s,
-    fontWeight: aktiv ? FW.semibold : FW.medium, cursor: "pointer",
-    fontFamily: "inherit" });
-  const pill = (aktiv) => ({ padding: "5px 10px", borderRadius: RAD.ms,
-    border: `1px solid ${aktiv ? accent : t.border}`,
-    background: aktiv ? accent + "18" : "transparent",
-    color: aktiv ? accent : t.sub, fontSize: FS.xs,
-    fontWeight: aktiv ? FW.semibold : FW.medium, cursor: "pointer",
-    fontFamily: "inherit" });
+  // ── Wert einer Zelle schreiben ──
+  const schreibeWert = (einheitId, sid, wert) => {
+    if (sid === "mieter") { schreibeMieter(einheitId, wert === "" ? null : wert); return; }
+    patchEinheit(einheitId, (e) => {
+      if (sid === "nr")      return { ...e, nr: wert };
+      if (sid === "typ")     return { ...e, typ: wert };
+      if (sid === "lage")    return { ...e, lage: wert };
+      if (sid === "mea")     return setzeEinheitMea(e, wert);
+      if (sid === "flaeche") return setzeEinheitFlaeche(e, wert);
+      return e;
+    });
+  };
 
-  return (
-    <div data-ad-auslauf="1" style={istDesktop
-      ? { flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch",
-          width: "100%", boxSizing: "border-box", padding: "8px 12px 96px" }
-      : { width: "100%", alignSelf: "stretch", boxSizing: "border-box",
-          padding: "8px 12px 96px" }}>
-    <div style={{ maxWidth: 760, margin: "0 auto", width: "100%", boxSizing: "border-box" }}>
-      <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text, marginBottom: 4 }}>
-        Schnelleingabe
-      </div>
-      <div style={{ fontSize: FS.s, color: t.sub, marginBottom: 12 }}>
-        {modus === "neu"
-          ? "Mehrere Einheiten in einem Rutsch anlegen — Muster wählen, im Raster anpassen, anlegen."
-          : modus === "schluessel"
-          ? "Verteilerschlüssel je Objekt pflegen — Standards einsehen, Anteile eintragen, eigene anlegen."
-          : "Mehrere Datensätze auf einmal ändern — auswählen, Feld setzen, Vorschau bestätigen."}
-      </div>
-
-      {/* Modus-Umschalter */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 16,
-        background: t.surface, borderRadius: RAD.sm, padding: 4 }}>
-        <button onClick={() => wechsleModus("neu")} style={segBtn(modus === "neu")}>Neu anlegen</button>
-        <button onClick={() => wechsleModus("bearbeiten")} style={segBtn(modus === "bearbeiten")}>Bearbeiten</button>
-        <button onClick={() => wechsleModus("schluessel")} style={segBtn(modus === "schluessel")}>Schlüssel</button>
-      </div>
-
-      {modus === "neu" ? (
-      <>
-      {/* Ziel: neues Objekt (Standard) oder bestehendes */}
-      <div style={{ marginBottom: 14 }}>
-        <label style={labelStil}>Ziel</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => { setZielArt("neuesObjekt"); setErfolg(0); }}
-            style={segBtn(zielArt === "neuesObjekt")}>Neues Objekt</button>
-          <button onClick={() => { setZielArt("bestehend"); setErfolg(0); }}
-            style={segBtn(zielArt === "bestehend")}>Bestehendes Objekt</button>
-        </div>
-      </div>
-
-      {zielArt === "neuesObjekt" ? (
-        <div style={{ background: t.card, border: `1px solid ${t.border}`,
-          borderRadius: RAD.md, padding: 12, marginBottom: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={labelStil}>Bezeichnung / Nr. *</label>
-              <input value={neuNr} onChange={e => setNeuNr(e.target.value)}
-                placeholder="z. B. WEG Musterstraße 12" style={inputStil}/>
-            </div>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={labelStil}>Straße + Hausnummer *</label>
-              <input value={neuStrasse} onChange={e => setNeuStrasse(e.target.value)}
-                placeholder="Musterstraße 12" style={inputStil}/>
-            </div>
-            <div>
-              <label style={labelStil}>PLZ</label>
-              <input value={neuPlz} onChange={e => setNeuPlz(e.target.value)}
-                inputMode="numeric" placeholder="69115" style={inputStil}/>
-            </div>
-            <div>
-              <label style={labelStil}>Ort</label>
-              <input value={neuOrt} onChange={e => setNeuOrt(e.target.value)}
-                placeholder="Heidelberg" style={inputStil}/>
-            </div>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={labelStil}>Verwaltungsart</label>
-              <select value={neuVerwArt} onChange={e => setNeuVerwArt(e.target.value)}
-                style={{ ...inputStil, cursor: "pointer" }}>
-                {VERWALTUNGSARTEN.map(a => (
-                  <option key={a.id} value={a.id}>{a.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStil}>Ziel-Objekt</label>
-          <select value={objektId || ""} onChange={e => { setObjektId(e.target.value); setErfolg(0); }}
-            style={{ ...inputStil, cursor: "pointer" }}>
-            {(ves || []).map(v => (
-              <option key={v.id} value={v.id}>{v.name || v.nr || v.id}</option>
-            ))}
-          </select>
-          {ve ? (
-            <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
-              Aktueller Bestand: {bestand} {bestand === 1 ? "Einheit" : "Einheiten"}
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      {/* Muster-Schema */}
-      <div style={{ marginBottom: 12 }}>
-        <label style={labelStil}>Muster</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => setSchema("fortlaufend")} style={segBtn(schema === "fortlaufend")}>Fortlaufend</button>
-          <button onClick={() => setSchema("etagen")} style={segBtn(schema === "etagen")}>Etagen × Seite</button>
-          <button onClick={() => setSchema("stellplatz")} style={segBtn(schema === "stellplatz")}>Stellplätze</button>
-        </div>
-      </div>
-
-      {/* Muster-Parameter */}
-      <div style={{ background: t.card, border: `1px solid ${t.border}`,
-        borderRadius: RAD.md, padding: 12, marginBottom: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={labelStil}>Präfix</label>
-            <input value={praefix} onChange={e => setPraefix(e.target.value)} style={inputStil}/>
-          </div>
-          <div>
-            <label style={labelStil}>Startnummer</label>
-            <input value={start} onChange={e => setStart(e.target.value)} inputMode="numeric" style={inputStil}/>
-          </div>
-          {schema !== "etagen" ? (
-            <div>
-              <label style={labelStil}>Anzahl</label>
-              <input value={anzahl} onChange={e => setAnzahl(e.target.value)} inputMode="numeric" style={inputStil}/>
-            </div>
-          ) : null}
-          <div>
-            <label style={labelStil}>Stellen (z. B. 01)</label>
-            <input value={breite} onChange={e => setBreite(e.target.value)} inputMode="numeric" style={inputStil}/>
-          </div>
-        </div>
-        {schema === "etagen" ? (
-          <div style={{ marginTop: 12 }}>
-            <label style={labelStil}>Etagen</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-              {SE_ETAGEN_VORLAGE.map(et => (
-                <button key={et} onClick={() => toggleEtage(et)} style={pill(etagen.indexOf(et) >= 0)}>{et}</button>
-              ))}
-            </div>
-            <label style={labelStil}>Seiten</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {SE_SEITEN_VORLAGE.map(se => (
-                <button key={se} onClick={() => toggleSeite(se)} style={pill(seiten.indexOf(se) >= 0)}>{se}</button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <button onClick={generieren}
-          style={{ marginTop: 12, width: "100%", padding: "9px 12px", borderRadius: RAD.sm,
-            border: `1px solid ${accent}`, background: accent, color: "#fff",
-            fontSize: FS.s, fontWeight: FW.semibold, cursor: "pointer", fontFamily: "inherit" }}>
-          Raster erzeugen
-        </button>
-      </div>
-
-      {/* Grid */}
-      {rows.length > 0 ? (
-        <div style={{ background: t.card, border: `1px solid ${t.border}`,
-          borderRadius: RAD.md, padding: 12, marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div style={{ fontSize: FS.s, fontWeight: FW.semibold, color: t.text }}>
-              {rows.length} {rows.length === 1 ? "Zeile" : "Zeilen"}
-            </div>
-            <button onClick={() => setRows([])}
-              style={{ background: "none", border: "none", color: t.muted,
-                fontSize: FS.xs, cursor: "pointer", fontFamily: "inherit" }}>
-              Leeren
-            </button>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {rows.map((r, idx) => (
-              <div key={idx} style={{ border: `1px solid ${t.border}`, borderRadius: RAD.sm, padding: 8 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  <input value={r.nr} onChange={e => setRowFeld(idx, "nr", e.target.value)}
-                    placeholder="Bezeichnung" style={inputStil}/>
-                  <select value={r.typ} onChange={e => setRowFeld(idx, "typ", e.target.value)}
-                    style={{ ...inputStil, cursor: "pointer" }}>
-                    {SE_TYP_OPTIONEN.map(tp => <option key={tp} value={tp}>{tp}</option>)}
-                  </select>
-                  <input value={r.lage} onChange={e => setRowFeld(idx, "lage", e.target.value)}
-                    placeholder="Lage" style={inputStil}/>
-                  <input value={r.flaeche} onChange={e => setRowFeld(idx, "flaeche", e.target.value)}
-                    placeholder="Fläche (m²)" inputMode="decimal" style={inputStil}/>
-                  <input value={r.zimmer} onChange={e => setRowFeld(idx, "zimmer", e.target.value)}
-                    placeholder="Zimmer" style={inputStil}/>
-                  <input value={r.mea} onChange={e => setRowFeld(idx, "mea", e.target.value)}
-                    placeholder="MEA" style={inputStil}/>
-                </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-                  <button onClick={() => removeRow(idx)}
-                    style={{ background: "none", border: "none", color: "#EF4444",
-                      fontSize: FS.xs, cursor: "pointer", fontFamily: "inherit" }}>
-                    Zeile entfernen
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button onClick={addRow}
-            style={{ marginTop: 8, background: "none", border: `1px dashed ${t.border}`,
-              borderRadius: RAD.sm, padding: "7px 12px", color: t.sub,
-              fontSize: FS.s, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>
-            + Zeile hinzufügen
-          </button>
-        </div>
-      ) : null}
-
-      {/* Anlegen */}
-      {rows.length > 0 ? (
-        <button onClick={anlegen} disabled={!kannAnlegen}
-          style={{ width: "100%", padding: "11px 12px", borderRadius: RAD.sm,
-            border: `1px solid ${kannAnlegen ? accent : t.border}`,
-            background: kannAnlegen ? accent : "transparent",
-            color: kannAnlegen ? "#fff" : t.muted,
-            fontSize: FS.m, fontWeight: FW.semibold,
-            cursor: kannAnlegen ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
-          {zielArt === "neuesObjekt"
-            ? `Objekt mit ${gueltigeRows.length} ${gueltigeRows.length === 1 ? "Einheit" : "Einheiten"} anlegen`
-            : `${gueltigeRows.length} ${gueltigeRows.length === 1 ? "Einheit" : "Einheiten"} anlegen`}
-        </button>
-      ) : null}
-
-      {erfolg > 0 ? (
-        <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: RAD.sm,
-          background: "#22C55E18", border: "1px solid #22C55E55",
-          color: t.text, fontSize: FS.s }}>
-          {zielArt === "neuesObjekt"
-            ? `Objekt „${neuNr.trim()}" mit ${erfolg} ${erfolg === 1 ? "Einheit" : "Einheiten"} angelegt.`
-            : `${erfolg} ${erfolg === 1 ? "Einheit wurde" : "Einheiten wurden"} bei „${ve ? (ve.name || ve.nr || ve.id) : ""}" angelegt.`}
-        </div>
-      ) : null}
-      </>
-      ) : modus === "schluessel" ? (
-      <>
-      {/* ── SCHLÜSSEL — Verteilerschlüssel je Objekt pflegen ─────────── */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={labelStil}>Objekt</label>
-        <select value={objektId || ""} onChange={e => setObjektId(e.target.value)}
-          style={{ ...inputStil, cursor: "pointer" }}>
-          {(ves || []).map(v => (
-            <option key={v.id} value={v.id}>{v.name || v.nr || v.id}</option>
+  // Zell-Eingabe — je nach Spalten-Art Text/Zahl/Dropdown.
+  const zellInput = (einheit, sdef) => {
+    const wert = leseWert(einheit, sdef.id);
+    if (sdef.art === "typ") {
+      const isTG = isStellplatzTyp(einheit.typ);
+      return (
+        <select value={wert}
+          onChange={e => schreibeWert(einheit.id, "typ", e.target.value)}
+          style={{ width: "100%", boxSizing: "border-box", background: t.card,
+            border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+            padding: "6px 8px", fontSize: FS.input, color: t.text,
+            outline: "none", fontFamily: "inherit", appearance: "auto" }}>
+          <option value="">—</option>
+          <option value="Wohneigentum">Wohneigentum</option>
+          <option value="Teileigentum">Teileigentum</option>
+          <option value="Gewerbe">Gewerbe</option>
+          <option value="Stellplatz">Stellplatz</option>
+          <option value="Garage">Garage</option>
+          <option value="Carport">Carport</option>
+          <option value="Doppelparker">Doppelparker</option>
+        </select>
+      );
+    }
+    // Mieter — Kontakt-Auswahl. Bei Stellplätzen kein Mieter-Haushalt.
+    if (sdef.art === "kontakt") {
+      if (isStellplatzTyp(einheit.typ)) {
+        return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
+      }
+      return (
+        <select value={wert}
+          onChange={e => schreibeWert(einheit.id, "mieter", e.target.value)}
+          style={{ width: "100%", boxSizing: "border-box", background: t.card,
+            border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+            padding: "6px 8px", fontSize: FS.input, color: t.text,
+            outline: "none", fontFamily: "inherit", appearance: "auto" }}>
+          <option value="">— kein Mieter —</option>
+          {kontakteListe.map(k => (
+            <option key={k.id} value={String(k.id)}>{kontaktName(k)}</option>
           ))}
         </select>
-      </div>
-      {ve ? (
-        <VerteilerSchluesselBlock ve={ve} setVes={setVes} t={t} accent={accent}
-          editierbar={true}/>
-      ) : (
-        <div style={{ fontSize: FS.s, color: t.muted }}>Kein Objekt vorhanden.</div>
-      )}
-      </>
-      ) : (
-      <>
-      {/* ── BEARBEITEN ───────────────────────────────────────────── */}
-      {/* Ebenen-Umschalter */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        <button onClick={() => wechsleEbene("einheiten")} style={segBtn(ebene === "einheiten")}>Einheiten</button>
-        <button onClick={() => wechsleEbene("objekte")} style={segBtn(ebene === "objekte")}>Objekte</button>
-      </div>
-
-      {/* Filter */}
-      <div style={{ background: t.card, border: `1px solid ${t.border}`,
-        borderRadius: RAD.md, padding: 12, marginBottom: 12 }}>
-        <label style={labelStil}>Objekt-Filter</label>
-        <select value={filterObjektId} onChange={e => { setFilterObjektId(e.target.value); setAuswahl({}); }}
-          style={{ ...inputStil, cursor: "pointer", marginBottom: ebene === "einheiten" ? 10 : 0 }}>
-          <option value="">Alle Objekte</option>
-          {(ves || []).map(v => <option key={v.id} value={v.id}>{v.name || v.nr || v.id}</option>)}
-        </select>
-        {ebene === "einheiten" ? (
-          <>
-            <label style={labelStil}>Typ-Filter</label>
-            <select value={filterTyp} onChange={e => { setFilterTyp(e.target.value); setAuswahl({}); }}
-              style={{ ...inputStil, cursor: "pointer" }}>
-              <option value="">Alle Typen</option>
-              {SE_TYP_OPTIONEN.map(tp => <option key={tp} value={tp}>{tp}</option>)}
-            </select>
-          </>
-        ) : null}
-      </div>
-
-      {/* Auswahl-Liste */}
-      <div style={{ background: t.card, border: `1px solid ${t.border}`,
-        borderRadius: RAD.md, padding: 12, marginBottom: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontSize: FS.s, fontWeight: FW.semibold, color: t.text }}>
-            {anzahlGewaehlt} von {alleKeys.length} gewählt
-          </div>
-          <button onClick={() => setzeAlle(!alleGewaehlt)}
-            style={{ background: "none", border: "none", color: accent,
-              fontSize: FS.xs, fontWeight: FW.semibold, cursor: "pointer", fontFamily: "inherit" }}>
-            {alleGewaehlt ? "Keine" : "Alle"}
-          </button>
+      );
+    }
+    // Telefon — abgeleitet aus dem verknüpften Mieter-Kontakt, nur Anzeige.
+    if (sdef.art === "ablesen") {
+      return (
+        <div style={{ fontSize: FS.m, color: wert ? t.text : t.muted,
+          padding: "6px 2px", whiteSpace: "nowrap", overflow: "hidden",
+          textOverflow: "ellipsis" }}>
+          {wert || "—"}
         </div>
-        <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-          {(ebene === "einheiten" ? einheitenKandidaten : objektKandidaten).map((k, i) => {
-            const veId = ebene === "einheiten" ? k.veId : k.id;
-            const eId = ebene === "einheiten" ? k.einheit.id : null;
-            const key = auswahlKey(veId, eId);
-            const an = !!auswahl[key];
-            const titel = ebene === "einheiten"
-              ? (k.einheit.nr || k.einheit.id)
-              : (k.name || k.nr || k.id);
-            const sub = ebene === "einheiten"
-              ? `${k.veName}${k.einheit.lage ? " · " + k.einheit.lage : ""} · ${k.einheit.typ}`
-              : `${(Array.isArray(k.einheiten) ? k.einheiten.length : 0)} Einheiten`;
-            return (
-              <div key={key + i} onClick={() => toggleAuswahl(key)}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 6px",
-                  borderRadius: RAD.sm, cursor: "pointer",
-                  background: an ? accent + "12" : "transparent" }}>
-                <input type="checkbox" checked={an} readOnly
-                  style={{ width: 17, height: 17, accentColor: accent, flexShrink: 0, pointerEvents: "none" }}/>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.text,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titel}</div>
-                  <div style={{ fontSize: FS.xs, color: t.muted,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
-                </div>
-              </div>
-            );
-          })}
-          {alleKeys.length === 0 ? (
-            <div style={{ fontSize: FS.s, color: t.muted, padding: "8px 4px" }}>
-              Keine Datensätze für diesen Filter.
+      );
+    }
+    return (
+      <input value={wert}
+        inputMode={sdef.art === "num" ? "decimal" : "text"}
+        onChange={e => schreibeWert(einheit.id, sdef.id, e.target.value)}
+        style={{ width: "100%", boxSizing: "border-box", background: t.card,
+          border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+          padding: "6px 8px", fontSize: FS.input, color: t.text,
+          outline: "none", fontFamily: "inherit" }}/>
+    );
+  };
+
+  // ── RASTER: Objektauswahl (KACHEL_GRID wie Objekte/ETV) ──
+  if (!ve) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <StickySectionHeader t={t} accent={accent}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10,
+            padding: "2px 0 10px 0" }}>
+            <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Schnelleingabe</div>
+          </div>
+        </StickySectionHeader>
+        <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
+          paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
+          <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
+            Objekt wählen, um Einheiten schnell zu bearbeiten.
+          </div>
+          {(ves || []).length === 0 ? (
+            <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 }}>
+              Noch keine Objekte vorhanden.
             </div>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Feld + Aktion + Wert */}
-      <div style={{ background: t.card, border: `1px solid ${t.border}`,
-        borderRadius: RAD.md, padding: 12, marginBottom: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={labelStil}>Feld</label>
-            <select value={bulkFeld} onChange={e => { setBulkFeld(e.target.value); setBulkWert(""); }}
-              style={{ ...inputStil, cursor: "pointer" }}>
-              {aktuelleFelder.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStil}>Aktion</label>
-            <select value={bulkAktion} onChange={e => setBulkAktion(e.target.value)}
-              style={{ ...inputStil, cursor: "pointer" }}>
-              <option value="setzen">Setzen (überschreiben)</option>
-              <option value="wennLeer">Nur wenn leer</option>
-              <option value="leeren">Leeren</option>
-            </select>
-          </div>
-        </div>
-        {bulkWertNoetig ? (
-          <div style={{ marginTop: 10 }}>
-            <label style={labelStil}>Wert</label>
-            {feldDef.typ === "select" ? (
-              <select value={bulkWert} onChange={e => setBulkWert(e.target.value)}
-                style={{ ...inputStil, cursor: "pointer" }}>
-                <option value="">— wählen —</option>
-                {feldDef.optionen.map(o => (
-                  <option key={o} value={o}>{feldDef.optionLabel ? feldDef.optionLabel(o) : o}</option>
-                ))}
-              </select>
-            ) : (
-              <input value={bulkWert} onChange={e => setBulkWert(e.target.value)}
-                placeholder={feldDef.typ === "flaeche" ? "z. B. 72 (→ 72 m²)" : feldDef.label}
-                inputMode={feldDef.typ === "flaeche" ? "decimal" : "text"} style={inputStil}/>
-            )}
-          </div>
-        ) : null}
-      </div>
-
-      {/* Vorschau-Button */}
-      <button onClick={() => setVorschauAuf(true)} disabled={!kannVorschau}
-        style={{ width: "100%", padding: "11px 12px", borderRadius: RAD.sm,
-          border: `1px solid ${kannVorschau ? accent : t.border}`,
-          background: kannVorschau ? accent : "transparent",
-          color: kannVorschau ? "#fff" : t.muted,
-          fontSize: FS.m, fontWeight: FW.semibold,
-          cursor: kannVorschau ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
-        Vorschau ({anzahlGewaehlt} gewählt)
-      </button>
-
-      {/* Erfolg + Undo */}
-      {bulkErfolg > 0 && undoSnap ? (
-        <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: RAD.sm,
-          background: "#22C55E18", border: "1px solid #22C55E55",
-          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <div style={{ color: t.text, fontSize: FS.s }}>
-            {bulkErfolg} {bulkErfolg === 1 ? "Datensatz" : "Datensätze"} geändert.
-          </div>
-          <button onClick={macheUndo}
-            style={{ background: "none", border: `1px solid ${accent}`, color: accent,
-              borderRadius: RAD.sm, padding: "5px 12px", fontSize: FS.xs,
-              fontWeight: FW.semibold, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
-            Rückgängig
-          </button>
-        </div>
-      ) : null}
-
-      {/* Vorschau-Modal */}
-      {vorschauAuf ? (
-        <div onClick={() => setVorschauAuf(false)}
-          style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
-            background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center",
-            justifyContent: "center", padding: 16, zIndex: 9999 }}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ background: t.card, borderRadius: RAD.lg, maxWidth: 520, width: "100%",
-              maxHeight: "85dvh", overflowY: "auto", padding: 16,
-              border: `1px solid ${t.border}`, boxSizing: "border-box" }}>
-            <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: t.text, marginBottom: 4 }}>
-              Vorschau
-            </div>
-            <div style={{ fontSize: FS.s, color: t.sub, marginBottom: 12 }}>
-              Feld „{feldDef.label}" · {bulkAktion === "leeren" ? "leeren"
-                : bulkAktion === "wennLeer" ? "nur wenn leer setzen" : "setzen"}
-            </div>
-            {aenderungen.length === 0 ? (
-              <div style={{ fontSize: FS.s, color: t.muted, padding: "8px 0" }}>
-                Keine Änderungen — bei den gewählten Datensätzen steht der Wert bereits so
-                (oder „nur wenn leer" trifft auf keinen leeren zu).
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-                {aenderungen.map((c, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8,
-                    fontSize: FS.s, padding: "6px 8px", borderRadius: RAD.sm,
-                    background: t.surface }}>
-                    <div style={{ flex: 1, minWidth: 0, color: t.text,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.label}</div>
-                    <div style={{ color: t.muted, flexShrink: 0 }}>{zeigeWert(feldDef.id, c.alt)}</div>
-                    <div style={{ color: t.muted, flexShrink: 0 }}>→</div>
-                    <div style={{ color: accent, fontWeight: FW.semibold, flexShrink: 0 }}>{zeigeWert(feldDef.id, c.neu)}</div>
+          ) : (
+            <div style={KACHEL_GRID}>
+              {(ves || []).map(v => (
+                <div key={v.id} onClick={() => setObjektId(v.id)} data-kb-item="1"
+                  style={{ display: "flex", flexDirection: "column", cursor: "pointer",
+                    background: t.card, height: "100%",
+                    border: `1px solid ${t.border}`, borderRadius: RAD.lg,
+                    overflow: "hidden", transition: "all 0.15s" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12,
+                    padding: "12px 14px", flex: 1, minHeight: 0 }}>
+                    <span style={{ fontSize: 22, flexShrink: 0 }}>🏢</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: accent,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {v.nr || "Objekt"}
+                      </div>
+                      <div style={{ fontSize: FS.s, color: t.sub,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {v.adresse || "—"}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: FS.xxs, padding: "2px 8px", borderRadius: RAD.pill,
+                      background: accent + "15", color: accent, fontWeight: FW.medium, flexShrink: 0 }}>
+                      {(v.einheiten || []).length} Einh.
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setVorschauAuf(false)}
-                style={{ background: "none", border: `1px solid ${t.border}`, color: t.sub,
-                  borderRadius: RAD.sm, padding: "8px 14px", fontSize: FS.s,
-                  cursor: "pointer", fontFamily: "inherit" }}>
-                Abbrechen
-              </button>
-              <button onClick={wendeAn} disabled={aenderungen.length === 0}
-                style={{ background: aenderungen.length ? accent : "transparent",
-                  border: `1px solid ${aenderungen.length ? accent : t.border}`,
-                  color: aenderungen.length ? "#fff" : t.muted,
-                  borderRadius: RAD.sm, padding: "8px 14px", fontSize: FS.s,
-                  fontWeight: FW.semibold,
-                  cursor: aenderungen.length ? "pointer" : "not-allowed", fontFamily: "inherit" }}>
-                {aenderungen.length} anwenden
-              </button>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── MASKE: Tabellarische Schnellbearbeitung des gewählten Objekts ──
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <StickySectionHeader t={t} accent={accent}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          padding: "2px 0 10px 0" }}>
+          <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Schnelleingabe</div>
+          <button onClick={() => setObjektId(null)} data-kb-zurueck="1" style={{ marginLeft: "auto",
+            display: "flex", alignItems: "center", gap: 6, background: "none",
+            border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
+            padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
+            fontSize: FS.m, fontWeight: FW.medium }}>
+            Anderes Objekt
+          </button>
+        </div>
+      </StickySectionHeader>
+
+      <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
+        paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
+
+        {/* Kopf: um welches Objekt geht es */}
+        <div style={{ background: accent + "0E", border: `1px solid ${accent}55`,
+          borderRadius: RAD.lg, padding: "12px 16px", marginBottom: 14,
+          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 26, flexShrink: 0 }}>🏢</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: accent }}>{ve.nr || "Objekt"}</div>
+            <div style={{ fontSize: FS.s, color: t.sub }}>{ve.adresse || "—"}</div>
+          </div>
+          <span style={{ marginLeft: "auto", fontSize: FS.xs, color: t.muted }}>
+            {einheiten.length} {einheiten.length === 1 ? "Einheit" : "Einheiten"}
+          </span>
+        </div>
+
+        {/* Pillen: Spalten zuschalten (Klick-Reihenfolge = links→rechts) */}
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+            textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+            Spalten wählen
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {SPALTEN_KATALOG.map(s => {
+              const an = spalten.indexOf(s.id) >= 0;
+              const pos = spalten.indexOf(s.id) + 1;
+              return (
+                <button key={s.id} onClick={() => toggleSpalte(s.id)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "6px 12px", borderRadius: RAD.pill, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+                    border: `1px solid ${an ? accent : t.border}`,
+                    background: an ? accent : "none",
+                    color: an ? getContrastColor(accent) : t.sub }}>
+                  {an && (
+                    <span style={{ fontSize: FS.xxs, fontWeight: FW.bold,
+                      background: getContrastColor(accent) + "33", borderRadius: RAD.pill,
+                      padding: "0 5px" }}>{pos}</span>
+                  )}
+                  {s.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-      ) : null}
-      </>
-      )}
-    </div>
+
+        {/* Tabelle: Zeilen = Einheiten, Spalte 1 fix = Einheit, dann gewählte Spalten */}
+        {einheiten.length === 0 ? (
+          <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 }}>
+            Dieses Objekt hat noch keine Einheiten.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto", border: `1px solid ${t.border}`,
+            borderRadius: RAD.lg, marginTop: 10 }}>
+            <table style={{ borderCollapse: "collapse", width: "100%",
+              fontSize: FS.m, color: t.text }}>
+              <thead>
+                <tr style={{ background: t.surface }}>
+                  <th style={{ textAlign: "left", padding: "10px 12px",
+                    borderBottom: `1px solid ${t.border}`, position: "sticky", left: 0,
+                    background: t.surface, fontWeight: FW.bold, color: t.sub,
+                    minWidth: 130, whiteSpace: "nowrap" }}>Einheit</th>
+                  {spalten.map(sid => {
+                    const sd = spalteDef(sid);
+                    return sd ? (
+                      <th key={sid} style={{ textAlign: "left", padding: "10px 12px",
+                        borderBottom: `1px solid ${t.border}`, fontWeight: FW.bold,
+                        color: t.sub, minWidth: sd.breite, whiteSpace: "nowrap" }}>{sd.label}</th>
+                    ) : null;
+                  })}
+                  {spalten.length === 0 && (
+                    <th style={{ textAlign: "left", padding: "10px 12px",
+                      borderBottom: `1px solid ${t.border}`, fontWeight: FW.regular,
+                      color: t.muted, fontStyle: "italic" }}>
+                      Oben Spalten wählen …
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {einheiten.map((e, ri) => (
+                  <tr key={e.id} style={{ background: ri % 2 ? t.card : "transparent" }}>
+                    <td style={{ padding: "6px 12px", borderBottom: `1px solid ${t.border}40`,
+                      position: "sticky", left: 0, background: ri % 2 ? t.card : t.bg || t.card,
+                      fontWeight: FW.bold, color: accent, whiteSpace: "nowrap" }}>
+                      {e.nr || ("Einheit " + (ri + 1))}
+                    </td>
+                    {spalten.map(sid => {
+                      const sd = spalteDef(sid);
+                      return sd ? (
+                        <td key={sid} style={{ padding: "6px 8px",
+                          borderBottom: `1px solid ${t.border}40`, verticalAlign: "middle" }}>
+                          {zellInput(e, sd)}
+                        </td>
+                      ) : null;
+                    })}
+                    {spalten.length === 0 && (
+                      <td style={{ padding: "6px 12px", borderBottom: `1px solid ${t.border}40`,
+                        color: t.muted }}>—</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1470,6 +1103,11 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
   const [abstand, setAbstand] = useState("normal"); // kompakt | normal | weit
   const [mitHv, setMitHv] = useState(true);
   const [mitLogo, setMitLogo] = useState(true);
+
+  // Master-Detail-Gerüst wie Objekte/Kontakte: links Vorlagen-Kacheln, rechts
+  // der Aufbau-Bereich der gewählten Liste.
+  const istDesktopLG = useWindowWidth() >= DESKTOP_MIN_WIDTH;
+  const [mdRef, mdLayout] = useMasterDetailLayout(340, 1.1, 10, 5, true, 420, 0.62);
 
   const vorlage = LISTEN_KATALOG.find(v => v.id === vorlageId) || null;
   const ve = (ves || []).find(v => v && v.id === objektId) || (ves && ves[0]) || null;
@@ -1684,7 +1322,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
           padding: "2px 0 10px 0" }}>
           <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Listengenerator</div>
-          {vorlage && (
+          {vorlage && !istDesktopLG && (
             <button onClick={() => setVorlageId(null)} data-kb-zurueck="1" style={{ marginLeft: "auto",
               display: "flex", alignItems: "center", gap: 6, background: "none",
               border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
@@ -1695,31 +1333,70 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
           )}
         </div>
       </StickySectionHeader>
-      <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
-        paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
 
-        {/* Schritt 1: Vorlagen-Katalog */}
-        {!vorlage && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: FS.s, color: t.muted, marginBottom: 2 }}>
+      {/* Master-Detail: links Vorlagen-Kacheln (immer sichtbar auf Desktop),
+          rechts der Aufbau-Bereich der gewählten Liste. */}
+      <div ref={mdRef} style={istDesktopLG
+        ? { display: "flex", gap: 10, flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }
+        : { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+
+        {/* MASTER: Vorlagen-Kacheln. Auf Mobil nur sichtbar, solange keine
+            Vorlage gewählt ist (klassischer Wizard-Schritt 1). */}
+        {(istDesktopLG || !vorlage) && (
+          <div data-ad-scroll="y" style={istDesktopLG
+            ? { flex: mdLayout.detailFest ? "1 1 0%" : `0 0 ${mdLayout.masterWidth}px`,
+                minWidth: 0, overflowY: "auto", padding: 2, boxSizing: "border-box",
+                paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
+            : { flex: 1, minHeight: 0, overflowY: "auto",
+                paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
+            <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
               Welche Liste möchtest du erstellen?
             </div>
-            {LISTEN_KATALOG.map(v => (
-              <div key={v.id} onClick={() => { setVorlageId(v.id); setHausId(null); }} data-kb-item="1"
-                style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer",
-                  background: t.surface, border: `1px solid ${t.border}`,
-                  borderRadius: RAD.md, padding: "12px 14px" }}>
-                <span style={{ fontSize: 22, flexShrink: 0 }}>{v.icon}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{v.label}</div>
-                  <div style={{ fontSize: FS.s, color: t.sub }}>{v.sub}</div>
-                </div>
-                <span style={{ fontSize: FS.xxs, padding: "2px 8px", borderRadius: RAD.pill,
-                  background: accent + "15", color: accent, fontWeight: FW.medium, flexShrink: 0 }}>
-                  {v.bereich === "objekt" ? "je Objekt" : "alle Objekte"}
-                </span>
-              </div>
-            ))}
+            <div style={KACHEL_GRID}>
+              {LISTEN_KATALOG.map(v => {
+                const aktivK = vorlage && vorlage.id === v.id;
+                return (
+                  <div key={v.id} onClick={() => { setVorlageId(v.id); setHausId(null); }} data-kb-item="1"
+                    style={{ display: "flex", flexDirection: "column", cursor: "pointer",
+                      background: t.card, height: "100%",
+                      border: `1px solid ${aktivK ? accent : t.border}`,
+                      borderRadius: RAD.lg, overflow: "hidden", transition: "all 0.15s" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12,
+                      padding: "12px 14px", flex: 1, minHeight: 0 }}>
+                      <span style={{ fontSize: 22, flexShrink: 0 }}>{v.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{v.label}</div>
+                        <div style={{ fontSize: FS.s, color: t.sub }}>{v.sub}</div>
+                      </div>
+                      <span style={{ fontSize: FS.xxs, padding: "2px 8px", borderRadius: RAD.pill,
+                        background: accent + "15", color: accent, fontWeight: FW.medium, flexShrink: 0 }}>
+                        {v.bereich === "objekt" ? "je Objekt" : "alle Objekte"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* DETAIL: Aufbau-Bereich der gewählten Liste. Auf Desktop immer sichtbar
+            (mit Platzhalter, solange nichts gewählt); auf Mobil nur bei Auswahl. */}
+        {(istDesktopLG || vorlage) && (
+        <div data-ad-scroll="y" style={istDesktopLG
+          ? { flex: mdLayout.detailFest ? `0 0 ${mdLayout.detailBreite}px` : "1 1 0%",
+              minWidth: 0, overflowY: "auto",
+              paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
+          : { flex: 1, minHeight: 0, overflowY: "auto",
+              paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
+
+        {/* Platzhalter, solange keine Vorlage gewählt (nur Desktop sichtbar). */}
+        {!vorlage && (
+          <div style={{ height: "100%", minHeight: 240, display: "flex",
+            alignItems: "center", justifyContent: "center", textAlign: "center",
+            border: `1px dashed ${t.border}`, borderRadius: RAD.lg,
+            color: t.muted, fontSize: FS.m, padding: 24 }}>
+            Links eine Liste wählen, um sie hier aufzubauen.
           </div>
         )}
 
@@ -1873,6 +1550,8 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
               </div>
             </div>
           </div>
+        )}
+        </div>
         )}
       </div>
     </div>

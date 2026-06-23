@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FS, FW, RAD, feldInput, feldLabel, getContrastColor } from "./constants.js";
+import { FS, FW, RAD, KACHEL_GRID, KACHEL_W, feldInput, feldLabel, getContrastColor } from "./constants.js";
 import { parseDatumWert } from "./utils-basis.js";
 import {
   flaecheVon, isStellplatzTyp, istAnonymesMitglied, teileVon
@@ -911,6 +911,10 @@ function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, i
       border: ohneRahmen ? "none" : `1px solid ${bc}`,
       borderRadius: ohneRahmen ? 0 : RAD.lg,
       overflow: "hidden",
+      // Karte füllt ihre Grid-Zelle in voller Höhe (Grid streckt Zellen auf
+      // gleiche Höhe). So klebt die Statusleiste unten, kein dunkler Reststreifen.
+      height: "100%", display: "flex", flexDirection: "column",
+      background: t.card,
       scrollMarginTop: "var(--ad-header-h, 200px)" }}
       onMouseEnter={e => { if (!aktiv) e.currentTarget.style.transform = "translateY(-1px)"; }}
       onMouseLeave={e => { if (!aktiv) e.currentTarget.style.transform = "none"; }}>
@@ -918,7 +922,7 @@ function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, i
         display: "flex", alignItems: "center", gap: 12,
         padding: "10px 12px", boxSizing: "border-box",
         background: t.card, color: t.text,
-      }}>
+        flex: 1, minHeight: 0 }}>
         {/* Links: Icon — wir nutzen DEN ECHTEN Avatar (firma=true) mit
             verwendungsZuweisungen. Damit ist die Render-Pipeline 1:1 die
             gleiche wie bei den Firmen-Kontakten, wo die Eck-Badges perfekt
@@ -1548,14 +1552,8 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAnteil
   // Detail immer fest (absolute px aus dem Slider), Master nimmt den Rest. Bei
   // Karten teilt sich der Rest in kartenSpalten gleich breite Spalten.
   const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil);
-  // Spaltenzahl: Wunsch (kartenSpalten) gedeckelt auf den verfügbaren Platz UND
-  // auf die tatsächliche Kartenzahl — sonst bleiben bei wenigen Karten leere
-  // Grid-Spalten (1 Karte in 2-Spalten-Grid → halbe Breite + Lücke). So füllt
-  // 1 Karte die volle Master-Breite, 2 Karten je die Hälfte usw.; bei mehr
-  // Karten als Spalten bleiben alle Karten gleich breit (kein Dehnen der
-  // letzten Umbruch-Karte).
-  const passtCols = Math.max(1, Math.floor((mdLayout.masterWidth || cardWidth) / 300));
-  const kartenCols = Math.max(1, Math.min(kartenSpalten, passtCols, gefiltert.length || 1));
+  // Karten im Master nutzen das einheitliche KACHEL_GRID (feste Kachelbreite,
+  // nie gedehnt) — identisch zu Liste/Kontakten/Einstellungen.
   // Auswahl-Akzent: Mehr-Farbe = Objekt-Bereichsfarbe, Graumodus = System-Akzent.
   // Override (z. B. Kalenderfarbe) hat Vorrang.
   const auswahlAccent = auswahlAccentOverride || useKontaktFarbe().auswahlObjekt || accent;
@@ -1605,11 +1603,7 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAnteil
         overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
         <div style={listenAnsicht === "liste"
           ? { display: "flex", flexDirection: "column", gap: 6 }
-          : kartenCols > 1
-          ? { display: "grid",
-              gridTemplateColumns: `repeat(${kartenCols}, minmax(0, 1fr))`,
-              gap: 8, alignContent: "start" }
-          : { display: "flex", flexDirection: "column", gap: 8 }}>
+          : KACHEL_GRID}>
           {gefiltert.map(ve => listenAnsicht === "liste" ? (
             <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
               aktiv={expandedVEId === ve.id} kbItem id={"obj-" + ve.id}
