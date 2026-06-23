@@ -4,7 +4,7 @@ import {
   BEWOHNER_RECHTE, aktiveBelegung, bewohnerRecht, teileVon
 } from "./datenmodell.js";
 import {
-  I, SortierPfeile, stabilisiereScroll, useAlleKontakte, useFirmenRollen, useKontaktFarbe,
+  I, SortierPfeile, stabilisiereScroll, useAlleKontakte, useFirmenRollen, useKartenIcons, useKontaktFarbe,
   useOutsideClick, useRollen, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
 import { Avatar, KontaktPicker } from "./components.jsx";
@@ -484,6 +484,7 @@ function KontaktKategorieKarte({ kategorie, katId, kontakte, ve, alleKontakte, v
   const [expanded, setExpanded] = useState(kontakte.length > 0 || kontaktIds !== null);
   const [sortMenuAuf, setSortMenuAuf] = useState(false);
   const [iconPickerAuf, setIconPickerAuf] = useState(false);
+  const kartenIconsAn = useKartenIcons();
   // Popovers schließen bei Klick außerhalb (§2.7).
   const sortMenuRef = useRef(null);
   useOutsideClick(sortMenuRef, () => setSortMenuAuf(false), sortMenuAuf);
@@ -564,7 +565,7 @@ function KontaktKategorieKarte({ kategorie, katId, kontakte, ve, alleKontakte, v
             )}
           </div>
         ) : (
-          kategorie.icon ? <span style={{ fontSize: FS.icon }}>{kategorie.icon}</span> : null
+          kartenIconsAn && kategorie.icon ? <span style={{ fontSize: FS.icon }}>{kategorie.icon}</span> : null
         )}
         {nameEditierbar ? (
           <input value={kategorie.label}

@@ -268,6 +268,7 @@ const DEFAULT_SETTINGS = {
   kategorien: DEFAULT_KATEGORIEN, // Gemeinsame Quelle für Kürzel+Farbe von Paaren (Verwendung↔Rolle)
   avatarIconsPerson: true,    // Eck-Badges an Personen-Avataren
   avatarIconsFirma:  true,    // Eck-Badges an Firmen-Avataren
+  kartenIconsAn:     true,    // globaler Schalter: Symbole an allen Karten-Köpfen
   kartenBadgesPerson: true,   // Rollen-Badges auf der Kontaktkarte (Personen)
   kartenBadgesFirma:  true,   // Rollen-Badges auf der Kontaktkarte (Firmen)
   // ── Kontakte-Anzeige ──
@@ -413,14 +414,19 @@ const VS_BASEN = [
   { id: "mea",       label: "nach MEA (berechnet)" },
   { id: "flaeche",   label: "nach Wohnfläche (berechnet)" },
   { id: "einheiten", label: "je Einheit gleich (berechnet)" },
-  { id: "personen",  label: "Personenzahl (manuell je Einheit)" },
+  { id: "personen",  label: "Personenzahl (aus Bewohnern)" },
   { id: "manuell",   label: "manuelle Anteile je Einheit" },
 ];
 const vsBasisLabel = (basis) => {
   const b = VS_BASEN.find(x => x.id === basis);
   return b ? b.label : basis;
 };
-const vsIstManuell = (basis) => basis === "personen" || basis === "manuell";
+// Manuelle Anteile (anteile-Map je Einheit): nur die freie „manuell"-Basis.
+// „personen" ist NICHT mehr manuell — der Wert kommt aus den Bewohnern und wird
+// beim Editieren über setzeEinheitKopfzahl in die Einheit zurückgeschrieben.
+const vsIstManuell = (basis) => basis === "manuell";
+// Editierbar, aber an die Einheit gekoppelt (Kopfzahl-Rückschreibung).
+const vsIstPersonen = (basis) => basis === "personen";
 function effVerteilerschluessel(ve) {
   const over = (ve && Array.isArray(ve.verteilerschluessel)) ? ve.verteilerschluessel : [];
   const std = DEFAULT_VERTEILERSCHLUESSEL.map(d => {
@@ -437,6 +443,10 @@ function vsWertVon(schluessel, einheit) {
   if (basis === "mea")       return parseFlaeche(einheit && einheit.mea);
   if (basis === "flaeche")   return flaecheVon(einheit);
   if (basis === "einheiten") return 1;
+  // Personen folgen automatisch den Bewohnern der Einheit (echte Kopfzahl),
+  // nicht einer separaten Anteils-Map. Editieren schreibt über setzeEinheitKopfzahl
+  // in die anonymen Köpfe zurück (bidirektional mit den Einheiten verknüpft).
+  if (basis === "personen")  return einheitKopfzahl(einheit);
   const ant = (schluessel && schluessel.anteile) || {};
   return parseFlaeche(ant[einheit && einheit.id]);
 }
@@ -677,6 +687,111 @@ function mitgliedKopfzahl(m) {
 function haushaltKopfzahl(hh) {
   if (!hh || !Array.isArray(hh.mitglieder)) return 0;
   return hh.mitglieder.reduce((s, m) => s + mitgliedKopfzahl(m), 0);
+}
+
+// ── Personenzahl je Einheit (für den Personen-Verteilerschlüssel) ───────────
+// Die Personenzahl einer Einheit ist KEIN eigenes Feld, sondern die Summe der
+// Köpfe über alle Teile (heute laufende bzw. aktive Belegung). Quelle der
+// Wahrheit sind die Haushaltsmitglieder — benannte zählen 1, anonyme nach
+// anzahl. So bleibt der Personen-Schlüssel automatisch mit den Bewohnern der
+// Einheit verknüpft (Änderung dort wirkt sofort im Schlüssel).
+function einheitKopfzahl(einheit) {
+  const teile = teileVon(einheit);
+  return teile.reduce((s, teil) => {
+    const b = heuteLaufendeBelegung(teil) || aktiveBelegung(teil);
+    const hh = (b && b.haushalt) || null;
+    return s + haushaltKopfzahl(hh);
+  }, 0);
+}
+
+// Setzt die Personenzahl einer Einheit auf einen Zielwert, indem die Differenz
+// zu den BENANNTEN Köpfen auf die anonymen Mitglieder gebucht wird — rauf wie
+// runter. Benannte Bewohner bleiben unangetastet. Geschrieben wird in die heute
+// laufende (sonst aktive) Belegung des aktiven Teils. Gibt die (ggf.) geänderte
+// Einheit zurück; ist nichts zu ändern, kommt die Einheit unverändert zurück.
+function setzeEinheitKopfzahl(einheit, ziel) {
+  const z = Math.max(0, Math.round(Number(ziel) || 0));
+  const teile = teileVon(einheit);
+  const aktiv = aktiverTeil(einheit);
+  if (!aktiv) return einheit;
+  // Kopfzahl der ANDEREN Teile (bleibt unberührt) vom Ziel abziehen — der
+  // aktive Teil trägt nur seinen Anteil.
+  let andereKoepfe = 0;
+  teile.forEach(teil => {
+    if (teil === aktiv) return;
+    const b = heuteLaufendeBelegung(teil) || aktiveBelegung(teil);
+    andereKoepfe += haushaltKopfzahl((b && b.haushalt) || null);
+  });
+  const zielAktiv = Math.max(0, z - andereKoepfe);
+
+  const beleg = heuteLaufendeBelegung(aktiv) || aktiveBelegung(aktiv);
+  if (!beleg) return einheit; // echter Leerstand, keine Belegung zum Schreiben
+  const hh = beleg.haushalt || leererHaushalt();
+  const mitglieder = Array.isArray(hh.mitglieder) ? hh.mitglieder.slice() : [];
+
+  const benannte = mitglieder.filter(m => !istAnonymesMitglied(m))
+    .reduce((s, m) => s + mitgliedKopfzahl(m), 0);
+  // Differenz, die über anonyme Köpfe abgebildet werden muss (nie negativ:
+  // unter die benannten Köpfe kann nicht gedrückt werden).
+  const zielAnonym = Math.max(0, zielAktiv - benannte);
+
+  const anonIdx = mitglieder.findIndex(m => istAnonymesMitglied(m));
+  let neueMitglieder;
+  if (zielAnonym <= 0) {
+    // keine anonymen Köpfe mehr nötig → vorhandenes anonymes Mitglied entfernen
+    neueMitglieder = mitglieder.filter(m => !istAnonymesMitglied(m));
+  } else if (anonIdx >= 0) {
+    neueMitglieder = mitglieder.map((m, i) =>
+      i === anonIdx ? { ...m, anzahl: zielAnonym } : m);
+  } else {
+    // Recht vom ersten benannten Mitglied erben, sonst eigennutzer als neutral.
+    const benannt = mitglieder.find(m => !istAnonymesMitglied(m));
+    const recht = (benannt && benannt.recht) || "eigennutzer";
+    neueMitglieder = [...mitglieder, neuesHhMitglied(null, "", recht, zielAnonym)];
+  }
+
+  const neuHh = { ...hh, mitglieder: neueMitglieder };
+  const neueBelegungen = aktiv.belegungen.map(b => b === beleg ? { ...b, haushalt: neuHh } : b);
+  const neuerTeilObj = { ...aktiv, belegungen: neueBelegungen };
+  const neueTeile = einheit.teile.map(teil => teil === aktiv ? neuerTeilObj : teil);
+  return { ...einheit, teile: neueTeile };
+}
+
+// MEA einer Einheit setzen — flaches Stammdatenfeld (einheit.mea). Roh-String,
+// damit Teil-Eingaben wie "12,5" erhalten bleiben (parseFlaeche liest sie aus).
+function setzeEinheitMea(einheit, wert) {
+  if (!einheit) return einheit;
+  return { ...einheit, mea: String(wert == null ? "" : wert) };
+}
+
+// Anzahl der Teile einer Einheit (für die Sperre der Flächen-Bearbeitung bei
+// Unterteilung). Eine Einheit ohne explizite Teile gilt als 1 (ungeteilt).
+function einheitTeilAnzahl(einheit) {
+  return (einheit && Array.isArray(einheit.teile)) ? einheit.teile.length : 1;
+}
+
+// Wohnfläche im Verteilerschlüssel ist nur bei UNGETEILTEN Einheiten rückschreibbar
+// (genau ein Teil). Bei Unterteilung müsste die Summe auf mehrere Teile verteilt
+// werden — das bleibt der Einheit vorbehalten.
+function darfFlaecheImVsEditieren(einheit) {
+  return einheitTeilAnzahl(einheit) <= 1;
+}
+
+// Wohnfläche einer ungeteilten Einheit setzen — schreibt in den (einzigen) Teil.
+// Bei Unterteilung NO-OP (Sicherung gegen versehentliches Plätten mehrerer Teile).
+function setzeEinheitFlaeche(einheit, wert) {
+  if (!einheit) return einheit;
+  if (!darfFlaecheImVsEditieren(einheit)) return einheit;
+  const wertStr = String(wert == null ? "" : wert);
+  const teile = teileVon(einheit);
+  const aktiv = teile[0];
+  // Legacy-Einheit ohne teile-Array: flaches Feld schreiben, damit flaecheVon greift.
+  if (!Array.isArray(einheit.teile) || einheit.teile.length === 0) {
+    return { ...einheit, flaeche: wertStr };
+  }
+  const neuerTeilObj = { ...aktiv, flaeche: wertStr };
+  const neueTeile = einheit.teile.map(teil => teil === aktiv ? neuerTeilObj : teil);
+  return { ...einheit, teile: neueTeile, flaeche: "" };
 }
 
 // Eine frische Belegung eines bestimmten Typs (Standard: Leerstand = lückenfüllend).
@@ -1906,6 +2021,12 @@ export {
   VS_BASEN,
   vsBasisLabel,
   vsIstManuell,
+  vsIstPersonen,
+  einheitKopfzahl,
+  setzeEinheitKopfzahl,
+  setzeEinheitMea,
+  setzeEinheitFlaeche,
+  darfFlaecheImVsEditieren,
   effVerteilerschluessel,
   vsWertVon,
   KONTAKTARTEN_KATEGORIEN,

@@ -191,6 +191,7 @@ import {
 
 import {
   AvatarIconsContext,
+  KartenIconsContext,
   DESKTOP_MIN_WIDTH,
   EinheitAnzeigeContext,
   EinheitOffenContext,
@@ -2288,6 +2289,7 @@ export default function App() {
       person: settings.avatarIconsPerson !== false,
       firma:  settings.avatarIconsFirma  !== false
     }}>
+    <KartenIconsContext.Provider value={settings.kartenIconsAn !== false}>
     <KartenBadgesContext.Provider value={{
       person: settings.kartenBadgesPerson !== false,
       firma:  settings.kartenBadgesFirma  !== false
@@ -3239,6 +3241,7 @@ export default function App() {
     </TerminBezeichnungenContext.Provider>
     </StatusLeisteContext.Provider>
     </KartenBadgesContext.Provider>
+    </KartenIconsContext.Provider>
     </AvatarIconsContext.Provider>
     </KategorienContext.Provider>
     </VerwendungenContext.Provider>

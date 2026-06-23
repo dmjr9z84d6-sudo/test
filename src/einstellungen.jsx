@@ -528,6 +528,11 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
             { id: "liste",  label: "Liste" },
           ]}/>
       </EinstellZeile>
+      <EinstellZeile label="Symbole an Karten"
+        sub="An: Karten zeigen ihr Symbol links vom Titel · Aus: Karten ohne Symbol" t={t}>
+        <Toggle value={settings.kartenIconsAn !== false}
+          onChange={v => save({ kartenIconsAn: v })} color={accent}/>
+      </EinstellZeile>
       <EinstellZeile label="Detailfenster-Breite" sub="Wie breit das geöffnete Detailfenster rechts ist, wenn du ein Objekt oder einen Kontakt antippst. Liste bzw. Karten nehmen den Rest." t={t}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
           <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,

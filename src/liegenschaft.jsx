@@ -11,13 +11,13 @@ import {
   istAnonymesMitglied, istVermietet, istVertragspartei, laufenderEigWechsel, laufenderSevWechsel,
   leererHaushalt, neueBelegung, neuerRaum, neuerTeil, neuerZaehler, neuesHhMitglied, parseFlaeche,
   sevStatus, starteSevWechsel, summeRaumFlaechen, teileVon, verwendungenVon, vsBasisLabel,
-  vsIstManuell, vsWertVon, wendeKontaktZuweisungenAn, zaehlerArtLabel
+  vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wendeKontaktZuweisungenAn, zaehlerArtLabel
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, HV_ADRESSE, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
   SortierPfeile, ableiteStatusVonBis, genRechnungsadresse, haltePositionUeberUpdate,
   headerFilterIstAktiv, scrollToCard, sidebarModus, useEinheitAnzeige, useEinheitOffen,
-  useKontaktFarbe, useOutsideClick, useRechnungsadresseAn, useVerwendungen, useWindowWidth
+  useKartenIcons, useKontaktFarbe, useOutsideClick, useRechnungsadresseAn, useVerwendungen, useWindowWidth
 } from "./utils-icons.jsx";
 import {
   Avatar, BelegungswechselVorgang, CopyBtn, DatumFeld, EckPille, EigentumBlock, EigentumHistorie,
@@ -4366,6 +4366,7 @@ function GebaeudeKopf({ karte, t, accent, editMode, renaming, name, setName,
     onPickerOpenChange = null }) {
   const [iconPickerOffen, setIconPickerOffen] = useState(false);
   const [loeschConfirm, setLoeschConfirm] = useState(false);
+  const kartenIconsAn = useKartenIcons();
   // Container über offenen Icon-Picker informieren, damit er overflow:visible
   // setzt (sonst clippt das overflow:hidden der Karte das Popover).
   useEffect(() => { if (onPickerOpenChange) onPickerOpenChange(iconPickerOffen); }, [iconPickerOffen]);
@@ -4402,7 +4403,7 @@ function GebaeudeKopf({ karte, t, accent, editMode, renaming, name, setName,
           {karte.icon ? karte.icon : <I name="plus" size={13} color={accent}/>}
         </button>
       ) : (
-        karte.icon ? <span style={{ fontSize: FS.icon }}>{karte.icon}</span> : null
+        kartenIconsAn && karte.icon ? <span style={{ fontSize: FS.icon }}>{karte.icon}</span> : null
       )}
       {/* Icon-Auswahl-Popover */}
       {iconAenderbar && iconPickerOffen && (
@@ -5152,6 +5153,7 @@ function VertragFirmaKarte({ firma, maListe, t, accent, onKontaktClick, ves, kon
 // Vertrags-Nr., Laufzeit ab/bis) als übersichtliches Raster.
 function VertragZeile({ v, firma, t, accent, editMode, onKontaktClick, onRemove, onEdit, kontakte, setKontakte, ves, kontext = "vertrag" }) {
   const [offen, setOffen] = useState(false);
+  const kartenIconsAn = useKartenIcons();
   const kontaktFarben = useKontaktFarbe();
   const firmaFarbe = (kontaktFarben && kontaktFarben.firma) || accent;
   const istVersicherung = kontext === "versicherung";
@@ -5232,7 +5234,7 @@ function VertragZeile({ v, firma, t, accent, editMode, onKontaktClick, onRemove,
       {/* Kopf-Zeile (klickbar zum Auf-/Zuklappen) */}
       <div onClick={() => setOffen(o => !o)}
         style={{ padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-        <span style={{ fontSize: FS.icon }}>📄</span>
+        {kartenIconsAn ? <span style={{ fontSize: FS.icon }}>📄</span> : null}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>
             {v.typ}{v.leistung ? " · " + v.leistung : ""}
@@ -6171,6 +6173,17 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
   const [neuName, setNeuName] = useState("");
   const [neuBasis, setNeuBasis] = useState("manuell");
   const [loeschBestaetigung, setLoeschBestaetigung] = useState(null);
+  const [vsIconPickerOffen, setVsIconPickerOffen] = useState(false);
+  const kartenIconsAn = useKartenIcons();
+  const vsKopfRef = useRef(null);
+  useOutsideClick(vsKopfRef, () => setVsIconPickerOffen(false), vsIconPickerOffen);
+  // Icon der Verteilerschlüssel-Karte: persistiert an ve.vsIcon. Default 🧮.
+  // Leerer String = bewusst kein Symbol. undefined = noch nie gesetzt → Default.
+  const vsIcon = (ve && typeof ve.vsIcon === "string") ? ve.vsIcon : "🧮";
+  const setzeVsIcon = (icon) => {
+    if (!setVes || !ve) return;
+    setVes(prev => prev.map(v => v.id === ve.id ? { ...v, vsIcon: icon } : v));
+  };
   // Akkordeon: klappbar nur wenn von außen angebunden (Verwaltung-Tab). Ohne
   // Anbindung (z. B. Schnelleingabe) bleibt die Karte immer offen wie bisher.
   const akkordeonAktiv = !!onAkkordeonToggle;
@@ -6195,6 +6208,10 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
   useEffect(() => { if ((!effExpanded || editMode) && lokalEdit) setLokalEdit(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effExpanded, editMode]);
+  // Icon-Picker der VS-Karte nur im Edit offen halten.
+  useEffect(() => { if (!effEditierbar && vsIconPickerOffen) setVsIconPickerOffen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effEditierbar]);
 
   const schluessel = effVerteilerschluessel(ve);
   const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
@@ -6215,7 +6232,9 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
     if (!setVes || !ve) return;
     setVes(prev => prev.map(v => v.id === ve.id
       ? { ...v, verteilerschluessel: (Array.isArray(v.verteilerschluessel) ? v.verteilerschluessel : [])
-          .filter(x => x && x.id !== id) }
+          // nur manuelle (nicht-fixe) Schlüssel sind löschbar; fixe Standard-
+          // Schlüssel (MEA/Fläche/Einheiten/Personen) bleiben unangetastet.
+          .filter(x => x && (x.id !== id || x.fix)) }
       : v));
     setLoeschBestaetigung(null);
     if (aufId === id) setAufId(null);
@@ -6224,6 +6243,30 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
     const anteile = { ...((s && s.anteile) || {}) };
     anteile[einheitId] = wert;
     speichere(s.id, { anteile: anteile });
+  };
+  // Personen-Schlüssel: der Wert lebt an der Einheit (Bewohner-Köpfe), nicht am
+  // Schlüssel. Schreiben bucht die Differenz auf die anonymen Köpfe der Einheit
+  // zurück — bidirektional mit den Bewohnern verknüpft.
+  const setzeKopfzahl = (einheitId, wert) => {
+    if (!setVes || !ve) return;
+    setVes(prev => prev.map(v => {
+      if (v.id !== ve.id) return v;
+      const liste = Array.isArray(v.einheiten) ? v.einheiten : [];
+      return { ...v, einheiten: liste.map(e =>
+        (e && e.id === einheitId) ? setzeEinheitKopfzahl(e, wert) : e) };
+    }));
+  };
+  // MEA/Wohnfläche: schreiben direkt in die Stammdaten der Einheit zurück
+  // (Warnung in der UI). Wohnfläche nur bei ungeteilten Einheiten (Sperre via
+  // darfFlaecheImVsEditieren); bei Unterteilung ist setzeEinheitFlaeche NO-OP.
+  const setzeEinheitWert = (einheitId, schreiber, wert) => {
+    if (!setVes || !ve) return;
+    setVes(prev => prev.map(v => {
+      if (v.id !== ve.id) return v;
+      const liste = Array.isArray(v.einheiten) ? v.einheiten : [];
+      return { ...v, einheiten: liste.map(e =>
+        (e && e.id === einheitId) ? schreiber(e, wert) : e) };
+    }));
   };
   const legeAn = () => {
     if (!neuName.trim()) return;
@@ -6245,12 +6288,53 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
   return (
     <div style={{ background: t.card, border: `1px solid ${t.border}`,
       borderRadius: RAD.lg, marginBottom: 12, overflow: "hidden" }}>
-      <div onClick={akkordeonAktiv ? () => toggleExpanded() : undefined}
+      <div ref={vsKopfRef} onClick={akkordeonAktiv ? () => toggleExpanded() : undefined}
         style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px",
         borderBottom: effExpanded ? `1px solid ${t.border}` : "none",
-        background: accent + "08",
+        background: accent + "08", position: "relative",
         cursor: akkordeonAktiv ? "pointer" : "default" }}>
-        <span style={{ fontSize: FS.icon }}>🧮</span>
+        {effEditierbar ? (
+          <button onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setVsIconPickerOffen(o => !o); }}
+            title="Symbol ändern" aria-label="Symbol ändern"
+            style={{ flexShrink: 0, width: 32, height: 32, borderRadius: RAD.sm,
+              background: t.surface, border: `1px ${vsIcon ? "solid" : "dashed"} ${accent}`,
+              cursor: "pointer", display: "flex", alignItems: "center",
+              justifyContent: "center", fontSize: FS.icon, padding: 0 }}>
+            {vsIcon ? vsIcon : <I name="plus" size={13} color={accent}/>}
+          </button>
+        ) : (
+          kartenIconsAn && vsIcon ? <span style={{ fontSize: FS.icon }}>{vsIcon}</span> : null
+        )}
+        {effEditierbar && vsIconPickerOffen && (
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ position: "absolute", top: 50, left: 16, zIndex: 100,
+            background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.md,
+            padding: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+            display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 4,
+            maxWidth: 320, maxHeight: 260, overflowY: "auto" }}>
+            <button onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setzeVsIcon(""); setVsIconPickerOffen(false); }}
+              title="Kein Symbol" aria-label="Kein Symbol"
+              style={{ width: 32, height: 32, borderRadius: RAD.sm, cursor: "pointer",
+                background: !vsIcon ? accent + "25" : "transparent",
+                border: `1px dashed ${!vsIcon ? accent : t.border}`,
+                display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+              <I name="x" size={12} color={!vsIcon ? accent : t.muted}/>
+            </button>
+            {KARTEN_ICONS.map(ic => (
+              <button key={ic} onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setzeVsIcon(ic); setVsIconPickerOffen(false); }}
+                style={{ width: 32, height: 32, borderRadius: RAD.sm, cursor: "pointer",
+                  background: ic === vsIcon ? accent + "25" : "transparent",
+                  border: `1px solid ${ic === vsIcon ? accent : "transparent"}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: FS.icon, padding: 0 }}>
+                {ic}
+              </button>
+            ))}
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>Verteilerschlüssel</div>
         <div onClick={(e) => e.stopPropagation()}
           style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
@@ -6288,6 +6372,11 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
         {schluessel.map(s => {
           const auf = aufId === s.id;
           const manuell = vsIstManuell(s.basis);
+          const personen = vsIstPersonen(s.basis);
+          const istMea = s.basis === "mea";
+          const istFlaeche = s.basis === "flaeche";
+          // Stammdaten-Schlüssel schreiben in die Einheit zurück → Warnung zeigen.
+          const stammSchreibend = personen || istMea || istFlaeche;
           const summe = einheiten.reduce((acc, e) => acc + vsWertVon(s, e), 0);
           const confirm = loeschBestaetigung === s.id;
           return (
@@ -6305,6 +6394,20 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
               </div>
               {auf ? (
                 <div style={{ padding: "0 8px 10px" }}>
+                  {stammSchreibend && effEditierbar ? (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 6,
+                      background: "#F59E0B12", border: "1px solid #F59E0B40",
+                      borderRadius: RAD.sm, padding: "7px 9px", margin: "2px 0 8px" }}>
+                      <span style={{ fontSize: FS.s, flexShrink: 0, lineHeight: 1.2 }}>⚠️</span>
+                      <div style={{ fontSize: FS.xs, color: t.sub, lineHeight: 1.35 }}>
+                        {personen
+                          ? "Änderungen hier ändern die echte Personenzahl der Einheit (anonyme Bewohner)."
+                          : istMea
+                            ? "Änderungen hier ändern die MEA in den Stammdaten der Einheit."
+                            : "Änderungen hier ändern die Wohnfläche in den Stammdaten der Einheit. Bei unterteilten Einheiten ist die Fläche nur in der Einheit selbst änderbar."}
+                      </div>
+                    </div>
+                  ) : null}
                   {einheiten.length === 0 ? (
                     <div style={{ fontSize: FS.s, color: t.muted, padding: "4px 0" }}>
                       Keine Einheiten im Objekt.
@@ -6314,16 +6417,35 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
                       {einheiten.map(e => {
                         const wert = vsWertVon(s, e);
                         const roh = manuell ? (((s.anteile || {})[e.id]) || "") : null;
+                        const flaecheGesperrt = istFlaeche && !darfFlaecheImVsEditieren(e);
                         return (
                           <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text,
                               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {e.nr || e.id}
                               {e.lage ? <span style={{ color: t.muted }}> · {e.lage}</span> : null}
+                              {flaecheGesperrt ? (
+                                <span style={{ color: t.muted, fontSize: FS.xs }}> · unterteilt</span>
+                              ) : null}
                             </div>
                             {manuell && effEditierbar ? (
                               <input value={roh}
                                 onChange={ev => setzeAnteil(s, e.id, ev.target.value)}
+                                inputMode="decimal" placeholder="0"
+                                style={{ ...inputStilKlein, width: 90, textAlign: "right", flexShrink: 0 }}/>
+                            ) : personen && effEditierbar ? (
+                              <input value={String(Math.round(wert))}
+                                onChange={ev => setzeKopfzahl(e.id, ev.target.value.replace(/[^0-9]/g, ""))}
+                                inputMode="numeric" placeholder="0"
+                                style={{ ...inputStilKlein, width: 90, textAlign: "right", flexShrink: 0 }}/>
+                            ) : istMea && effEditierbar ? (
+                              <input value={(e && e.mea != null) ? String(e.mea) : ""}
+                                onChange={ev => setzeEinheitWert(e.id, setzeEinheitMea, ev.target.value)}
+                                inputMode="decimal" placeholder="0"
+                                style={{ ...inputStilKlein, width: 90, textAlign: "right", flexShrink: 0 }}/>
+                            ) : istFlaeche && effEditierbar && !flaecheGesperrt ? (
+                              <input value={fmtZahl(wert)}
+                                onChange={ev => setzeEinheitWert(e.id, setzeEinheitFlaeche, ev.target.value)}
                                 inputMode="decimal" placeholder="0"
                                 style={{ ...inputStilKlein, width: 90, textAlign: "right", flexShrink: 0 }}/>
                             ) : (
@@ -6335,7 +6457,7 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
                       })}
                     </div>
                   )}
-                  {!s.fix && effEditierbar ? (
+                  {manuell && effEditierbar ? (
                     confirm ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
                         <div style={{ flex: 1, fontSize: FS.xs, color: t.sub }}>
@@ -6574,6 +6696,7 @@ function VerwaltungAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editM
 // Unterlagen mit Checkbox. Haken setzen → fügt darunter eine Dokument-Karte
 // hinzu; Haken entfernen → entfernt sie wieder (mit den erfassten Feldern).
 function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
+  const kartenIconsAn = useKartenIcons();
   // Welche Katalog-Dokumente sind bereits als Karte vorhanden?
   const vorhandene = {};
   (karten || []).forEach(k => { if (k && k.dokumentId) vorhandene[k.dokumentId] = k; });
@@ -6604,7 +6727,7 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
       borderRadius: RAD.lg, marginBottom: 12, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px",
         borderBottom: `1px solid ${t.border}` }}>
-        <span style={{ fontSize: FS.icon }}>🗂</span>
+        {kartenIconsAn ? <span style={{ fontSize: FS.icon }}>🗂</span> : null}
         <div style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>WEG-Unterlagen</div>
       </div>
       <div style={{ padding: "6px 8px" }}>

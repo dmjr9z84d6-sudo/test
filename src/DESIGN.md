@@ -3050,3 +3050,92 @@ JSON-Import.
 > mehr auf `DEFAULT_VES`/`DEFAULT_KONTAKTE` zurückgreifen — künftig kleinen Inline-Datensatz oder
 > echte Test-JSON verwenden. Mount der leeren App: 119 Nodes (statt ~750), ERR=0; Bundle ~1,04 MB
 > (von 1,1 MB).
+
+---
+
+## §71 Verteilerschlüssel: editierbare, mit den Einheiten verknüpfte Schlüssel + wählbares Karten-Icon (v11.99)
+
+Die Verteilerschlüssel-Karte (`VerteilerSchluesselBlock`, liegenschaft.jsx) bekommt drei
+zusammenhängende Ausbauten. Leitidee wie überall: **eine Wahrheitsquelle** — der angezeigte Wert
+lebt an der Einheit, nicht doppelt am Schlüssel.
+
+### §71.1 Verhalten je Basis (Referenz)
+
+| Schlüssel (Basis) | Editierbar im VS? | Wohin wird geschrieben? |
+|---|---|---|
+| MEA (`mea`) | ja, mit Warnung | `einheit.mea` (flaches Stammdatenfeld) |
+| Wohnfläche (`flaeche`) | ja, **nur ungeteilte Einheit**, mit Warnung | `teil.flaeche` des einzigen Teils |
+| Einheiten (`einheiten`) | nein (immer 1) | — |
+| Personen (`personen`) | ja, mit Warnung | echte Kopfzahl ↔ anonyme Haushaltsmitglieder |
+| Eigener (`manuell`) | ja | nur am Schlüssel (`anteile`-Map); **löschbar** |
+
+`vsWertVon` liest für `mea`/`flaeche`/`personen` aus den Einheiten-Stammdaten (nicht aus `anteile`).
+`vsIstManuell` gilt nur noch für `manuell`; neues `vsIstPersonen`.
+
+### §71.2 Personen = echte Kopfzahl, Rückschreibung auf anonyme Köpfe
+
+`einheitKopfzahl(einheit)` = Summe über alle Teile (heute laufende bzw. aktive Belegung), benannte
+Mitglieder zählen 1, anonyme nach `anzahl`. Beim Editieren im VS bucht `setzeEinheitKopfzahl` die
+Differenz zwischen Zielwert und Zahl der **benannten** Köpfe auf ein **anonymes** Mitglied der
+aktiven Belegung des aktiven Teils: anlegen / hochsetzen / runtersetzen / bei 0 entfernen. Benannte
+Bewohner bleiben unangetastet; unter die benannten Köpfe lässt sich nicht drücken (Floor). So ist die
+Anzeige bidirektional mit den Bewohnern verknüpft: Änderung an den Bewohnern wirkt im Schlüssel,
+Änderung im Schlüssel wirkt an den (anonymen) Bewohnern. Label: „Personenzahl (aus Bewohnern)".
+
+### §71.3 MEA/Wohnfläche schreiben Stammdaten — mit Warnung
+
+`setzeEinheitMea` → `einheit.mea`. `setzeEinheitFlaeche` → `teil.flaeche`, aber nur wenn
+`darfFlaecheImVsEditieren(einheit)` (Teilanzahl ≤ 1). Bei Unterteilung ist das Feld gesperrt und die
+Einheit-Zeile zeigt „· unterteilt" (die Summe ließe sich nicht eindeutig auf mehrere Teile verteilen
+→ Fläche nur in der Einheit selbst änderbar). Jeder Stammdaten-Schlüssel (Personen/MEA/Fläche) zeigt
+beim Aufklappen im Edit eine **gelbe Warnung** (`#F59E0B`-Tönung), dass die echten Stammdaten der
+Einheit verändert werden.
+
+### §71.4 Löschen nur für manuelle Schlüssel
+
+Der „Schlüssel entfernen"-Link erscheint nur bei `vsIstManuell(s.basis)`. `loesche` ist zusätzlich
+abgesichert (`filter(x.id !== id || x.fix)`) — fixe Standard-Schlüssel (MEA/Fläche/Einheiten/Personen)
+sind auch gegen direkte Aufrufe geschützt. Selbst angelegte Schlüssel tragen kein `fix`.
+
+### §71.5 Wählbares + löschbares Karten-Icon
+
+Das Icon der Verteilerschlüssel-Karte ist nicht mehr hartkodiert, sondern über einen Icon-Picker im
+Karten-Kopf wählbar (gleiche Mechanik und `KARTEN_ICONS`-Palette wie `GebaeudeKopf`), inkl. „Kein
+Symbol". Persistiert an **`ve.vsIcon`** (Default 🧮; leerer String = bewusst kein Symbol). Der Picker
+ist nur im Edit-Modus offen, schließt bei Außenklick (`useOutsideClick`) und wenn Edit endet. Der
+**Name** „Verteilerschlüssel" bleibt fix (nicht umbenennbar).
+
+---
+
+## §72 Globaler Schalter „Symbole an Karten" (v11.99)
+
+Ein App-weiter Schalter blendet die Symbole an Karten-Köpfen aus/ein.
+
+### §72.1 Mechanik (Context, kein Prop-Durchfädeln)
+
+`settings.kartenIconsAn` (Default `true`) wird über **`KartenIconsContext`** + `useKartenIcons()`
+(utils-icons.jsx, Vorbild `AvatarIconsContext`) verteilt. Provider in allesda_merged.jsx an
+`settings.kartenIconsAn !== false` gekoppelt. UI-Schalter: `Toggle` in `SektionErscheinungsbild`
+(einstellungen.jsx), Zeile „Symbole an Karten", direkt unter „Objekte & Kontakte als".
+
+### §72.2 Was hört auf den Schalter — und was bewusst nicht
+
+**Gekoppelt (echte Karten-Kopf-Icons):** `GebaeudeKopf` (alle Liegenschaft-Detailkarten),
+`VerteilerSchluesselBlock`, `VertragZeile` (📄 Versicherungen/Versorger/Messdienst/Verträge),
+`DokumenteChecklist` (🗂 WEG-Unterlagen), `KontaktKategorieKarte` (Kontakt-Kategorien + Gruppen).
+
+**Bewusst NICHT gekoppelt** (kein Karten-Symbol — `FS.icon` dient dort nur als Schriftgröße oder es
+ist kein Karten-Kopf): Avatar-Initialen, Kontaktnamen, VE-Nummern (objektansicht), Dropdown-/Menü-
+Optionen (`optBtn`, kontakte.jsx), Kontakt-Auswahllisten im Kalender (🏢/👤 Typ-Marker).
+
+### §72.3 Picker bleibt im Edit bedienbar
+
+Bei Karten mit wählbarem Icon (GebaeudeKopf, VS, KategorieKarte) wird im **Edit-Modus** weiterhin der
+Icon-Picker-Button gezeigt, auch wenn der globale Schalter die Anzeige-Icons aus hat — sonst käme man
+bei ausgeschalteten Icons nie wieder an die Icon-Auswahl. Nur die reine **Anzeige** (Nicht-Edit)
+folgt dem Schalter.
+
+> **Erweiterungsregel:** Soll ein weiterer Karten-Kopf den Schalter respektieren, je Stelle
+> `useKartenIcons()` lesen und die Anzeige an `kartenIconsAn && icon` koppeln; echte Karten-Kopf-Icons
+> sauber von Avataren/Kategorie-Symbolen/Dropdown-Icons unterscheiden; danach isolierter Render-Test
+> mit Schalter an/aus (nicht exportierte Komponenten temporär exportieren).

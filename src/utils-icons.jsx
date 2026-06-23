@@ -1889,6 +1889,12 @@ function useEinheitOffen() { return useContext(EinheitOffenContext); }
 const AvatarIconsContext = createContext({ person: true, firma: true });
 function useAvatarIcons() { return useContext(AvatarIconsContext); }
 
+// ── KartenIconsContext: globaler Schalter für Symbole an allen Karten-Köpfen ──
+// true = Icons anzeigen (Default), false = überall ausblenden. Wird in den
+// Karten-Köpfen (GebaeudeKopf, Verteilerschlüssel, …) gelesen.
+const KartenIconsContext = createContext(true);
+function useKartenIcons() { return useContext(KartenIconsContext); }
+
 // ── KartenBadgesContext: Rollen-Badges rechts auf der Kontaktkarte schaltbar ─
 const KartenBadgesContext = createContext({ person: true, firma: true });
 function useKartenBadges() { return useContext(KartenBadgesContext); }
@@ -2063,6 +2069,8 @@ export {
   useEinheitOffen,
   AvatarIconsContext,
   useAvatarIcons,
+  KartenIconsContext,
+  useKartenIcons,
   KartenBadgesContext,
   useKartenBadges,
   veKartenFeldWert,
