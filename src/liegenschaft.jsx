@@ -6335,7 +6335,8 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
             ))}
           </div>
         )}
-        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>Verteilerschlüssel</div>
+        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>Verteilerschlüssel
+          <span style={{ fontWeight: FW.semi, color: t.sub, marginLeft: 6 }}>({Array.isArray(schluessel) ? schluessel.length : 0})</span></div>
         <div onClick={(e) => e.stopPropagation()}
           style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
           {lokalEditErlaubt && (
