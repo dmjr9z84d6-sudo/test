@@ -7146,7 +7146,7 @@ function buildInitialVerwaltungsKarten(ve) {
         { id: 2, name: "Abstimmung nach",  value: "MEA", type: "select", optionen: ["MEA", "Objekt", "Kopf"], immerSichtbar: true, syncKey: "abstimmung" },
         { id: 3, name: "Gesamt-MEA",       value: "1000", type: "select", optionen: ["1000", "10000"], freitextBei: "Andere…", freitextTyp: "number", immerSichtbar: true, syncKey: "gesamtanteile" },
         { id: 6, name: "Wirtschaftsjahr",  value: "Kalenderjahr", type: "select", optionen: ["Kalenderjahr"], freitextBei: "Selbst definieren…", freitextTyp: "zeitraum", immerSichtbar: true, syncKey: "wirtschaftsjahr" },
-        { id: 5, name: "Versammlung online möglich?", value: "", type: "select", optionen: ["Ja", "Nein"], immerSichtbar: true },
+        { id: 5, name: "ETV online möglich?", value: "", type: "select", optionen: ["Ja", "Nein"], immerSichtbar: true },
         { id: 7, name: "Letzte ETV",       value: "", type: "date", immerSichtbar: true },
         { id: 4, name: "Nächste ETV",      value: vw.naechsteETV || "", type: "etv_naechste", immerSichtbar: true },
       ],

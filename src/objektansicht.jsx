@@ -1832,28 +1832,33 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
   // Zuordnung). Einheit-Verknüpfung liefert automatisch den Ansprechpartner.
   const stellen = Array.isArray(daten.pruefstellen) ? daten.pruefstellen : [];
   const standorte = legionellenStandorte(ve);
+  const hatTiefgarage = standorte.some(h => h && h.kategorie === "tiefgarage");
+  const hatGebaeude = standorte.some(h => h && h.kategorie === "gebaeude");
+  const standortPlatzhalter = hatTiefgarage
+    ? (hatGebaeude ? "— Haus / Tiefgarage —" : "— Tiefgarage —")
+    : "— Haus —";
   const [neueBez, setNeueBez] = useState("");
-  const [neueArt, setNeueArt] = useState("peripherie");
   const [neuHaus, setNeuHaus] = useState("");
   const [neuRaum, setNeuRaum] = useState("");
   const [neuEinheit, setNeuEinheit] = useState("");
   const [formOffen, setFormOffen] = useState(false);
+  const [infoOffen, setInfoOffen] = useState(false);
   const aktHaus = standorte.find(h => String(h.id) === String(neuHaus)) || null;
   const verfRaeume = aktHaus ? (aktHaus.raeume || []) : [];
   const verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
-  const formReset = () => { setNeueBez(""); setNeueArt("peripherie");
+  const formReset = () => { setNeueBez("");
     setNeuHaus(""); setNeuRaum(""); setNeuEinheit(""); setFormOffen(false); };
   const stellenPatch = (liste) => patch({ pruefstellen: liste });
+  // Pflicht: eine Verknüpfung (Raum ODER Einheit). Notiz ist optional.
+  const verknuepfungGesetzt = !!((neuRaum && !neuEinheit) || neuEinheit);
   const stelleHinzu = () => {
-    const bez = neueBez.trim();
-    if (!bez) return;
-    stellenPatch(stellen.concat([{ id: Date.now(), bezeichnung: bez, art: neueArt,
+    if (!verknuepfungGesetzt) return;
+    stellenPatch(stellen.concat([{ id: Date.now(),
       hausId: neuHaus || null, raumId: (neuRaum && !neuEinheit) ? neuRaum : null,
-      einheitId: neuEinheit || null, notiz: "" }]));
+      einheitId: neuEinheit || null, notiz: neueBez.trim() }]));
     formReset();
   };
   const stelleLoeschen = (id) => stellenPatch(stellen.filter(s => s.id !== id));
-  const artLabel = (a) => a === "speicher" ? "Speicher" : "Peripherie";
   // Verknüpfungs-Anzeige je Stelle: Raum-Name oder Einheit-Nr + Ansprechpartner.
   const stelleVerknuepfung = (s) => {
     if (s.einheitId) {
@@ -1968,6 +1973,51 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
           </span>
         </div>
 
+        {/* Aufklappbarer Erklärtext: Pflicht-Probenahmestellen & Zweck */}
+        <div>
+          <span onClick={() => setInfoOffen(o => !o)}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5,
+              fontSize: FS.xs, fontWeight: FW.bold, color: accent, cursor: "pointer",
+              letterSpacing: "0.02em" }}>
+            {infoOffen ? "Erklärung ausblenden" : "Welche Stellen sind Pflicht?"}
+          </span>
+          {infoOffen && (
+            <div style={{ marginTop: 10, background: t.surface,
+              border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+              padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                  textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                  Pflicht-Probenahmestellen und ihr Zweck
+                </div>
+                <div style={{ fontSize: FS.m, color: t.sub, lineHeight: 1.5,
+                  display: "flex", flexDirection: "column", gap: 7 }}>
+                  <div><strong style={{ color: t.text }}>Warmwasserabgang</strong> — prüft, ob der Speicher das Wasser ausreichend erhitzt (≥ 60 °C) und hygienisch abgibt.</div>
+                  <div><strong style={{ color: t.text }}>Zirkulationsrücklauf</strong> — zeigt, ob die Temperatur im gesamten Zirkulationssystem gehalten wird (≥ 55 °C), also ob das System „gesund" bleibt.</div>
+                  <div><strong style={{ color: t.text }}>Entfernteste Dusche je Steigstrang</strong> — prüft, ob das Wasser bis zur letzten Zapfstelle hygienisch bleibt und keine Stagnation/Abkühlung stattfindet.</div>
+                  <div><strong style={{ color: t.text }}>Weitere repräsentative Duschen</strong> (falls mehrere Stränge oder komplexe Verteilung) — stellt sicher, dass alle hydraulisch relevanten Bereiche des Gebäudes abgedeckt sind.</div>
+                </div>
+              </div>
+              <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 10 }}>
+                <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                  textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                  Warum genau diese Stellen?
+                </div>
+                <div style={{ fontSize: FS.m, color: t.sub, lineHeight: 1.5,
+                  display: "flex", flexDirection: "column", gap: 5 }}>
+                  <div><strong style={{ color: t.text }}>Speicherabgang</strong> = Funktion des Erhitzers</div>
+                  <div><strong style={{ color: t.text }}>Zirkulationsrücklauf</strong> = Funktion der Temperaturhaltung im System</div>
+                  <div><strong style={{ color: t.text }}>Entfernteste Dusche</strong> = Funktion der hygienischen Verteilung bis zum Ende des Systems</div>
+                </div>
+                <div style={{ fontSize: FS.m, color: t.sub, lineHeight: 1.5, marginTop: 9,
+                  fontStyle: "italic" }}>
+                  Erst alle drei zusammen ergeben ein vollständiges Bild der Warmwasserhygiene.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {stellen.length === 0 && !formOffen && (
           <div style={{ fontSize: FS.m, color: t.sub }}>
             Noch keine Probenahmestellen erfasst. Typisch: eine am
@@ -1977,6 +2027,10 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
 
         {stellen.map(s => {
           const vk = stelleVerknuepfung(s);
+          // Notiz: neues Feld; Altbestand-Fallback auf frühere "bezeichnung".
+          const notizText = (s.notiz && s.notiz.trim()) || (s.bezeichnung && s.bezeichnung.trim()) || "";
+          const kopf = vk ? ((vk.typ === "einheit" ? "Einheit " : "Raum ") + vk.label)
+            : (notizText || "Probenahmestelle");
           return (
           <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10,
             background: t.surface, border: `1px solid ${t.border}`,
@@ -1984,28 +2038,23 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: FS.m, fontWeight: 600, color: t.text,
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {s.bezeichnung}
+                {kopf}
+                {vk && vk.ansprech ? (
+                  <span style={{ fontWeight: 400, color: t.muted }}> · <span
+                    onClick={() => onKontaktClick && vk.ansprech && onKontaktClick(vk.ansprech.id)}
+                    style={{ color: accent, cursor: onKontaktClick ? "pointer" : "default" }}>
+                    {vk.ansprech.name}</span></span>
+                ) : (vk && vk.typ === "einheit" ? (
+                  <span style={{ fontWeight: 400, color: t.muted }}> · kein Ansprechpartner</span>
+                ) : null)}
               </div>
-              {vk && (
+              {notizText && vk && (
                 <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 2,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {vk.typ === "einheit" ? "Einheit " : "Raum "}{vk.label}
-                  {vk.ansprech ? (
-                    <span> · <span
-                      onClick={() => onKontaktClick && vk.ansprech && onKontaktClick(vk.ansprech.id)}
-                      style={{ color: accent, cursor: onKontaktClick ? "pointer" : "default" }}>
-                      {vk.ansprech.name}</span></span>
-                  ) : (vk.typ === "einheit" ? " · kein Ansprechpartner" : "")}
+                  {notizText}
                 </div>
               )}
             </div>
-            <span style={{ flexShrink: 0, fontSize: FS.xxs, fontWeight: FW.bold,
-              letterSpacing: "0.06em", textTransform: "uppercase",
-              color: s.art === "speicher" ? "#0EA5C9" : accent,
-              background: (s.art === "speicher" ? "#0EA5C9" : accent) + "18",
-              padding: "3px 8px", borderRadius: RAD.sm }}>
-              {artLabel(s.art)}
-            </span>
             {editMode && (
               <button onClick={() => stelleLoeschen(s.id)} aria-label="Löschen"
                 style={{ flexShrink: 0, background: "none", border: "none",
@@ -2021,33 +2070,13 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
           <div style={{ display: "flex", flexDirection: "column", gap: 10,
             background: t.surface, border: `1px solid ${accent}40`,
             borderRadius: RAD.sm, padding: "12px 14px" }}>
-            <input value={neueBez} onChange={e => setNeueBez(e.target.value)}
-              placeholder="Bezeichnung, z.B. Boiler Vorlauf oder WE 03 Bad"
-              style={{ width: "100%", boxSizing: "border-box", background: t.card,
-                border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                padding: "9px 11px", fontSize: FS.input, color: t.text,
-                outline: "none", fontFamily: "inherit" }}/>
-            <div style={{ display: "flex", gap: 8 }}>
-              {["speicher", "peripherie"].map(a => (
-                <button key={a} onClick={() => setNeueArt(a)}
-                  style={{ flex: 1, padding: "8px 0", borderRadius: RAD.sm,
-                    border: `1px solid ${neueArt === a ? accent : t.border}`,
-                    background: neueArt === a ? accent + "18" : "none",
-                    color: neueArt === a ? accent : t.sub,
-                    fontSize: FS.m, fontWeight: neueArt === a ? 700 : 500,
-                    cursor: "pointer", fontFamily: "inherit" }}>
-                  {artLabel(a)}
-                </button>
-              ))}
-            </div>
 
-            {/* Verknüpfung: Haus → Raum ODER Einheit (wie Technik-Zuordnung) */}
-            {standorte.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8,
-                paddingTop: 4, borderTop: `1px solid ${t.border}` }}>
+            {/* Verknüpfung: Haus → Raum ODER Einheit (Pflicht) */}
+            {standorte.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
                   textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Verknüpfung (optional)
+                  Verknüpfung (Raum oder Einheit)
                 </div>
                 <select value={neuHaus}
                   onChange={e => { setNeuHaus(e.target.value); setNeuRaum(""); setNeuEinheit(""); }}
@@ -2055,7 +2084,7 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
                     border: `1px solid ${t.border}`, borderRadius: RAD.sm,
                     padding: "8px 10px", fontSize: FS.input, color: t.text,
                     outline: "none", fontFamily: "inherit", appearance: "auto" }}>
-                  <option value="">— Haus / Tiefgarage —</option>
+                  <option value="">{standortPlatzhalter}</option>
                   {standorte.map(h => (
                     <option key={h.id} value={h.id}>{h.name}</option>
                   ))}
@@ -2095,7 +2124,26 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
                   </select>
                 </div>
               </div>
+            ) : (
+              <div style={{ fontSize: FS.xs, color: t.muted }}>
+                Noch keine Häuser/Räume/Einheiten am Objekt — bitte zuerst anlegen.
+              </div>
             )}
+
+            {/* Notiz (optional): Zugang / wo genau */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6,
+              paddingTop: 4, borderTop: `1px solid ${t.border}` }}>
+              <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Notiz (optional)
+              </div>
+              <input value={neueBez} onChange={e => setNeueBez(e.target.value)}
+                placeholder="z.B. wo genau? Bezeichnung Ort, Zugang/Schlüssel"
+                style={{ width: "100%", boxSizing: "border-box", background: t.card,
+                  border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  padding: "9px 11px", fontSize: FS.input, color: t.text,
+                  outline: "none", fontFamily: "inherit" }}/>
+            </div>
 
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={formReset}
@@ -2105,11 +2153,11 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
                   cursor: "pointer", fontFamily: "inherit" }}>
                 Abbrechen
               </button>
-              <button onClick={stelleHinzu} disabled={!neueBez.trim()}
+              <button onClick={stelleHinzu} disabled={!verknuepfungGesetzt}
                 style={{ flex: 1, padding: "9px 0", borderRadius: RAD.sm,
-                  border: "none", background: neueBez.trim() ? accent : t.border,
-                  color: neueBez.trim() ? "#fff" : t.muted, fontSize: FS.m,
-                  fontWeight: 700, cursor: neueBez.trim() ? "pointer" : "default",
+                  border: "none", background: verknuepfungGesetzt ? accent : t.border,
+                  color: verknuepfungGesetzt ? "#fff" : t.muted, fontSize: FS.m,
+                  fontWeight: 700, cursor: verknuepfungGesetzt ? "pointer" : "default",
                   fontFamily: "inherit" }}>
                 Hinzufügen
               </button>
