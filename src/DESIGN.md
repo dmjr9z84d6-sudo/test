@@ -1142,6 +1142,18 @@ Auf Objekt-Ebene gibt es **drei** sich gegenseitig ausschließende Edit-Ebenen:
 
 - `isStellplatzTyp` = `["Stellplatz","Garage","Carport","Doppelparker"]`; Anlege-Dropdown enthält Garage. Karten-Menü-Option „Stellplätze / Garagen / Carports”.
 
+### 21.10 Verteilerschlüssel-Karte am Akkordeon (ab v11.97)
+
+- Die `VerteilerSchluesselBlock`-Karte liegt **außerhalb** der `KartenList` (eigene Persistenz `ve.verteilerschluessel`), nimmt aber am selben Akkordeon teil wie die übrigen Verwaltungskarten.
+- Dafür ist der Akkordeon-/Lokal-Edit-State von `KartenList` **optional von außen steuerbar** (controlled/uncontrolled): Props `offeneKarteId`/`setOffeneKarteId` + `aktiveEditId`/`setAktiveEditId`. Fehlen sie (Liegenschaft, Dokumente), nutzt `KartenList` internen State wie bisher.
+- `VerwaltungAnsicht` hält den geteilten State (`vwOffeneKarteId`/`vwAktiveEditId`) und reicht ihn an beide KartenList-Teillisten (oben/unten vom VS-Block) UND an den VS-Block. Die VS-Karte nutzt die feste ID `"__vs__"`.
+- VS-Block: `effExpanded = akkordeonAktiv ? (akkordeonOffen === akkordeonId) : true` (in der Schnelleingabe ohne Akkordeon-Props bleibt sie immer offen). Lokaler Edit-Stift wie bei `GebaeudeKarte`, ABER **kein Verwerfen-X** — VS-Daten persistieren sofort, daher nur Stift→Edit und ✓→Fertig.
+- **Sortierbar, fest:** Pfeile im Kopf (`SortierPfeile`) verschieben die Position; persistiert in `ve.vsRang` (Anzahl nicht-fixer Karten davor). Führende fixe Karten (Verwaltung-Stammdaten) bleiben immer oben. **Kein** Umbenennen/Löschen (zentrale Pflicht-Karte).
+
+### 21.11 Feld-Reihenfolge Lese vs. Edit (ab v11.96)
+
+- `FieldList` zeigt im **Lesemodus** leere optionale Felder nicht (`!editMode && leer && !required && !immerSichtbar → null`). Im **Edit** erscheinen sie — aber stabil **ans Ende sortiert**, damit befüllte Felder ihre Reihenfolge (= identisch zum Lesemodus) behalten und die Struktur nicht „springt". Pflicht-/immerSichtbar-Felder bleiben oben. Original-Index wird für `setFields` durchgereicht.
+
 -----
 
 ## 22. Belegungs-/Eigentümer-Karten & Rollen-Sync (ab v8.3x)
@@ -1266,6 +1278,8 @@ mieter / eigennutzer / niessbraucher / wohnberechtigt / angehoeriger / sonstige)
 
 - **`neuesHhMitglied(kontaktId, name, recht, anzahl)`** — Fabrik fürs Haushalts-Mitglied.
 - Belegungstyp wird **abgeleitet** (`abgeleiteterBelegungstyp(beleg)`): mind. ein Mieter → `vermietung`; sonst Bewohner vorhanden → `selbstnutzung`; keiner → `leerstand`.
+- **Verwendungs-Anzeige fein abgeleitet (ab v11.95/98):** `verwendungNameAusBelegung(beleg)` mappt das Bewohner-`recht` auf den angezeigten Verwendungsnamen — `mieter`→Vermietet, `paechter`→Verpachtet, `niessbraucher`→Nießbrauch, sonstige Bewohner→Eigennutzung, niemand→Leerstand. „Verpachtet"/„Nießbrauch" stehen in `BELEGUNG_VERWENDUNGEN` und werden damit aus den **freien** Etiketten (`einheit.verwendungen`) gefiltert — sie ergeben sich allein aus dem Recht. Ein Bewohner trägt genau EIN Recht → die frühere Doppelanzeige „Vermietet + Verpachtet" ist strukturell unmöglich.
+- **Belegungs-Tab-Beschriftung (ab v11.95):** `nutzRecht` (niessbraucher/wohnberechtigt/eigennutzer) steuert Titel + Nutzer-Label: Nießbraucher→„Nießbrauch"/„Nießbraucher"/„Bewohnt seit", Wohnberechtigt→„Wohnrecht"/„Wohnberechtigt", echter Eigennutzer→„Eigennutzung"/„Eigennutzer"/„Genutzt seit". Nießbraucher ist KEIN Eigennutzer (nutzt fremdes Eigentum).
 - Migration `ergaenzeBewohnerRechte` (in `normalisiereVes` verkettet).
 - Tab heißt **„Belegung”** (intern teils noch „Haushalt”-Bezeichner).
 - Belegungs-/Eigentümerwechsel sind datumsgesteuerte Vorgänge → siehe §22.7.
@@ -1296,6 +1310,15 @@ Reihenfolge + Sichtbarkeit global in `settings.objektTabs` (`{id,label,icon,akti
 - Liegenschaft + Verwaltung **fix** (immer sichtbar, vorne). Default: Liegenschaft, Verwaltung, Dokumente, Kontakte, Bilder, Historie.
 - `ObjektTabsContext` → `VEDetail` nutzt `useObjektTabs()` (sortiert nach `reihenfolge`, filtert `fix||aktiv`, Fallback).
 - Bearbeitet in Einstellungs-Sektion „Objekte” (`SektionObjektTabs`: Pfeile + Toggle + Reset; fixe ohne Toggle/Pfeile).
+
+### 23.7 Legionellen-Tab (TrinkwV) — Lese/Edit (ab v11.98)
+
+`LegionellenAnsicht` ist `editMode`-bewusst (Prop von `VEDetail` durchgereicht), genau wie die übrigen Tabs — vorher hing er permanent im Edit.
+
+- **Lesemodus:** reine Anzeige. Letzte Prüfung / Befund / Nächste fällig als Text (nicht als Datums-Inputs/Select). Probenahmestellen ohne Lösch-Button; kein Formular, kein „Probenahmestelle hinzufügen".
+- **Edit:** alle Felder + Aktionen wie gewohnt.
+- **Immer sichtbar (beide Modi):** Status-Kopf mit Ampel (`legionellenFaelligStatus`) + TrinkwV-Turnus-Hinweis — reine Anzeigen.
+- Sichtbarkeit des Tabs selbst hängt an zentraler Warmwasserversorgung (TrinkwV-Prüfpflicht).
 
 ### 23.7 Technik / Geräte (ab v8.10)
 

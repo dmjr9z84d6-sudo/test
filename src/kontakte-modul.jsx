@@ -2474,7 +2474,7 @@ function KDKHeader({ k, t, farbe, nameFarbe, istFirma, editMode, dirty, gueltig 
       )}
       <div style={{ flex:1, minWidth:0, fontSize: FS.icon, fontWeight: FW.heavy, color:nameFarbe,
         textDecoration:istFirma?"underline":"none", textDecorationColor:nameFarbe,
-        textDecorationThickness:1.5, textUnderlineOffset:4,
+        textDecorationThickness:2.5, textUnderlineOffset:4,
         overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
         {formatNameMitCtx(k, anzeige) || k.name || "—"}
       </div>
@@ -3689,8 +3689,8 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
             damit alle Karten gleich hoch sind) */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: farbe,
-            textDecoration: istFirma ? "underline" : "none",
-            textDecorationThickness: 1, textUnderlineOffset: 3,
+            textDecoration: istFirma ? "underline" : "none", textDecorationColor: farbe,
+            textDecorationThickness: 2, textUnderlineOffset: 4,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {name || "—"}
           </div>

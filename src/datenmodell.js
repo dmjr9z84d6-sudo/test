@@ -962,32 +962,52 @@ function belegungsTyp(einheit) {
 // Diese drei Verwendungen sind KEINE frei wählbaren Etiketten mehr, sondern
 // folgen automatisch aus der Belegung (Quelle der Wahrheit ist der Belegung-Tab).
 // Sie werden in den Stammdaten nur ANGEZEIGT, nicht editiert.
-const BELEGUNG_VERWENDUNGEN = ["Vermietet", "Eigennutzung", "Leerstand"];
+// Abgeleitete (NICHT frei wählbare) Verwendungen. Diese Namen werden live aus
+// der Belegung bzw. dem Bewohner-Recht erzeugt und dürfen daher NICHT zusätzlich
+// als freie Etiketten in einheit.verwendungen geführt werden (sonst Doppel-
+// anzeige, z. B. „Vermietet" + „Verpachtet" gleichzeitig). „Verpachtet" und
+// „Nießbrauch" gehören hierher, weil sie — wie Miete — den Belegungsschlitz
+// belegen und einander ausschließen (ein Bewohner trägt genau EIN Recht).
+const BELEGUNG_VERWENDUNGEN = ["Vermietet", "Verpachtet", "Eigennutzung", "Nießbrauch", "Leerstand"];
 const BELEGUNGSTYP_ZU_VERWENDUNG = {
   vermietung: "Vermietet",
   selbstnutzung: "Eigennutzung",
   leerstand: "Leerstand",
 };
+// Feiner Verwendungsname EINER Belegung — leitet die konkrete Vertrags-/Rechts-
+// art aus dem Bewohner-Recht ab (Single Source of Truth = recht am Haushalts-
+// mitglied). Mieter→Vermietet, Pächter→Verpachtet, Nießbraucher→Nießbrauch,
+// sonstige Bewohner→Eigennutzung, niemand→Leerstand. Mehrere Bewohner: das erste
+// „stärkste" Recht gewinnt (Vertragspartei vor Nießbrauch vor übrigen).
+function verwendungNameAusBelegung(beleg) {
+  if (!beleg) return "Leerstand";
+  const hh = beleg.haushalt || { mitglieder: [] };
+  const mit = (hh.mitglieder || []).filter(Boolean);
+  if (mit.length === 0) {
+    // keine Bewohner: Legacy-typ respektieren
+    return BELEGUNGSTYP_ZU_VERWENDUNG[beleg.typ] || "Leerstand";
+  }
+  if (mit.some(m => m.recht === "mieter"))   return "Vermietet";
+  if (mit.some(m => m.recht === "paechter")) return "Verpachtet";
+  if (mit.some(m => m.recht === "niessbraucher")) return "Nießbrauch";
+  return "Eigennutzung";
+}
 // Leitet die Belegungs-Verwendung(en) einer Einheit aus den Belegungen ihrer
-// Teile ab. Bei Unterteilung können mehrere Typen gleichzeitig vorkommen (z. B.
-// ein Teil vermietet, einer leer). Liefert eine Liste { name, status:"aktiv" }.
-// Leerstand wird nur gemeldet, wenn KEIN Teil belegt ist (sonst wäre die ganze
-// Einheit fälschlich „auch leer").
+// Teile ab. Bei Unterteilung können mehrere Verwendungen gleichzeitig vorkommen
+// (z. B. ein Teil vermietet, einer leer). Liefert eine Liste { name, status:
+// "aktiv" }. Leerstand wird nur gemeldet, wenn KEIN Teil belegt ist (sonst wäre
+// die ganze Einheit fälschlich „auch leer").
 function belegungsVerwendungen(einheit) {
   const teile = teileVon(einheit);
-  const typen = new Set();
+  const namenSet = [];
   teile.forEach(teil => {
     const b = heuteLaufendeBelegung(teil) || aktiveBelegung(teil);
-    const typ = b ? abgeleiteterBelegungstyp(b) : "leerstand";
-    typen.add(typ);
+    const name = b ? verwendungNameAusBelegung(b) : "Leerstand";
+    if (namenSet.indexOf(name) < 0) namenSet.push(name);
   });
   // Wenn irgendein Teil belegt ist, zählt Leerstand nicht für die Gesamt-Einheit.
-  if (typen.size > 1) typen.delete("leerstand");
-  const namen = [];
-  typen.forEach(typ => {
-    const name = BELEGUNGSTYP_ZU_VERWENDUNG[typ];
-    if (name && namen.indexOf(name) < 0) namen.push(name);
-  });
+  const belegt = namenSet.filter(n => n !== "Leerstand");
+  const namen = belegt.length > 0 ? belegt : namenSet;
   return namen.map(name => ({ name, status: "aktiv" }));
 }
 

@@ -1157,6 +1157,14 @@ function HaushaltAnzeige({ einheit, t, accent, kontakte = [], teilIndex = 0, onK
   const anzahl = haushaltKopfzahl(hh);
   const hatMieter = mitglieder.some(m => m && istVertragspartei(m.recht));
   const istSP = isStellplatzTyp(einheit.typ);
+  // Bei NICHT-Vertrags-Belegung (kein Mieter/Pächter): konkrete Rechtsart der
+  // Nutzung. Nießbraucher/Wohnberechtigter sind KEINE Eigennutzer — sie nutzen
+  // fremdes Eigentum. Steuert Titel/Label des Nutzungs-Info-Blocks, damit dort
+  // nicht fälschlich „Eigennutzung/Eigennutzer" für einen Nießbraucher steht.
+  const nutzRecht = (mitglieder.find(m => m && m.recht === "niessbraucher") ? "niessbraucher"
+    : mitglieder.find(m => m && m.recht === "wohnberechtigt") ? "wohnberechtigt"
+    : mitglieder.find(m => m && m.recht === "eigennutzer") ? "eigennutzer"
+    : null);
 
   // Laufender Belegungswechsel-Vorgang (datumsgesteuert erkannt): im Lese-Modus
   // als read-only Stepper anzeigen (statt des kompakten Banners). Zeigt Parteien,
@@ -1296,9 +1304,12 @@ function HaushaltAnzeige({ einheit, t, accent, kontakte = [], teilIndex = 0, onK
         <div style={{ marginBottom: 8, padding: "10px 12px", background: t.bg,
           border: `1px solid ${t.border}`, borderRadius: RAD.md }}>
           <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text, marginBottom: 6 }}>
-            {istSP ? "Nutzung" : (typ === "selbstnutzung" ? "Eigennutzung" : "Belegung")}
+            {istSP ? "Nutzung"
+              : (nutzRecht === "niessbraucher" ? "Nießbrauch"
+              : (nutzRecht === "wohnberechtigt" ? "Wohnrecht"
+              : (nutzRecht === "eigennutzer" ? "Eigennutzung" : "Belegung")))}
           </div>
-          <HaushaltNutzungInfo beleg={beleg} typ={typ} t={t} kontakte={kontakte}
+          <HaushaltNutzungInfo beleg={beleg} typ={typ} nutzRecht={nutzRecht} t={t} kontakte={kontakte}
             personenAnzahl={anzahl} istSP={istSP}
             nachfolge={vorgangBeleg ? (() => {
               const nm = (vorgangBeleg.haushalt && vorgangBeleg.haushalt.mitglieder || [])
@@ -1471,12 +1482,12 @@ function HaushaltMietvertrag({ beleg, t, kontakte = [], personenAnzahl = null, n
 // Leerstand. Zeigt „seit"-Datum, Nutzer/Bewohner-Namen, Anzahl Bewohner und
 // einen laufenden Wechsel (Nachfolge). So gibt es bei JEDEM Belegungstyp einen
 // gleichwertigen Info-Block, nicht nur bei Vermietung.
-function HaushaltNutzungInfo({ beleg, typ, t, kontakte = [], personenAnzahl = null, nachfolge = null, istSP = false }) {
+function HaushaltNutzungInfo({ beleg, typ, nutzRecht = null, t, kontakte = [], personenAnzahl = null, nachfolge = null, istSP = false }) {
   const zeilen = [];
   if (typ === "leerstand") {
     if (beleg && beleg.von) zeilen.push(["Leer seit", datumDe(beleg.von) || beleg.von]);
   } else {
-    // Eigennutzung / sonstige Bewohner: Nutzer-Namen aus dem Haushalt ableiten.
+    // Nutzer-Namen aus dem Haushalt ableiten.
     const hh = (beleg && beleg.haushalt) || { mitglieder: [] };
     const namen = (hh.mitglieder || [])
       .filter(m => m && !istAnonymesMitglied(m))
@@ -1485,10 +1496,16 @@ function HaushaltNutzungInfo({ beleg, typ, t, kontakte = [], personenAnzahl = nu
         return (k && k.name) || m.name || "";
       })
       .filter(Boolean);
-    const nutzerLabel = istSP ? "Nutzer" : (typ === "selbstnutzung" ? "Eigennutzer" : "Bewohner");
+    // Label rechtgenau: Nießbraucher/Wohnberechtigter nutzen FREMDES Eigentum,
+    // sind also keine „Eigennutzer". Nur der echte Eigennutzer heißt so.
+    const nutzerLabel = istSP ? "Nutzer"
+      : (nutzRecht === "niessbraucher" ? "Nießbraucher"
+      : (nutzRecht === "wohnberechtigt" ? "Wohnberechtigt"
+      : (nutzRecht === "eigennutzer" ? "Eigennutzer" : "Bewohner")));
     if (namen.length > 0) zeilen.push([nutzerLabel, namen.join(", ")]);
     if (beleg && beleg.von) {
-      const seitLabel = typ === "selbstnutzung" ? "Genutzt seit" : "Bewohnt seit";
+      // „Genutzt seit" nur beim echten Eigennutzer; sonst neutral „Bewohnt seit".
+      const seitLabel = (nutzRecht === "eigennutzer") ? "Genutzt seit" : "Bewohnt seit";
       zeilen.push([seitLabel, datumDe(beleg.von) || beleg.von]);
     }
     if (personenAnzahl != null) {
@@ -5772,16 +5789,21 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
   );
 }
 // Ersetzt die JSX-IIFE aus liegenschaft-komplett.jsx
-function KartenList({ karten, setKarten, t, accent, editMode, kontakte, setKontakte, ve, onKontaktClick, ohneEinheiten = false, ves = [], etvStamm = null, onSyncChange = null, sprungKarte = null }) {
+function KartenList({ karten, setKarten, t, accent, editMode, kontakte, setKontakte, ve, onKontaktClick, ohneEinheiten = false, ves = [], etvStamm = null, onSyncChange = null, sprungKarte = null,
+  offeneKarteId: offeneKarteIdProp, setOffeneKarteId: setOffeneKarteIdProp,
+  aktiveEditId: aktiveEditIdProp, setAktiveEditId: setAktiveEditIdProp }) {
   // Es darf immer nur EINE Karte gleichzeitig im karten-eigenen Bearbeiten-Modus
   // sein. Wir merken uns die aktive Karten-ID; andere Karten sperren ihren Stift.
-  const [aktiveEditId, setAktiveEditId] = useState(null);
-  // Akkordeon (nur Verwaltung): immer nur EINE klappbare Karte offen. Klick auf
-  // eine andere schließt die vorher offene. Fixe/immer-offene Karten unberührt.
-  const [offeneKarteId, setOffeneKarteId] = useState(null);
-  // Akkordeon (Verwaltung UND Liegenschaft): immer nur EINE klappbare Karte
-  // offen. Klick auf eine andere schließt die vorher offene. Fixe/immer-offene
-  // Karten (Stammdaten/ETV) unberührt.
+  // State kann von außen kommen (controlled — Verwaltung teilt ihn mit dem
+  // separaten Verteilerschlüssel-Block) oder intern gehalten werden (Liegenschaft).
+  const [aktiveEditIdLokal, setAktiveEditIdLokal] = useState(null);
+  const aktiveEditId = setAktiveEditIdProp ? aktiveEditIdProp : aktiveEditIdLokal;
+  const setAktiveEditId = setAktiveEditIdProp || setAktiveEditIdLokal;
+  // Akkordeon: immer nur EINE klappbare Karte offen. Klick auf eine andere
+  // schließt die vorher offene. Fixe/immer-offene Karten unberührt.
+  const [offeneKarteIdLokal, setOffeneKarteIdLokal] = useState(null);
+  const offeneKarteId = setOffeneKarteIdProp ? offeneKarteIdProp : offeneKarteIdLokal;
+  const setOffeneKarteId = setOffeneKarteIdProp || setOffeneKarteIdLokal;
   const akkordeon = true;
   const onAkkordeonToggle = (id, willOpen) => setOffeneKarteId(willOpen ? id : null);
   // Sprungziel (z. B. aus dem Kalender): betroffene Karte aufklappen und
@@ -6141,12 +6163,38 @@ function neueDokumentKarte(katalogId) {
 //    klappt je Schlüssel die Einheiten-Werte auf (berechnete Basen read-only,
 //    personen/manuell editierbar) und erlaubt Anlegen/Löschen eigener
 //    Schlüssel. Persistiert NUR Deltas in ve.verteilerschluessel.
-function VerteilerSchluesselBlock({ ve, setVes, t, accent, editierbar = false }) {
+function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, editierbar = false, sort = null,
+  akkordeonOffen = null, onAkkordeonToggle = null, akkordeonId = "__vs__",
+  lokalEditGesperrt = false, onLokalEditChange = null }) {
   const [aufId, setAufId] = useState(null);
   const [neuForm, setNeuForm] = useState(false);
   const [neuName, setNeuName] = useState("");
   const [neuBasis, setNeuBasis] = useState("manuell");
   const [loeschBestaetigung, setLoeschBestaetigung] = useState(null);
+  // Akkordeon: klappbar nur wenn von außen angebunden (Verwaltung-Tab). Ohne
+  // Anbindung (z. B. Schnelleingabe) bleibt die Karte immer offen wie bisher.
+  const akkordeonAktiv = !!onAkkordeonToggle;
+  const [expandedLokal, setExpandedLokal] = useState(false);
+  const effExpanded = akkordeonAktiv ? (akkordeonOffen === akkordeonId) : true;
+  const toggleExpanded = (val) => {
+    const neu = typeof val === "function" ? val(effExpanded) : (val === undefined ? !effExpanded : val);
+    if (akkordeonAktiv) onAkkordeonToggle(akkordeonId, neu);
+    else setExpandedLokal(neu);
+  };
+  // Lokaler Edit-Stift (wie bei den Akkordeon-Karten): nur außerhalb des globalen
+  // editMode, nur wenn aufgeklappt und nicht durch eine andere Karte gesperrt.
+  const [lokalEdit, setLokalEdit] = useState(false);
+  useEffect(() => { if (onLokalEditChange) onLokalEditChange(lokalEdit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lokalEdit]);
+  // Edit-Inhalte sind aktiv bei globalem editMode ODER lokalem Stift.
+  const effEditierbar = editierbar || lokalEdit;
+  // Stift verschwindet, wenn der globale Edit-Modus läuft oder gesperrt.
+  const lokalEditErlaubt = akkordeonAktiv && !editMode && effExpanded && (!lokalEditGesperrt || lokalEdit);
+  // Lokal-Edit beenden, sobald zugeklappt oder globaler Edit startet.
+  useEffect(() => { if ((!effExpanded || editMode) && lokalEdit) setLokalEdit(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effExpanded, editMode]);
 
   const schluessel = effVerteilerschluessel(ve);
   const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
@@ -6197,11 +6245,45 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editierbar = false })
   return (
     <div style={{ background: t.card, border: `1px solid ${t.border}`,
       borderRadius: RAD.lg, marginBottom: 12, overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px",
-        borderBottom: `1px solid ${t.border}` }}>
+      <div onClick={akkordeonAktiv ? () => toggleExpanded() : undefined}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px",
+        borderBottom: effExpanded ? `1px solid ${t.border}` : "none",
+        background: accent + "08",
+        cursor: akkordeonAktiv ? "pointer" : "default" }}>
         <span style={{ fontSize: FS.icon }}>🧮</span>
-        <div style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>Verteilerschlüssel</div>
+        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>Verteilerschlüssel</div>
+        <div onClick={(e) => e.stopPropagation()}
+          style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
+          {lokalEditErlaubt && (
+            lokalEdit ? (
+              <button onClick={() => setLokalEdit(false)}
+                title="Fertig" aria-label="Fertig"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, flexShrink: 0, cursor: "pointer",
+                  background: accent, border: "none", borderRadius: RAD.pill,
+                  boxShadow: `0 1px 2px ${accent}40` }}>
+                <I name="check" size={13} color={getContrastColor(accent)}/>
+              </button>
+            ) : (
+              <button onClick={() => { if (!effExpanded) toggleExpanded(true); setLokalEdit(true); }}
+                title="Bearbeiten — Schlüssel & Anteile" aria-label="Bearbeiten"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, flexShrink: 0, cursor: "pointer",
+                  background: accent, border: "none", borderRadius: RAD.pill,
+                  boxShadow: `0 1px 2px ${accent}40` }}>
+                <I name="pencil" size={13} color={getContrastColor(accent)}/>
+              </button>
+            )
+          )}
+          {sort && (
+            <SortierPfeile horizontal size={24}
+              canUp={sort.canUp} canDown={sort.canDown}
+              onUp={sort.onUp} onDown={sort.onDown}
+              t={t} accent={accent}/>
+          )}
+        </div>
       </div>
+      {effExpanded && (
       <div style={{ padding: "6px 8px" }}>
         {schluessel.map(s => {
           const auf = aufId === s.id;
@@ -6239,7 +6321,7 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editierbar = false })
                               {e.nr || e.id}
                               {e.lage ? <span style={{ color: t.muted }}> · {e.lage}</span> : null}
                             </div>
-                            {manuell && editierbar ? (
+                            {manuell && effEditierbar ? (
                               <input value={roh}
                                 onChange={ev => setzeAnteil(s, e.id, ev.target.value)}
                                 inputMode="decimal" placeholder="0"
@@ -6253,7 +6335,7 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editierbar = false })
                       })}
                     </div>
                   )}
-                  {!s.fix && editierbar ? (
+                  {!s.fix && effEditierbar ? (
                     confirm ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
                         <div style={{ flex: 1, fontSize: FS.xs, color: t.sub }}>
@@ -6283,7 +6365,7 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editierbar = false })
             </div>
           );
         })}
-        {editierbar ? (
+        {effEditierbar ? (
           neuForm ? (
             <div style={{ padding: "10px 8px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -6319,6 +6401,7 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editierbar = false })
           )
         ) : null}
       </div>
+      )}
     </div>
   );
 }
@@ -6380,6 +6463,80 @@ function VerwaltungAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editM
     // Kein scrollZielId: Position halten statt zur Karte zu springen.
   };
 
+  // Geteilter Akkordeon-/Lokal-Edit-State: KartenList(en) UND der separate
+  // Verteilerschlüssel-Block teilen sich „nur EINE Karte offen / nur EINE im
+  // Edit". Die VS-Karte nutzt die feste ID "__vs__" am selben Akkordeon.
+  const [vwOffeneKarteId, setVwOffeneKarteId] = useState(null);
+  const [vwAktiveEditId, setVwAktiveEditId] = useState(null);
+  const VS_ID = "__vs__";
+
+  // Verteilerschlüssel-Karte ist eigenständig (eigene Persistenz in
+  // ve.verteilerschluessel), aber im Edit-Modus per Pfeil vertikal verschiebbar
+  // — fest gegen Umbenennen/Löschen. Position steckt in ve.vsRang: Anzahl der
+  // NICHT-fixen Karten, die VOR ihr stehen. Default (kein/zu großer Rang) = unten.
+  const vsNichtFix = karten.filter(k => !k.fixed);
+  const vsMaxRang = vsNichtFix.length;
+  const vsRohRang = (ve && typeof ve.vsRang === "number") ? ve.vsRang : vsMaxRang;
+  const vsRang = Math.max(0, Math.min(vsMaxRang, vsRohRang));
+  const setVsRang = (neu) => {
+    if (!setVes || !ve) return;
+    const wert = Math.max(0, Math.min(vsMaxRang, neu));
+    setVes(prev => prev.map(v => v.id === ve.id ? { ...v, vsRang: wert } : v));
+  };
+  // Split: alles bis zum vsRang-ten nicht-fixen Eintrag (inkl. dazwischen-
+  // liegender fixer Karten) vor den VS-Block, der Rest danach. So bleibt die
+  // KartenList-Mechanik (verschiebeKarte/hatNachbar) unangetastet. Führende fixe
+  // Karten (z. B. „Verwaltung – Stammdaten") bleiben IMMER oben, auch bei Rang 0.
+  let vsGesehenNichtFix = 0;
+  let vsSplitIdx = karten.length;
+  for (let i = 0; i < karten.length; i++) {
+    // Führende fixe Karten überspringen, ohne den VS-Block davor zu setzen.
+    if (vsGesehenNichtFix === 0 && karten[i].fixed) continue;
+    if (vsGesehenNichtFix >= vsRang) { vsSplitIdx = i; break; }
+    if (!karten[i].fixed) vsGesehenNichtFix++;
+  }
+  const vsOben = karten.slice(0, vsSplitIdx);
+  const vsUnten = karten.slice(vsSplitIdx);
+  // setKarten-Wrapper je Teilliste: Index-Offset zurückrechnen.
+  const setKartenOben = (updater) => setKarten(prev => {
+    const next = typeof updater === "function" ? updater(prev.slice(0, vsSplitIdx)) : updater;
+    return [...next, ...prev.slice(vsSplitIdx)];
+  });
+  const setKartenUnten = (updater) => setKarten(prev => {
+    const next = typeof updater === "function" ? updater(prev.slice(vsSplitIdx)) : updater;
+    return [...prev.slice(0, vsSplitIdx), ...next];
+  });
+  const vsRenderBlock = (
+    <Fragment>
+      {vsOben.length > 0 && (
+        <KartenList karten={vsOben} setKarten={setKartenOben} t={t} accent={accent} editMode={editMode}
+          kontakte={kontakte} setKontakte={setKontakte} ve={ve} onKontaktClick={onKontaktClick} ves={ves}
+          etvStamm={etvStamm} onSyncChange={onSyncChange}
+          sprungKarte={sprungKarte}
+          offeneKarteId={vwOffeneKarteId} setOffeneKarteId={setVwOffeneKarteId}
+          aktiveEditId={vwAktiveEditId} setAktiveEditId={setVwAktiveEditId}
+          ohneEinheiten/>
+      )}
+      <VerteilerSchluesselBlock ve={ve} setVes={setVes} t={t} accent={accent}
+        editMode={editMode} editierbar={editMode}
+        akkordeonOffen={vwOffeneKarteId} onAkkordeonToggle={(id, willOpen) => setVwOffeneKarteId(willOpen ? id : null)}
+        akkordeonId={VS_ID}
+        lokalEditGesperrt={vwAktiveEditId !== null && vwAktiveEditId !== VS_ID}
+        onLokalEditChange={(aktiv) => setVwAktiveEditId(aktiv ? VS_ID : null)}
+        sort={editMode ? { canUp: vsRang > 0, canDown: vsRang < vsMaxRang,
+          onUp: () => setVsRang(vsRang - 1), onDown: () => setVsRang(vsRang + 1) } : null}/>
+      {vsUnten.length > 0 && (
+        <KartenList karten={vsUnten} setKarten={setKartenUnten} t={t} accent={accent} editMode={editMode}
+          kontakte={kontakte} setKontakte={setKontakte} ve={ve} onKontaktClick={onKontaktClick} ves={ves}
+          etvStamm={etvStamm} onSyncChange={onSyncChange}
+          sprungKarte={sprungKarte}
+          offeneKarteId={vwOffeneKarteId} setOffeneKarteId={setVwOffeneKarteId}
+          aktiveEditId={vwAktiveEditId} setAktiveEditId={setVwAktiveEditId}
+          ohneEinheiten/>
+      )}
+    </Fragment>
+  );
+
   return (
     <div>
       {editMode && (
@@ -6392,14 +6549,7 @@ function VerwaltungAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editM
         </div>
       )}
 
-      <KartenList karten={karten} setKarten={setKarten} t={t} accent={accent} editMode={editMode}
-        kontakte={kontakte} setKontakte={setKontakte} ve={ve} onKontaktClick={onKontaktClick} ves={ves}
-        etvStamm={etvStamm} onSyncChange={onSyncChange}
-        sprungKarte={sprungKarte}
-        ohneEinheiten/>
-
-      <VerteilerSchluesselBlock ve={ve} setVes={setVes} t={t} accent={accent}
-        editierbar={editMode}/>
+      {vsRenderBlock}
 
       {editMode && (
         <div style={{ marginTop: 4 }}>

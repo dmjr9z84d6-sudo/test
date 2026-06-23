@@ -3137,6 +3137,20 @@ function FieldList({ fields, setFields, t, accent, editMode, kategorie, ohneVors
   fields.forEach((f, i) => {
     if (editMode || !istLeer(f) || f.required || f.immerSichtbar) sichtbareMitIndex.push({ f, i });
   });
+  // Im Edit-Modus: befüllte Felder behalten ihre Reihenfolge (= identisch zum
+  // Lese-Modus), leere optionale Felder wandern stabil ans Ende — so „springt"
+  // die Struktur zwischen Lesen und Bearbeiten nicht, leere Felder bleiben aber
+  // befüllbar. Pflicht-/immerSichtbar-Felder zählen als „oben\". Stabil: Original-
+  // Reihenfolge innerhalb jeder Gruppe bleibt erhalten (Index i als Tiebreaker).
+  if (editMode) {
+    const istUntenKandidat = (f) => istLeer(f) && !f.required && !f.immerSichtbar;
+    sichtbareMitIndex.sort((a, b) => {
+      const ua = istUntenKandidat(a.f) ? 1 : 0;
+      const ub = istUntenKandidat(b.f) ? 1 : 0;
+      if (ua !== ub) return ua - ub;
+      return a.i - b.i;
+    });
+  }
 
   // Wirtschaftsjahr-Wert (für den Nächste-ETV-Status): bei Sync aus der
   // gemeinsamen Quelle, sonst aus dem Zeitraum-Feld der Karte.

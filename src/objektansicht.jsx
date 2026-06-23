@@ -1400,6 +1400,7 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
       {/* Legionellen / Trinkwasser (TrinkwV) — eigener Tab je Objekt */}
       {tab === "legionellen" && (
         <LegionellenAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
+          editMode={editMode}
           kontakte={kontakte} onKontaktClick={onKontaktClick}/>
       )}
 
@@ -1806,7 +1807,7 @@ function TERegisterAnsicht({ ve, t, accent }) {
 // nicht manuell überschrieben. Wiederverwendet die Legionellen-Helfer und
 // DatumFeld — kein paralleles Konstrukt. Fundament für späteren Ausbau
 // (mehrere Probenahmestellen, Historie, Prüfprotokolle).
-function LegionellenAnsicht({ ve, setVes, t, accent, kontakte = [], onKontaktClick = null }) {
+function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte = [], onKontaktClick = null }) {
   const daten = (ve && ve.legionellen) || {};
   const letzte = daten.letzte || "";
   const befund = daten.befund || "unauffaellig";
@@ -1895,39 +1896,57 @@ function LegionellenAnsicht({ ve, setVes, t, accent, kontakte = [], onKontaktCli
         </div>
       </div>
 
-      {/* Erfassung */}
+      {/* Erfassung — im Lese-Modus reine Anzeige, im Edit befüllbar */}
       <div style={{ background: t.card, border: `1px solid ${t.border}`,
         borderRadius: RAD.lg, padding: "16px 18px", display: "flex",
         flexDirection: "column", gap: 14 }}>
         <div>
           <div style={{ fontSize: FS.xs, color: t.muted, marginBottom: 4 }}>Letzte Prüfung</div>
-          <DatumFeld value={letzte} t={t} accent={accent} defaultHeute={false}
-            onChange={setLetzte}/>
+          {editMode ? (
+            <DatumFeld value={letzte} t={t} accent={accent} defaultHeute={false}
+              onChange={setLetzte}/>
+          ) : (
+            <div style={{ fontSize: FS.input, color: letzte ? t.text : t.muted }}>
+              {letzte ? datumAnzeige(letzte) : "—"}
+            </div>
+          )}
         </div>
         <div>
           <div style={{ fontSize: FS.xs, color: t.muted, marginBottom: 4 }}>Befund</div>
-          <select value={befund} onChange={e => setBefund(e.target.value)}
-            style={{ width: "100%", boxSizing: "border-box", background: t.surface,
-              border: `1px solid ${accent}60`, borderRadius: RAD.sm,
-              padding: "7px 10px", fontSize: FS.input, color: t.text,
-              outline: "none", fontFamily: "inherit", appearance: "auto" }}>
-            {LEGIONELLEN_BEFUNDE.map(b => (
-              <option key={b.id} value={b.id}>{b.label} ({b.kurz})</option>
-            ))}
-          </select>
+          {editMode ? (
+            <select value={befund} onChange={e => setBefund(e.target.value)}
+              style={{ width: "100%", boxSizing: "border-box", background: t.surface,
+                border: `1px solid ${accent}60`, borderRadius: RAD.sm,
+                padding: "7px 10px", fontSize: FS.input, color: t.text,
+                outline: "none", fontFamily: "inherit", appearance: "auto" }}>
+              {LEGIONELLEN_BEFUNDE.map(b => (
+                <option key={b.id} value={b.id}>{b.label} ({b.kurz})</option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ fontSize: FS.input, color: t.text }}>
+              {bInfo.label} ({bInfo.kurz})
+            </div>
+          )}
         </div>
         <div>
           <div style={{ display: "flex", alignItems: "baseline",
             justifyContent: "space-between", marginBottom: 4 }}>
             <span style={{ fontSize: FS.xs, color: t.muted }}>Nächste fällig</span>
-            {naechsteManuell && (
+            {editMode && naechsteManuell && (
               <button onClick={() => patch({ naechsteManuell: false, naechste: "" })}
                 style={{ background: "none", border: "none", cursor: "pointer", padding: 0,
                   fontSize: FS.xs, color: accent, fontFamily: "inherit" }}>Auto</button>
             )}
           </div>
-          <DatumFeld value={naechste} t={t} accent={accent} defaultHeute={false}
-            onChange={setNaechste}/>
+          {editMode ? (
+            <DatumFeld value={naechste} t={t} accent={accent} defaultHeute={false}
+              onChange={setNaechste}/>
+          ) : (
+            <div style={{ fontSize: FS.input, color: naechste ? t.text : t.muted }}>
+              {naechste ? datumAnzeige(naechste) : "—"}
+            </div>
+          )}
           {!naechsteManuell && autoNaechste && (
             <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
               Automatisch {bInfo.kurz} ab letzter Prüfung
@@ -1987,16 +2006,18 @@ function LegionellenAnsicht({ ve, setVes, t, accent, kontakte = [], onKontaktCli
               padding: "3px 8px", borderRadius: RAD.sm }}>
               {artLabel(s.art)}
             </span>
-            <button onClick={() => stelleLoeschen(s.id)} aria-label="Löschen"
-              style={{ flexShrink: 0, background: "none", border: "none",
-                cursor: "pointer", padding: 4, display: "flex", alignItems: "center" }}>
-              <I name="trash" size={15} color={t.muted}/>
-            </button>
+            {editMode && (
+              <button onClick={() => stelleLoeschen(s.id)} aria-label="Löschen"
+                style={{ flexShrink: 0, background: "none", border: "none",
+                  cursor: "pointer", padding: 4, display: "flex", alignItems: "center" }}>
+                <I name="trash" size={15} color={t.muted}/>
+              </button>
+            )}
           </div>
           );
         })}
 
-        {formOffen ? (
+        {editMode && (formOffen ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10,
             background: t.surface, border: `1px solid ${accent}40`,
             borderRadius: RAD.sm, padding: "12px 14px" }}>
@@ -2103,7 +2124,7 @@ function LegionellenAnsicht({ ve, setVes, t, accent, kontakte = [], onKontaktCli
               cursor: "pointer", fontFamily: "inherit" }}>
             <I name="plus" size={14} color={accent}/>Probenahmestelle hinzufügen
           </button>
-        )}
+        ))}
       </div>
 
       {/* Fachlicher Hinweis */}
