@@ -2334,6 +2334,14 @@ function legionellenFindeRaum(ve, raumId) {
   for (let i = 0; i < standorte.length; i++) {
     const r = (standorte[i].raeume || []).find(x => x && String(x.id) === String(raumId));
     if (r) return r;
+    const einheiten = standorte[i].einheiten || [];
+    for (let j = 0; j < einheiten.length; j++) {
+      const teile = einheiten[j].teile || [];
+      for (let k = 0; k < teile.length; k++) {
+        const tr = (teile[k].raeume || []).find(x => x && String(x.id) === String(raumId));
+        if (tr) return tr;
+      }
+    }
   }
   return null;
 }

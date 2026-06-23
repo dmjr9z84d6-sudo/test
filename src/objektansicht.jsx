@@ -1548,7 +1548,14 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAnteil
   // Detail immer fest (absolute px aus dem Slider), Master nimmt den Rest. Bei
   // Karten teilt sich der Rest in kartenSpalten gleich breite Spalten.
   const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil);
-  const kartenCols = Math.max(1, Math.min(kartenSpalten, Math.floor((mdLayout.masterWidth || cardWidth) / 300)));
+  // Spaltenzahl: Wunsch (kartenSpalten) gedeckelt auf den verfügbaren Platz UND
+  // auf die tatsächliche Kartenzahl — sonst bleiben bei wenigen Karten leere
+  // Grid-Spalten (1 Karte in 2-Spalten-Grid → halbe Breite + Lücke). So füllt
+  // 1 Karte die volle Master-Breite, 2 Karten je die Hälfte usw.; bei mehr
+  // Karten als Spalten bleiben alle Karten gleich breit (kein Dehnen der
+  // letzten Umbruch-Karte).
+  const passtCols = Math.max(1, Math.floor((mdLayout.masterWidth || cardWidth) / 300));
+  const kartenCols = Math.max(1, Math.min(kartenSpalten, passtCols, gefiltert.length || 1));
   // Auswahl-Akzent: Mehr-Farbe = Objekt-Bereichsfarbe, Graumodus = System-Akzent.
   // Override (z. B. Kalenderfarbe) hat Vorrang.
   const auswahlAccent = auswahlAccentOverride || useKontaktFarbe().auswahlObjekt || accent;
@@ -1843,33 +1850,51 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
   const [neuEinheit, setNeuEinheit] = useState("");
   const [formOffen, setFormOffen] = useState(false);
   const [infoOffen, setInfoOffen] = useState(false);
-  const aktHaus = standorte.find(h => String(h.id) === String(neuHaus)) || null;
-  const verfRaeume = aktHaus ? (aktHaus.raeume || []) : [];
+  // Haus-Auswahl nur nötig, wenn mehrere Standorte zur Wahl stehen. Bei genau
+  // einem Standort ist er implizit vorgewählt (Dropdown wird ausgeblendet).
+  const einzigerStandort = standorte.length === 1 ? standorte[0] : null;
+  const effHausId = neuHaus || (einzigerStandort ? String(einzigerStandort.id) : "");
+  const aktHaus = standorte.find(h => String(h.id) === String(effHausId)) || null;
   const verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
+  const aktEinheit = verfEinheiten.find(e => String(e.id) === String(neuEinheit)) || null;
+  // Räume: aus der gewählten Einheit (über ihre Teile), sonst aus dem Haus
+  // (Gemeinschaftsräume wie Heizraum). „Vom Groben zum Feinen": Haus → Einheit → Raum.
+  const einheitRaeume = (eh) => {
+    if (!eh || !Array.isArray(eh.teile)) return [];
+    const out = [];
+    eh.teile.forEach(teil => {
+      (teil && Array.isArray(teil.raeume) ? teil.raeume : []).forEach(r => { if (r) out.push(r); });
+    });
+    return out;
+  };
+  const verfRaeume = aktEinheit ? einheitRaeume(aktEinheit) : (aktHaus ? (aktHaus.raeume || []) : []);
   const formReset = () => { setNeueBez("");
     setNeuHaus(""); setNeuRaum(""); setNeuEinheit(""); setFormOffen(false); };
   const stellenPatch = (liste) => patch({ pruefstellen: liste });
-  // Pflicht: eine Verknüpfung (Raum ODER Einheit). Notiz ist optional.
-  const verknuepfungGesetzt = !!((neuRaum && !neuEinheit) || neuEinheit);
+  // Pflicht: ein Raum (aus Einheit ODER aus der Gemeinschaft/Haus). Notiz optional.
+  const verknuepfungGesetzt = !!neuRaum;
   const stelleHinzu = () => {
     if (!verknuepfungGesetzt) return;
     stellenPatch(stellen.concat([{ id: Date.now(),
-      hausId: neuHaus || null, raumId: (neuRaum && !neuEinheit) ? neuRaum : null,
+      hausId: effHausId || null, raumId: neuRaum || null,
       einheitId: neuEinheit || null, notiz: neueBez.trim() }]));
     formReset();
   };
   const stelleLoeschen = (id) => stellenPatch(stellen.filter(s => s.id !== id));
-  // Verknüpfungs-Anzeige je Stelle: Raum-Name oder Einheit-Nr + Ansprechpartner.
+  // Verknüpfungs-Anzeige je Stelle: Raum ist Pflicht; Einheit (falls gesetzt)
+  // als Kontext davor + Ansprechpartner. Reine Gemeinschaftsräume: nur Raum.
   const stelleVerknuepfung = (s) => {
+    const raum = s.raumId ? legionellenFindeRaum(ve, s.raumId) : null;
+    const raumLabel = s.raumId ? (raum ? raum.name : "Raum (entfernt)") : null;
     if (s.einheitId) {
       const eh = legionellenFindeEinheit(ve, s.einheitId);
       const ap = legionellenAnsprechpartner(ve, s.einheitId, kontakte);
-      return { typ: "einheit", label: eh ? (eh.nr || "Einheit") : "Einheit (entfernt)",
-        ansprech: ap };
+      const ehLabel = eh ? ("Einheit " + (eh.nr || "")) : "Einheit (entfernt)";
+      const label = raumLabel ? (ehLabel + " · " + raumLabel) : ehLabel;
+      return { typ: "einheit", label: label, ansprech: ap };
     }
     if (s.raumId) {
-      const r = legionellenFindeRaum(ve, s.raumId);
-      return { typ: "raum", label: r ? r.name : "Raum (entfernt)", ansprech: null };
+      return { typ: "raum", label: "Raum " + (raum ? raum.name : "(entfernt)"), ansprech: null };
     }
     return null;
   };
@@ -2029,8 +2054,7 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
           const vk = stelleVerknuepfung(s);
           // Notiz: neues Feld; Altbestand-Fallback auf frühere "bezeichnung".
           const notizText = (s.notiz && s.notiz.trim()) || (s.bezeichnung && s.bezeichnung.trim()) || "";
-          const kopf = vk ? ((vk.typ === "einheit" ? "Einheit " : "Raum ") + vk.label)
-            : (notizText || "Probenahmestelle");
+          const kopf = vk ? vk.label : (notizText || "Probenahmestelle");
           return (
           <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10,
             background: t.surface, border: `1px solid ${t.border}`,
@@ -2071,58 +2095,68 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
             background: t.surface, border: `1px solid ${accent}40`,
             borderRadius: RAD.sm, padding: "12px 14px" }}>
 
-            {/* Verknüpfung: Haus → Raum ODER Einheit (Pflicht) */}
+            {/* Verknüpfung: Haus → Einheit → Raum (vom Groben zum Feinen).
+                Raum ist Pflicht; Einheit optional (leer = Gemeinschaft/Haus-Raum). */}
             {standorte.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
                   textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Verknüpfung (Raum oder Einheit)
+                  Verknüpfung (Raum ist Pflicht)
                 </div>
-                <select value={neuHaus}
-                  onChange={e => { setNeuHaus(e.target.value); setNeuRaum(""); setNeuEinheit(""); }}
+
+                {/* Haus nur zur Auswahl, wenn mehrere Standorte existieren. */}
+                {standorte.length > 1 && (
+                  <select value={neuHaus}
+                    onChange={e => { setNeuHaus(e.target.value); setNeuEinheit(""); setNeuRaum(""); }}
+                    style={{ width: "100%", boxSizing: "border-box", background: t.card,
+                      border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                      padding: "8px 10px", fontSize: FS.input, color: t.text,
+                      outline: "none", fontFamily: "inherit", appearance: "auto" }}>
+                    <option value="">{standortPlatzhalter}</option>
+                    {standorte.map(h => (
+                      <option key={h.id} value={h.id}>{h.name}</option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Einheit (optional) — schaltet die Raum-Quelle um. */}
+                <select value={neuEinheit}
+                  onChange={e => { setNeuEinheit(e.target.value); setNeuRaum(""); }}
+                  disabled={!aktHaus || verfEinheiten.length === 0}
                   style={{ width: "100%", boxSizing: "border-box", background: t.card,
                     border: `1px solid ${t.border}`, borderRadius: RAD.sm,
                     padding: "8px 10px", fontSize: FS.input, color: t.text,
-                    outline: "none", fontFamily: "inherit", appearance: "auto" }}>
-                  <option value="">{standortPlatzhalter}</option>
-                  {standorte.map(h => (
-                    <option key={h.id} value={h.id}>{h.name}</option>
+                    outline: "none", fontFamily: "inherit", appearance: "auto",
+                    opacity: (!aktHaus || verfEinheiten.length === 0) ? 0.5 : 1 }}>
+                  <option value="">
+                    {!aktHaus ? "Einheit"
+                      : verfEinheiten.length === 0 ? "keine Einheiten"
+                      : "— Einheit (optional, sonst Gemeinschaft) —"}
+                  </option>
+                  {verfEinheiten.map(eh => (
+                    <option key={eh.id} value={eh.id}>{eh.nr || "Einheit"}{eh.lage ? ` · ${eh.lage}` : ""}</option>
                   ))}
                 </select>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <select value={neuRaum}
-                    onChange={e => { setNeuRaum(e.target.value); if (e.target.value) setNeuEinheit(""); }}
-                    disabled={!neuHaus || verfRaeume.length === 0 || !!neuEinheit}
-                    style={{ flex: 1, minWidth: 0, boxSizing: "border-box", background: t.card,
-                      border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                      padding: "8px 10px", fontSize: FS.input, color: t.text,
-                      outline: "none", fontFamily: "inherit", appearance: "auto",
-                      opacity: (!neuHaus || verfRaeume.length === 0 || !!neuEinheit) ? 0.5 : 1 }}>
-                    <option value="">
-                      {!neuHaus ? "Raum" : neuEinheit ? "(Einheit gewählt)"
-                        : verfRaeume.length === 0 ? "keine Räume" : "— Raum —"}
-                    </option>
-                    {verfRaeume.map(r => (
-                      <option key={r.id} value={r.id}>{r.name}{r.lage ? ` (${r.lage})` : ""}</option>
-                    ))}
-                  </select>
-                  <select value={neuEinheit}
-                    onChange={e => { setNeuEinheit(e.target.value); if (e.target.value) setNeuRaum(""); }}
-                    disabled={!neuHaus || verfEinheiten.length === 0 || !!neuRaum}
-                    style={{ flex: 1, minWidth: 0, boxSizing: "border-box", background: t.card,
-                      border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                      padding: "8px 10px", fontSize: FS.input, color: t.text,
-                      outline: "none", fontFamily: "inherit", appearance: "auto",
-                      opacity: (!neuHaus || verfEinheiten.length === 0 || !!neuRaum) ? 0.5 : 1 }}>
-                    <option value="">
-                      {!neuHaus ? "Einheit" : neuRaum ? "(Raum gewählt)"
-                        : verfEinheiten.length === 0 ? "keine Einheiten" : "— Einheit —"}
-                    </option>
-                    {verfEinheiten.map(eh => (
-                      <option key={eh.id} value={eh.id}>{eh.nr || "Einheit"}{eh.lage ? ` · ${eh.lage}` : ""}</option>
-                    ))}
-                  </select>
-                </div>
+
+                {/* Raum (Pflicht) — aus Einheit oder aus dem Haus (Gemeinschaft). */}
+                <select value={neuRaum}
+                  onChange={e => setNeuRaum(e.target.value)}
+                  disabled={!aktHaus || verfRaeume.length === 0}
+                  style={{ width: "100%", boxSizing: "border-box", background: t.card,
+                    border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                    padding: "8px 10px", fontSize: FS.input, color: t.text,
+                    outline: "none", fontFamily: "inherit", appearance: "auto",
+                    opacity: (!aktHaus || verfRaeume.length === 0) ? 0.5 : 1 }}>
+                  <option value="">
+                    {!aktHaus ? "Raum"
+                      : verfRaeume.length === 0
+                        ? (aktEinheit ? "keine Räume in dieser Einheit" : "keine Gemeinschaftsräume")
+                      : (aktEinheit ? "— Raum der Einheit —" : "— Raum (Gemeinschaft) —")}
+                  </option>
+                  {verfRaeume.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}{r.lage ? ` (${r.lage})` : ""}</option>
+                  ))}
+                </select>
               </div>
             ) : (
               <div style={{ fontSize: FS.xs, color: t.muted }}>

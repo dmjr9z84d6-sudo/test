@@ -2019,6 +2019,25 @@ export default function App() {
     const offenVE = gefiltert.find(v => v.id === expandedVEId);
     const istMobileDetail = offenVE && !istDesktop;
     const hatOffen = !!offenVE;
+    // Objekt-Legende: steht in ALLEN Zuständen (auch bei offener Karte), damit
+    // man jederzeit nachschlagen kann. Ausblendbar via settings.legendeObjekte.
+    const objektLegendeEl = (settings.legendeObjekte !== false && gefiltert.length > 0) ? (
+      <ObjektLegende ves={gefiltert} t={t} accent={objektAccent}
+        listenAnsicht={effectiveSettings.listenAnsicht}
+        onGotoHandlungsbedarf={() => {
+          wechselScreen("einstellungen");
+          setTimeout(() => {
+            try {
+              window.dispatchEvent(new CustomEvent("allesda:zentrale-sektion",
+                { detail: { id: "statusleiste" } }));
+            } catch (err) {}
+          }, 60);
+          setTimeout(() => {
+            const el = document.getElementById("set-handlungsbedarf");
+            if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
+          }, 450);
+        }}/>
+    ) : null;
     // Master-Detail-Inhalt vorab bestimmen (Desktop 2-Spalten / Mobile Vollbild / Grid)
     let detailInhalt;
     if (hatOffen && istDesktop) {
@@ -2063,23 +2082,6 @@ export default function App() {
       const istListe = effectiveSettings.listenAnsicht === "liste";
       detailInhalt = (
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-          {settings.legendeObjekte !== false && gefiltert.length > 0 && (
-            <ObjektLegende ves={gefiltert} t={t} accent={objektAccent}
-              listenAnsicht={effectiveSettings.listenAnsicht}
-              onGotoHandlungsbedarf={() => {
-                wechselScreen("einstellungen");
-                setTimeout(() => {
-                  try {
-                    window.dispatchEvent(new CustomEvent("allesda:zentrale-sektion",
-                      { detail: { id: "statusleiste" } }));
-                  } catch (err) {}
-                }, 60);
-                setTimeout(() => {
-                  const el = document.getElementById("set-handlungsbedarf");
-                  if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
-                }, 450);
-              }}/>
-          )}
           <div style={istListe
             ? { display: "flex", flexDirection: "column", gap: 6 }
             : { display: "grid",
@@ -2135,6 +2137,7 @@ export default function App() {
             )}
           </div>
         </StickySectionHeader>
+        {objektLegendeEl}
         {detailInhalt}
         {gefiltert.length === 0 && (
           <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic",
