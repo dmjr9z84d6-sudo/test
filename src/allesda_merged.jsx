@@ -2646,7 +2646,7 @@ export default function App() {
           : { display: "flex", flexDirection: "column" }}>
           <div style={istDesktop
             ? { margin: "0 auto", padding: "0 10px", width: "100%", minWidth: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }
-            : { margin: "0 auto", padding: "0 10px", width: "100%", display: "flex", flexDirection: "column" }}>
+            : { margin: "0 auto", padding: 0, width: "100%", display: "flex", flexDirection: "column" }}>
             <div ref={contentRef} style={istDesktop
               ? { flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }
               : { display: "flex", flexDirection: "column" }}>

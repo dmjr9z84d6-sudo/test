@@ -925,30 +925,9 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
           ) : (
             <div style={KACHEL_GRID}>
               {(ves || []).map(v => (
-                <div key={v.id} onClick={() => setObjektId(v.id)} data-kb-item="1"
-                  style={{ display: "flex", flexDirection: "column", cursor: "pointer",
-                    background: t.card, height: "100%",
-                    border: `1px solid ${t.border}`, borderRadius: RAD.lg,
-                    overflow: "hidden", transition: "all 0.15s" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12,
-                    padding: "12px 14px", flex: 1, minHeight: 0 }}>
-                    <span style={{ fontSize: 22, flexShrink: 0 }}>🏢</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: accent,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {v.nr || "Objekt"}
-                      </div>
-                      <div style={{ fontSize: FS.s, color: t.sub,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {v.adresse || "—"}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: FS.xxs, padding: "2px 8px", borderRadius: RAD.pill,
-                      background: accent + "15", color: accent, fontWeight: FW.medium, flexShrink: 0 }}>
-                      {(v.einheiten || []).length} Einh.
-                    </span>
-                  </div>
-                </div>
+                <VEKachel key={v.id} ve={v} t={t} accent={accent} kbItem
+                  id={"se-" + v.id}
+                  onClick={() => setObjektId(v.id)}/>
               ))}
             </div>
           )}
