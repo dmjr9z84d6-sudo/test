@@ -2,7 +2,7 @@ import {
   ACCENT, DEFAULT_GEWERKE_LISTE, DEFAULT_KATEGORIEN, DEFAULT_LEISTUNGEN,
   DEFAULT_ROLLEN, DEFAULT_VERWENDUNGEN, KONTAKTE_FARBE
 } from "./constants.js";
-import { isoHeute, splitPlzOrt, zuIsoDatum } from "./utils-basis.js";
+import { isoHeute, splitPlzOrt, zuIsoDatum, parseDatumWert } from "./utils-basis.js";
 
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 2 · DATENMODELL  (Modell A) — ausgelagertes Modul                ║
@@ -397,6 +397,69 @@ const VERWALTUNGSARTEN = [
   { id: "sev",     label: "SEV",                kurz: "SEV"     },
 ];
 
+// ── Wirtschaftsjahr → rechenbarer Zeitraum (für Personen-Tage-Schlüssel) ──
+// Das Wirtschaftsjahr-Feld (ve.etvStamm.wirtschaftsjahr) ist ein STRING:
+// entweder "Kalenderjahr" (Default) oder ein frei definierter Zeitraum. Für
+// den Personen-Tage-Schlüssel brauchen wir daraus ein rechenbares {von, bis}
+// (ISO yyyy-mm-dd, inklusive bis). Default "Kalenderjahr" ⇒ VORJAHR (das
+// typische Abrechnungsjahr), 01.01.–31.12. Schaltjahre fallen durch die echte
+// Datumsrechnung automatisch korrekt aus (366 statt 365 Tage).
+function wirtschaftsjahrZeitraum(wjWert, jahr) {
+  const s = String(wjWert == null ? "" : wjWert).trim();
+  const istKalender = !s || s.toLowerCase() === "kalenderjahr";
+  if (istKalender) {
+    // Ohne explizit gewähltes Jahr: Vorjahr (typisches Abrechnungsjahr).
+    const j = (typeof jahr === "number" && jahr >= 1900)
+      ? jahr : (new Date().getFullYear() - 1);
+    return { von: `${j}-01-01`, bis: `${j}-12-31` };
+  }
+  // Freitext-Zeitraum: "tt.mm.jjjj – tt.mm.jjjj" (diverse Trenner tolerant).
+  const teile = s.split(/\s*(?:–|-|bis|—|\u2013|\u2014)\s*/i).filter(Boolean);
+  if (teile.length >= 2) {
+    const von = zuIsoDatum(teile[0]);
+    const bis = zuIsoDatum(teile[teile.length - 1]);
+    if (von && bis) return { von, bis };
+  }
+  // Nur eine Jahreszahl im Freitext ⇒ ganzes Kalenderjahr.
+  const nurJahr = s.match(/(\d{4})/);
+  if (nurJahr) {
+    const j = Number(nurJahr[1]);
+    return { von: `${j}-01-01`, bis: `${j}-12-31` };
+  }
+  // Unparsbar: Fallback Vorjahr.
+  const j = new Date().getFullYear() - 1;
+  return { von: `${j}-01-01`, bis: `${j}-12-31` };
+}
+
+// Tage zwischen zwei ISO-Daten, INKLUSIVE beider Ränder (echte Kalendertage,
+// Schaltjahr-korrekt). Gibt 0 zurück, wenn ungültig oder bis < von.
+function tageInklusive(vonIso, bisIso) {
+  const v = parseDatumWert(vonIso);
+  const b = parseDatumWert(bisIso);
+  if (!v || !b) return 0;
+  const MS = 24 * 60 * 60 * 1000;
+  // Auf Mitternacht normalisieren, Zeitzonen-Drift vermeiden.
+  const vU = Date.UTC(v.getFullYear(), v.getMonth(), v.getDate());
+  const bU = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  if (bU < vU) return 0;
+  return Math.round((bU - vU) / MS) + 1;
+}
+
+// Überschneidungs-Tage eines Personen-Zeitraums [pVon,pBis] mit dem
+// Wirtschaftsjahr [wjVon,wjBis] — beide inklusive. Offene Ränder (leeres von /
+// leeres bis am Personen-Zeitraum) bedeuten „seit jeher" bzw. „bis auf
+// Weiteres" und werden auf die WJ-Grenze geklemmt. So zählt eine Person ohne
+// erfasste Daten automatisch das volle Wirtschaftsjahr (Hybrid-Fallback).
+function personenTageImWj(pVon, pBis, wjVon, wjBis) {
+  const pv = (pVon && zuIsoDatum(pVon)) || wjVon;
+  const pb = (pBis && zuIsoDatum(pBis)) || wjBis;
+  // Schnittmenge der beiden Intervalle (ISO-Strings vergleichbar lexikografisch).
+  const von = pv > wjVon ? pv : wjVon;
+  const bis = pb < wjBis ? pb : wjBis;
+  if (bis < von) return 0;
+  return tageInklusive(von, bis);
+}
+
 // ── Verteilerschlüssel (Umlageschlüssel) ─────────────────────────────────
 // Vier Standard-Schlüssel sind vordefiniert; eigene kommen dazu. Persistiert
 // wird NUR das Delta in ve.verteilerschluessel (Overrides der Standards, z. B.
@@ -438,15 +501,19 @@ function effVerteilerschluessel(ve) {
   return [...std, ...eigene];
 }
 // Wert eines Schlüssels für eine Einheit (Zahl; 0 wenn leer/unbekannt).
-function vsWertVon(schluessel, einheit) {
+// Optionaler 3. Parameter wj = { von, bis }: ist er gesetzt, liefert die
+// Personen-Basis PERSONEN-TAGE über das Wirtschaftsjahr (historisch korrekt)
+// statt der heutigen Kopfzahl. Ohne wj bleibt das Alt-Verhalten (Köpfe) — so
+// brechen bestehende Aufrufstellen nicht.
+function vsWertVon(schluessel, einheit, wj) {
   const basis = (schluessel && schluessel.basis) || "manuell";
   if (basis === "mea")       return parseFlaeche(einheit && einheit.mea);
   if (basis === "flaeche")   return flaecheVon(einheit);
   if (basis === "einheiten") return 1;
-  // Personen folgen automatisch den Bewohnern der Einheit (echte Kopfzahl),
-  // nicht einer separaten Anteils-Map. Editieren schreibt über setzeEinheitKopfzahl
-  // in die anonymen Köpfe zurück (bidirektional mit den Einheiten verknüpft).
-  if (basis === "personen")  return einheitKopfzahl(einheit);
+  if (basis === "personen") {
+    if (wj && wj.von && wj.bis) return einheitPersonenTage(einheit, wj.von, wj.bis);
+    return einheitKopfzahl(einheit);
+  }
   const ant = (schluessel && schluessel.anteile) || {};
   return parseFlaeche(ant[einheit && einheit.id]);
 }
@@ -667,6 +734,13 @@ function neuesHhMitglied(kontaktId, name, recht, anzahl) {
     vermerk: "",
     recht: recht || "mieter",
     anzahl: (typeof anzahl === "number" && anzahl >= 1) ? anzahl : 1,
+    // Meldezeitraum je Mitglied (für den Personen-Tage-Verteilerschlüssel).
+    // Leer = „seit jeher / bis auf Weiteres" ⇒ zählt im Schlüssel das volle
+    // Wirtschaftsjahr. Bei anonymen Sammel-Mitgliedern (anzahl > 1) gilt das
+    // von/bis für ALLE darin gebündelten Köpfe gemeinsam (Hybrid: wer einzelne
+    // Zeiträume braucht, legt mehrere anonyme Einträge mit je anzahl 1 an).
+    von: "",
+    bis: "",
   };
 }
 
@@ -701,6 +775,39 @@ function einheitKopfzahl(einheit) {
     const b = heuteLaufendeBelegung(teil) || aktiveBelegung(teil);
     const hh = (b && b.haushalt) || null;
     return s + haushaltKopfzahl(hh);
+  }, 0);
+}
+
+// ── Personen-TAGE je Einheit (für den Personen-Tage-Verteilerschlüssel) ──────
+// Anders als einheitKopfzahl (Stichtag heute) summiert das hier über die GANZE
+// Historie: alle Belegungen aller Teile, deren Zeitraum das Wirtschaftsjahr
+// schneidet — auch längst ehemalige. Pro Mitglied werden die im WJ gemeldeten
+// Tage gezählt und mit der Kopfzahl des Mitglieds multipliziert (anonyme
+// Sammel-Köpfe zählen anzahl-fach). So bleibt die Abrechnung eines vergangenen
+// WJ korrekt, selbst wenn längst neue Bewohner eingezogen sind.
+//
+// Zeit-Kaskade je Mitglied (engste verfügbare Angabe gewinnt):
+//   1. m.von / m.bis            (individueller Meldezeitraum, falls gepflegt)
+//   2. sonst beleg.von/.bis     (Zeitraum der Belegung)
+//   3. offene Ränder ⇒ WJ-Grenze (personenTageImWj klemmt automatisch)
+function mitgliedPersonenTage(m, beleg, wjVon, wjBis) {
+  if (!m) return 0;
+  const von = (m.von && String(m.von).trim()) || (beleg && beleg.von) || "";
+  const bis = (m.bis && String(m.bis).trim()) || (beleg && beleg.bis) || "";
+  const tage = personenTageImWj(von, bis, wjVon, wjBis);
+  return tage * mitgliedKopfzahl(m);
+}
+function belegungPersonenTage(beleg, wjVon, wjBis) {
+  const hh = (beleg && beleg.haushalt) || null;
+  if (!hh || !Array.isArray(hh.mitglieder)) return 0;
+  return hh.mitglieder.reduce((s, m) => s + mitgliedPersonenTage(m, beleg, wjVon, wjBis), 0);
+}
+function einheitPersonenTage(einheit, wjVon, wjBis) {
+  if (!wjVon || !wjBis) return 0;
+  const teile = teileVon(einheit);
+  return teile.reduce((s, teil) => {
+    const belegungen = (teil && Array.isArray(teil.belegungen)) ? teil.belegungen : [];
+    return s + belegungen.reduce((ss, b) => ss + belegungPersonenTage(b, wjVon, wjBis), 0);
   }, 0);
 }
 
@@ -2022,7 +2129,13 @@ export {
   vsBasisLabel,
   vsIstManuell,
   vsIstPersonen,
+  wirtschaftsjahrZeitraum,
+  tageInklusive,
+  personenTageImWj,
   einheitKopfzahl,
+  einheitPersonenTage,
+  belegungPersonenTage,
+  mitgliedPersonenTage,
   setzeEinheitKopfzahl,
   setzeEinheitMea,
   setzeEinheitFlaeche,

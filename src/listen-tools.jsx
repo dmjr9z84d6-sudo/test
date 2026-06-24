@@ -9,6 +9,7 @@ import {
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useMasterDetailLayout, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
+import { DatumFeld } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -735,6 +736,8 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
     { id: "flaeche", label: "Fläche",  breite: 110, art: "num" },
     { id: "mieter",  label: "Mieter",  breite: 200, art: "kontakt" },
     { id: "telefon", label: "Telefon", breite: 160, art: "ablesen" },
+    { id: "einzug",  label: "Einzug",  breite: 150, art: "datum" },
+    { id: "auszug",  label: "Auszug",  breite: 150, art: "datum" },
   ];
   const kontakteListe = Array.isArray(kontakte) ? kontakte : [];
   const kontaktById = (id) => kontakteListe.find(k => k && String(k.id) === String(id)) || null;
@@ -824,12 +827,15 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
     if (sid === "flaeche") return flaecheVon(einheit) ? String(flaecheVon(einheit)) : (einheit.flaeche || "");
     if (sid === "mieter")  { const id = mieterKontaktIdVon(einheit); return id == null ? "" : String(id); }
     if (sid === "telefon") { const id = mieterKontaktIdVon(einheit); return kontaktTelefon(kontaktById(id)); }
+    if (sid === "einzug")  { const m = mieterMitgliedVon(einheit); return (m && m.von) || ""; }
+    if (sid === "auszug")  { const m = mieterMitgliedVon(einheit); return (m && m.bis) || ""; }
     return "";
   };
 
   // ── Wert einer Zelle schreiben ──
   const schreibeWert = (einheitId, sid, wert) => {
     if (sid === "mieter") { schreibeMieter(einheitId, wert === "" ? null : wert); return; }
+    if (sid === "einzug" || sid === "auszug") { schreibeMeldedatum(einheitId, sid, wert); return; }
     patchEinheit(einheitId, (e) => {
       if (sid === "nr")      return { ...e, nr: wert };
       if (sid === "typ")     return { ...e, typ: wert };
@@ -837,6 +843,32 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
       if (sid === "mea")     return setzeEinheitMea(e, wert);
       if (sid === "flaeche") return setzeEinheitFlaeche(e, wert);
       return e;
+    });
+  };
+
+  // ── Meldedatum (Einzug=von / Auszug=bis) am Mieter-Mitglied der aktiven
+  //    Belegung setzen. Grundlage für den Personen-Tage-Verteilerschlüssel.
+  //    Setzt nur, wenn ein benanntes Mieter-Mitglied existiert (sonst no-op —
+  //    erst Mieter wählen). Schreibt in dieselbe Belegung wie schreibeMieter. ──
+  const schreibeMeldedatum = (einheitId, sid, wert) => {
+    patchEinheit(einheitId, (e) => {
+      if (isStellplatzTyp(e.typ)) return e;
+      const aktiv = aktiverTeil(e);
+      if (!aktiv) return e;
+      const beleg = heuteLaufendeBelegung(aktiv) || aktiveBelegung(aktiv);
+      if (!beleg || !beleg.haushalt || !Array.isArray(beleg.haushalt.mitglieder)) return e;
+      const feld = sid === "einzug" ? "von" : "bis";
+      const idx = beleg.haushalt.mitglieder.findIndex(
+        m => m && m.kontaktId != null && m.recht === "mieter");
+      const ziel = idx >= 0 ? idx
+        : beleg.haushalt.mitglieder.findIndex(m => m && m.kontaktId != null);
+      if (ziel < 0) return e; // kein benannter Mieter → erst Mieter wählen
+      const neueMitglieder = beleg.haushalt.mitglieder.map((m, i) =>
+        i === ziel ? { ...m, [feld]: wert || "" } : m);
+      const neuHh = { ...beleg.haushalt, mitglieder: neueMitglieder };
+      const neueBelegungen = aktiv.belegungen.map(b => b === beleg ? { ...b, haushalt: neuHh } : b);
+      const neueTeile = e.teile.map(teil => teil === aktiv ? { ...aktiv, belegungen: neueBelegungen } : teil);
+      return { ...e, teile: neueTeile };
     });
   };
 
@@ -890,6 +922,24 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
           textOverflow: "ellipsis" }}>
           {wert || "—"}
         </div>
+      );
+    }
+    // Einzug/Auszug — Meldedatum des Mieters (Grundlage Personen-Tage). Nutzt
+    // die kanonische DatumFeld-Komponente (Tastatur + Picker, iso). Bei
+    // Stellplätzen kein Haushalt; ohne benannten Mieter gibt es kein Mitglied,
+    // an das geschrieben werden könnte → dezenter Hinweis statt totem Feld.
+    if (sdef.art === "datum") {
+      if (isStellplatzTyp(einheit.typ)) {
+        return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
+      }
+      const hatMieter = mieterMitgliedVon(einheit) != null;
+      if (!hatMieter) {
+        return <span style={{ fontSize: FS.xs, color: t.muted, fontStyle: "italic" }}>erst Mieter</span>;
+      }
+      return (
+        <DatumFeld value={wert || null}
+          onChange={d => schreibeWert(einheit.id, sdef.id, d || "")}
+          t={t} accent={accent} iso defaultHeute={false}/>
       );
     }
     return (

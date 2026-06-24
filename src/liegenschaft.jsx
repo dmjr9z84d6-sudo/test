@@ -11,7 +11,7 @@ import {
   istAnonymesMitglied, istVermietet, istVertragspartei, laufenderEigWechsel, laufenderSevWechsel,
   leererHaushalt, neueBelegung, neuerRaum, neuerTeil, neuerZaehler, neuesHhMitglied, parseFlaeche,
   sevStatus, starteSevWechsel, summeRaumFlaechen, teileVon, verwendungenVon, vsBasisLabel,
-  vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wendeKontaktZuweisungenAn, zaehlerArtLabel
+  vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wirtschaftsjahrZeitraum, wendeKontaktZuweisungenAn, zaehlerArtLabel
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, HV_ADRESSE, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
@@ -578,6 +578,41 @@ function BewohnerEditKarte({ m, kontakt, t, farbe, isStellplatz, onUpdate, onRem
               borderRadius: RAD.sm, padding: "6px 8px", fontSize: 16,
               fontFamily: "inherit", color: t.text, minWidth: 0 }}/>
         </div>
+        {/* Meldezeitraum — Grundlage für den Personen-Tage-Verteilerschlüssel.
+            Leer = „seit jeher / bis auf Weiteres" ⇒ zählt das volle
+            Wirtschaftsjahr. Nur ausfüllen, wenn die Person unterjährig ein-
+            oder ausgezogen ist. Bei Stellplätzen irrelevant (kein Haushalt). */}
+        {isStellplatz ? null : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6,
+            paddingTop: 6, borderTop: `1px solid ${farbe}25` }}>
+            <span style={{ fontSize: FS.xs, color: t.sub }}>
+              Gemeldet (für Personen-Tage)
+            </span>
+            <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: FS.xxs, color: t.muted, display: "block", marginBottom: 2 }}>von</span>
+                <DatumFeld value={m.von || null}
+                  onChange={d => onUpdate(m.id, { von: d || "" })}
+                  t={t} accent={farbe} iso defaultHeute={false}/>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: FS.xxs, color: t.muted, display: "block", marginBottom: 2 }}>bis</span>
+                <DatumFeld value={m.bis || null}
+                  onChange={d => onUpdate(m.id, { bis: d || "" })}
+                  t={t} accent={farbe} iso defaultHeute={false}/>
+              </div>
+            </div>
+            {m.von && m.bis && m.bis < m.von ? (
+              <div style={{ fontSize: FS.xxs, color: "#EF4444" }}>
+                „bis" darf nicht vor „von" liegen.
+              </div>
+            ) : (
+              <div style={{ fontSize: FS.xxs, color: t.muted }}>
+                Leer lassen = ganzjährig gemeldet.
+              </div>
+            )}
+          </div>
+        )}
         <button onClick={() => onRemove(m.id)}
           style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6,
             background: "transparent", border: "none", cursor: "pointer", color: "#EF4444",
@@ -6215,6 +6250,12 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
 
   const schluessel = effVerteilerschluessel(ve);
   const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  // Wirtschaftsjahr-Zeitraum für den Personen-TAGE-Schlüssel. Kommt aus dem
+  // gemeinsamen ETV-Stamm (Text „Kalenderjahr" oder definierter Zeitraum) und
+  // wird zu rechenbaren {von,bis} aufgelöst (Default = Vorjahr). vsWertVon nutzt
+  // ihn nur für die Personen-Basis; alle anderen Schlüssel ignorieren ihn.
+  const wjZeitraum = wirtschaftsjahrZeitraum(
+    (ve && ve.etvStamm && ve.etvStamm.wirtschaftsjahr) || "");
 
   const speichere = (id, patch) => {
     if (!setVes || !ve) return;
@@ -6377,8 +6418,9 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
           const istMea = s.basis === "mea";
           const istFlaeche = s.basis === "flaeche";
           // Stammdaten-Schlüssel schreiben in die Einheit zurück → Warnung zeigen.
-          const stammSchreibend = personen || istMea || istFlaeche;
-          const summe = einheiten.reduce((acc, e) => acc + vsWertVon(s, e), 0);
+          // Personen ist jetzt read-only (Tage aus Historie) → nicht stammschreibend.
+          const stammSchreibend = istMea || istFlaeche;
+          const summe = einheiten.reduce((acc, e) => acc + vsWertVon(s, e, wjZeitraum), 0);
           const confirm = loeschBestaetigung === s.id;
           return (
             <div key={s.id} style={{ borderBottom: `1px solid ${t.border}25` }}>
@@ -6395,17 +6437,26 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
               </div>
               {auf ? (
                 <div style={{ padding: "0 8px 10px" }}>
-                  {stammSchreibend && effEditierbar ? (
+                  {personen ? (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 6,
+                      background: accent + "10", border: `1px solid ${accent}30`,
+                      borderRadius: RAD.sm, padding: "7px 9px", margin: "2px 0 8px" }}>
+                      <span style={{ fontSize: FS.s, flexShrink: 0, lineHeight: 1.2 }}>ℹ️</span>
+                      <div style={{ fontSize: FS.xs, color: t.sub, lineHeight: 1.35 }}>
+                        Personen-Tage = gemeldete Tage je Bewohner im Wirtschaftsjahr
+                        ({datumDe(wjZeitraum.von)}–{datumDe(wjZeitraum.bis)}). Werte ergeben
+                        sich aus den Meldedaten der Bewohner und sind hier nicht direkt editierbar.
+                      </div>
+                    </div>
+                  ) : stammSchreibend && effEditierbar ? (
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 6,
                       background: "#F59E0B12", border: "1px solid #F59E0B40",
                       borderRadius: RAD.sm, padding: "7px 9px", margin: "2px 0 8px" }}>
                       <span style={{ fontSize: FS.s, flexShrink: 0, lineHeight: 1.2 }}>⚠️</span>
                       <div style={{ fontSize: FS.xs, color: t.sub, lineHeight: 1.35 }}>
-                        {personen
-                          ? "Änderungen hier ändern die echte Personenzahl der Einheit (anonyme Bewohner)."
-                          : istMea
-                            ? "Änderungen hier ändern die MEA in den Stammdaten der Einheit."
-                            : "Änderungen hier ändern die Wohnfläche in den Stammdaten der Einheit. Bei unterteilten Einheiten ist die Fläche nur in der Einheit selbst änderbar."}
+                        {istMea
+                          ? "Änderungen hier ändern die MEA in den Stammdaten der Einheit."
+                          : "Änderungen hier ändern die Wohnfläche in den Stammdaten der Einheit. Bei unterteilten Einheiten ist die Fläche nur in der Einheit selbst änderbar."}
                       </div>
                     </div>
                   ) : null}
@@ -6416,7 +6467,7 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {einheiten.map(e => {
-                        const wert = vsWertVon(s, e);
+                        const wert = vsWertVon(s, e, wjZeitraum);
                         const roh = manuell ? (((s.anteile || {})[e.id]) || "") : null;
                         const flaecheGesperrt = istFlaeche && !darfFlaecheImVsEditieren(e);
                         return (
@@ -6434,11 +6485,15 @@ function VerteilerSchluesselBlock({ ve, setVes, t, accent, editMode = false, edi
                                 onChange={ev => setzeAnteil(s, e.id, ev.target.value)}
                                 inputMode="decimal" placeholder="0"
                                 style={{ ...inputStilKlein, width: 90, textAlign: "right", flexShrink: 0 }}/>
-                            ) : personen && effEditierbar ? (
-                              <input value={String(Math.round(wert))}
-                                onChange={ev => setzeKopfzahl(e.id, ev.target.value.replace(/[^0-9]/g, ""))}
-                                inputMode="numeric" placeholder="0"
-                                style={{ ...inputStilKlein, width: 90, textAlign: "right", flexShrink: 0 }}/>
+                            ) : personen ? (
+                              // Personen-Tage sind abgeleitet (Bewohner-Historie
+                              // ∩ Wirtschaftsjahr) — nicht direkt editierbar. Pflege
+                              // erfolgt über die Meldedaten der Bewohner. Anzeige
+                              // read-only, mit Einheit „Tage" zur Klarstellung.
+                              <div style={{ fontSize: FS.s, color: t.sub, flexShrink: 0,
+                                minWidth: 60, textAlign: "right" }}>
+                                {fmtZahl(wert)} <span style={{ fontSize: FS.xs, color: t.muted }}>Tage</span>
+                              </div>
                             ) : istMea && effEditierbar ? (
                               <input value={(e && e.mea != null) ? String(e.mea) : ""}
                                 onChange={ev => setzeEinheitWert(e.id, setzeEinheitMea, ev.target.value)}
