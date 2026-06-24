@@ -7376,6 +7376,12 @@ function mergeVerwaltungsKarten(persistiert, defaults) {
     if (k && k.kategorie === "verwaltung_stamm" && stdName[k.kategorie] && k.name !== stdName[k.kategorie]) {
       out = { ...k, name: stdName[k.kategorie] };
     }
+    // Sonderfall „versorger": von „Versorger" auf den neuen Standardnamen
+    // „Ver- und Entsorger" umstellen — aber NUR wenn die Karte noch den alten
+    // App-Default-Namen trägt (eigene Umbenennungen des Nutzers respektieren).
+    if (k && k.kategorie === "versorger" && k.name === "Versorger" && stdName[k.kategorie]) {
+      out = { ...out, name: stdName[k.kategorie] };
+    }
     return syncSchema(out);
   });
   const vorhanden = {};
@@ -7470,8 +7476,8 @@ function buildInitialVerwaltungsKarten(ve) {
       stamm: [],
       einheiten: [], vertraege: [],
     },
-    // Versorger (Strom/Gas/Wasser/Wärme …)
-    { id: 5, name: "Versorger", icon: "⚡", fixed: false, kategorie: "versorger",
+    // Ver- und Entsorger (Strom/Gas/Wasser/Wärme/Müllabfuhr …)
+    { id: 5, name: "Ver- und Entsorger", icon: "⚡", fixed: false, kategorie: "versorger",
       stamm: [], einheiten: [], vertraege: [],
     },
     // Messdienst (Heizkostenabrechnung / Verbrauchserfassung)
@@ -7809,6 +7815,7 @@ export {
   VerwaltungAnsicht,
   buildInitialKarten,
   buildInitialVerwaltungsKarten,
+  mergeVerwaltungsKarten,
   datumsTagMon,
   eigStufen,
   ergaenzeTechnikGeraetFelder,
