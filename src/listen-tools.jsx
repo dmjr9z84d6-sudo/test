@@ -4,7 +4,7 @@ import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
   VERWALTUNGSARTEN, aktiveBelegung, aktiverTeil, belegungsTyp, bewohnerRecht,
   eigStatus, extractNachname, flaecheVon, heuteLaufendeBelegung, isStellplatzTyp, neueBelegung,
-  neuesHhMitglied, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon
+  neuesHhMitglied, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useMasterDetailLayout, useWindowWidth, veKartenFeldWert
@@ -14,7 +14,7 @@ import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
   gemeinschaftVertreter, gemeinschaftZustellAdresse, istEigentuemergemeinschaft,
-  quoteAnteil, quoteLabel
+  quoteAnteil, quoteLabel, PersonenTageUebersicht
 } from "./liegenschaft.jsx";
 import { KALENDER_TYPEN, sammleTermine } from "./kalender.jsx";
 import { STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel, VEKachel, alleEinheitenVonVe } from "./objektansicht.jsx";
@@ -723,8 +723,18 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
   // Spalte „Einheit" steht immer ganz links und ist NICHT in dieser Liste.
   const [spalten, setSpalten] = useState([]); // z.B. ["nr","typ","mea"]
 
+  // Modus der Bearbeitung: "tabelle" = Spalten-Schnelleingabe (Default),
+  // "personentage" = Personen-Tage-Aufschlüsselung je Einheit (Weg A).
+  const [modus, setModus] = useState("tabelle");
+
   const ve = (ves || []).find(v => v && v.id === objektId) || null;
   const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+
+  // Gemeinsames Bezugsjahr für die Personen-Tage-Ansicht (alle Einheiten zugleich).
+  const wjDefault = wirtschaftsjahrZeitraum((ve && ve.etvStamm && ve.etvStamm.wirtschaftsjahr) || "");
+  const ptDefaultJahr = (wjDefault && wjDefault.von)
+    ? Number(String(wjDefault.von).slice(0, 4)) : (new Date().getFullYear() - 1);
+  const [ptJahr, setPtJahr] = useState(ptDefaultJahr);
 
   // ── Verfügbare Spalten (Pillen). Welle 1: direkt an der Einheit tippbare
   //    Felder. Eigentümer/Mieter/Telefon folgen in Welle 2. ──
@@ -1012,6 +1022,25 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
           <VEKachel ve={ve} t={t} accent={accent} kompakt onClick={() => {}}/>
         </div>
 
+        {/* Modus-Umschalter: Tabelle (Spalten-Schnelleingabe) ⇄ Personen-Tage. */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          {[["tabelle", "📋 Tabelle"], ["personentage", "📊 Personen-Tage"]].map(([id, label]) => {
+            const an = modus === id;
+            return (
+              <button key={id} onClick={() => setModus(id)}
+                style={{ flex: 1, padding: "8px 10px", borderRadius: RAD.ms, cursor: "pointer",
+                  fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+                  border: `1px solid ${an ? accent : t.border}`,
+                  background: an ? accent : "none",
+                  color: an ? getContrastColor(accent) : t.sub }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {modus === "tabelle" ? (
+        <>
         {/* Pillen: Spalten zuschalten (Klick-Reihenfolge = links→rechts) */}
         <div style={{ marginBottom: 8 }}>
           <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
@@ -1100,6 +1129,47 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        </>
+        ) : (
+          /* ── MODUS: Personen-Tage-Aufschlüsselung je Einheit (Weg A) ── */
+          <div>
+            {/* Gemeinsamer Jahr-Umschalter für alle Einheiten */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 14, marginBottom: 14 }}>
+              <button onClick={() => setPtJahr(j => j - 1)}
+                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  color: t.sub, fontSize: 18, cursor: "pointer", width: 40, height: 34 }}>‹</button>
+              <div style={{ textAlign: "center", minWidth: 90 }}>
+                <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
+                <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
+              </div>
+              <button onClick={() => setPtJahr(j => j + 1)}
+                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  color: t.sub, fontSize: 18, cursor: "pointer", width: 40, height: 34 }}>›</button>
+            </div>
+
+            {einheiten.length === 0 ? (
+              <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 }}>
+                Dieses Objekt hat noch keine Einheiten.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {einheiten.filter(e => !isStellplatzTyp(e.typ)).map(e => (
+                  <div key={e.id} style={{ background: t.card, border: `1px solid ${t.border}`,
+                    borderRadius: RAD.lg, padding: "4px 12px 8px" }}>
+                    <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: accent,
+                      padding: "8px 2px 0" }}>
+                      {e.nr || e.lage || "Einheit"}{e.nr && e.lage ? ` · ${e.lage}` : ""}
+                    </div>
+                    <PersonenTageUebersicht einheit={e} t={t} accent={accent}
+                      jahrExtern={ptJahr} immerOffen titel={`Personen-Tage ${ptJahr}`}
+                      onUpdate={(neuE) => patchEinheit(e.id, () => neuE)}/>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

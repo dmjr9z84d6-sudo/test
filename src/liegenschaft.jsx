@@ -11,7 +11,7 @@ import {
   istAnonymesMitglied, istVermietet, istVertragspartei, laufenderEigWechsel, laufenderSevWechsel,
   leererHaushalt, neueBelegung, neuerRaum, neuerTeil, neuerZaehler, neuesHhMitglied, parseFlaeche,
   sevStatus, starteSevWechsel, summeRaumFlaechen, teileVon, verwendungenVon, vsBasisLabel,
-  vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wirtschaftsjahrZeitraum, wendeKontaktZuweisungenAn, zaehlerArtLabel
+  vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wirtschaftsjahrZeitraum, personenTageAufschluesselung, neuerPersonenAbschnitt, tageInklusive, wendeKontaktZuweisungenAn, zaehlerArtLabel
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, HV_ADRESSE, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
@@ -1860,7 +1860,261 @@ function TeilRaeume({ raeume, t, accent, editMode, onAdd, onChange, onRemove,
   );
 }
 
-function EinheitDetail({ einheit, t, accent, editMode, belegungEdit = false, onClose, kontakte, setKontakte, onUpdate, geschwisterEinheiten = [], onKontaktClick = null }) {
+// ── PersonenTageUebersicht — Übersicht + Editor der Personen-Tage einer Einheit
+// für ein Wirtschaftsjahr (Weg A, ab v12.17). Zeigt je Belegung die
+// Personenzahl-Abschnitte (von–bis–Anzahl) mit berechneten Tagen und der
+// Gesamtsumme. Jeder Abschnitt ist editierbar; Abschnitte lassen sich
+// hinzufügen/löschen. Lücken zwischen Abschnitten = 0 Personen (Leerstand).
+// Bezugsjahr ist umschaltbar (Pfeile), vorbelegt aus dem Objekt-WJ.
+// Schreibt über onUpdate die geänderte Einheit zurück.
+function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahrExtern = null, immerOffen = false, titel = null }) {
+  const isStellplatz = isStellplatzTyp(einheit.typ);
+  // Bezugsjahr-State: Default aus dem übergebenen WJ (sonst Vorjahr).
+  const defaultJahr = (() => {
+    if (jahrExtern && jahrExtern >= 1900) return jahrExtern;
+    if (wjZeitraum && wjZeitraum.von) {
+      const j = Number(String(wjZeitraum.von).slice(0, 4));
+      if (j >= 1900) return j;
+    }
+    return new Date().getFullYear() - 1;
+  })();
+  const [jahrLokal, setJahrLokal] = useState(defaultJahr);
+  // Wird das Jahr von außen gesteuert (Schnelleingabe), folgt die Komponente ihm.
+  const jahr = (jahrExtern && jahrExtern >= 1900) ? jahrExtern : jahrLokal;
+  const setJahr = (fnOderWert) => {
+    if (jahrExtern && jahrExtern >= 1900) return; // extern gesteuert → kein lokales Setzen
+    setJahrLokal(fnOderWert);
+  };
+  const [offenLokal, setOffen] = useState(false);
+  const offen = immerOffen || offenLokal;
+
+  if (isStellplatz) return null;
+
+  // WJ-Zeitraum für das gewählte Jahr. Folgt der WJ-Definition (Kalenderjahr =
+  // 01.01.–31.12.), nur das Jahr wird umgeschaltet.
+  const wjVon = `${jahr}-01-01`;
+  const wjBis = `${jahr}-12-31`;
+  const jahrTage = tageInklusive(wjVon, wjBis);
+  const auf = personenTageAufschluesselung(einheit, wjVon, wjBis);
+
+  // Eine Belegung anhand belegId im Einheits-Baum finden + patchen.
+  const patchBelegung = (belegId, fn) => {
+    const teile = (einheit.teile || []).map(teil => {
+      const belegungen = (teil.belegungen || []).map(b => b.id === belegId ? fn(b) : b);
+      return { ...teil, belegungen };
+    });
+    if (onUpdate) onUpdate({ ...einheit, teile });
+  };
+
+  // Abschnitte einer Belegung holen (für Bearbeitung). Sind keine vorhanden,
+  // wird beim ersten „+ Abschnitt" aus der aktuellen Kopfzahl ein Startabschnitt
+  // über den ganzen Belegungs-/WJ-Zeitraum gebildet.
+  const belegungVon = (belegId) => {
+    let res = null;
+    (einheit.teile || []).forEach(teil =>
+      (teil.belegungen || []).forEach(b => { if (b.id === belegId) res = b; }));
+    return res;
+  };
+  const setzeAbschnitte = (belegId, abschnitte) => {
+    patchBelegung(belegId, b => ({ ...b, personenAbschnitte: abschnitte }));
+  };
+  const addAbschnitt = (belegId) => {
+    const b = belegungVon(belegId);
+    if (!b) return;
+    const bestehende = Array.isArray(b.personenAbschnitte) ? b.personenAbschnitte : [];
+    // Erster Abschnitt startet am Jahresanfang — oder am Belegungsbeginn, falls
+    // dieser INNERHALB des Jahres liegt (nicht Jahre davor). Folge-Abschnitte
+    // starten leer (Benny setzt das Datum selbst).
+    let startVon = "";
+    if (bestehende.length === 0) {
+      const belegVon = b.von || "";
+      startVon = (belegVon && belegVon > wjVon) ? belegVon : wjVon;
+    }
+    const neu = neuerPersonenAbschnitt(startVon, 1, "");
+    setzeAbschnitte(belegId, [...bestehende, neu]);
+  };
+  const updateAbschnitt = (belegId, abId, patch) => {
+    const b = belegungVon(belegId);
+    if (!b) return;
+    const next = (b.personenAbschnitte || []).map(a => a.id === abId ? { ...a, ...patch } : a);
+    setzeAbschnitte(belegId, next);
+  };
+  const removeAbschnitt = (belegId, abId) => {
+    const b = belegungVon(belegId);
+    if (!b) return;
+    const next = (b.personenAbschnitte || []).filter(a => a.id !== abId);
+    setzeAbschnitte(belegId, next);
+  };
+
+  // Zeilen nach Belegung gruppieren (für den Editor pro Belegung).
+  const belegIds = [];
+  auf.zeilen.forEach(z => { if (belegIds.indexOf(z.belegId) < 0) belegIds.push(z.belegId); });
+
+  const kopf = (
+    <div onClick={immerOffen ? undefined : () => setOffen(o => !o)}
+      style={{ display: "flex", alignItems: "center", gap: 8,
+        cursor: immerOffen ? "default" : "pointer",
+        padding: "10px 2px", userSelect: "none" }}>
+      <span style={{ fontSize: FS.m }}>📊</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>
+          {titel || `Personen-Tage ${jahr}`}
+        </div>
+        <div style={{ fontSize: FS.xs, color: t.muted }}>
+          Σ {auf.summe} Personen-Tage · {jahrTage} Tage im Jahr
+        </div>
+      </div>
+      {!immerOffen && (
+        <span style={{ fontSize: FS.s, color: t.muted, transform: offen ? "rotate(90deg)" : "none",
+          transition: "transform .15s" }}>▸</span>
+      )}
+    </div>
+  );
+
+  if (!offen) {
+    return (
+      <div style={{ marginTop: 12, borderTop: `1px solid ${t.border}` }}>
+        {kopf}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 12, borderTop: `1px solid ${t.border}` }}>
+      {kopf}
+      <div style={{ paddingBottom: 8 }}>
+        {/* Jahr-Umschalter — nur wenn das Jahr lokal gesteuert wird (Detail).
+            In der Schnelleingabe steuert ein gemeinsamer Umschalter oben. */}
+        {!(jahrExtern && jahrExtern >= 1900) && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
+            gap: 14, padding: "4px 0 12px" }}>
+            <button onClick={() => setJahr(j => j - 1)}
+              style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                color: t.sub, fontSize: 16, cursor: "pointer", width: 34, height: 30 }}>‹</button>
+            <span style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text, minWidth: 54,
+              textAlign: "center" }}>{jahr}</span>
+            <button onClick={() => setJahr(j => j + 1)}
+              style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                color: t.sub, fontSize: 16, cursor: "pointer", width: 34, height: 30 }}>›</button>
+          </div>
+        )}
+
+        {belegIds.length === 0 ? (
+          <div style={{ fontSize: FS.s, color: t.muted, textAlign: "center", padding: "10px 0" }}>
+            Keine Belegung berührt {jahr}.
+          </div>
+        ) : belegIds.map(belegId => {
+          const b = belegungVon(belegId);
+          const mieter = b ? mieterAnzeigeName(b) : "";
+          const zeilen = auf.zeilen.filter(z => z.belegId === belegId);
+          const hatAbschnitte = !!(b && Array.isArray(b.personenAbschnitte) && b.personenAbschnitte.length > 0);
+          const belegSumme = zeilen.reduce((s, z) => s + z.tage, 0);
+          return (
+            <div key={belegId} style={{ marginBottom: 14, background: t.surface,
+              border: `1px solid ${t.border}`, borderRadius: RAD.md, padding: "10px 10px 8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {mieter || "Belegung"}
+                </span>
+                {!hatAbschnitte && (
+                  <span style={{ fontSize: FS.xxs, color: "#F59E0B", border: "1px solid #F59E0B40",
+                    borderRadius: RAD.sm, padding: "1px 5px", flexShrink: 0 }}>
+                    nicht aufgeschlüsselt
+                  </span>
+                )}
+              </div>
+
+              {/* Abschnitts-Zeilen */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {zeilen.map(z => (
+                  <div key={z.id} style={{ display: "flex", alignItems: "center", gap: 6,
+                    flexWrap: "wrap" }}>
+                    {hatAbschnitte ? (
+                      <>
+                        <div style={{ flex: "1 1 110px", minWidth: 100 }}>
+                          <DatumFeld value={z.von || null}
+                            onChange={d => updateAbschnitt(belegId, z.id, { von: d || "" })}
+                            t={t} accent={accent} iso defaultHeute={false}/>
+                        </div>
+                        <span style={{ color: t.muted, fontSize: FS.s }}>–</span>
+                        <div style={{ flex: "1 1 110px", minWidth: 100 }}>
+                          <DatumFeld value={z.bis || null}
+                            onChange={d => updateAbschnitt(belegId, z.id, { bis: d || "" })}
+                            t={t} accent={accent} iso defaultHeute={false}/>
+                        </div>
+                        <input value={String(z.anzahl)} inputMode="numeric"
+                          onChange={ev => updateAbschnitt(belegId, z.id,
+                            { anzahl: Math.max(0, parseInt(ev.target.value.replace(/[^0-9]/g, ""), 10) || 0) })}
+                          style={{ width: 48, textAlign: "center", background: t.card,
+                            border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                            padding: "6px 4px", fontSize: 16, color: t.text, fontFamily: "inherit" }}/>
+                        <span style={{ fontSize: FS.xs, color: t.muted, whiteSpace: "nowrap" }}>
+                          Pers · {z.kalenderTage} T = <b style={{ color: t.text }}>{z.tage}</b>
+                        </span>
+                        <button onClick={() => removeAbschnitt(belegId, z.id)}
+                          style={{ background: "none", border: "none", color: t.muted,
+                            cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }}>×</button>
+                      </>
+                    ) : (
+                      // Fallback-Sammelzeile (read-only) — Hinweis + Button zum Aufschlüsseln.
+                      <div style={{ fontSize: FS.s, color: t.sub }}>
+                        {z.anzahl} Pers · {z.kalenderTage} Tage = <b>{z.tage}</b> Personen-Tage
+                        <span style={{ color: t.muted }}> (aus aktueller Belegung)</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                marginTop: 8, gap: 8 }}>
+                <button onClick={() => addAbschnitt(belegId)}
+                  style={{ background: "none", border: `1px dashed ${accent}80`, borderRadius: RAD.sm,
+                    color: accent, fontSize: FS.xs, fontWeight: FW.medium, cursor: "pointer",
+                    padding: "5px 9px" }}>
+                  + Abschnitt
+                </button>
+                <span style={{ fontSize: FS.xs, color: t.sub }}>
+                  Σ {belegSumme}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Gesamtsumme */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "8px 4px 2px", borderTop: `2px solid ${accent}30`, marginTop: 4 }}>
+          <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>
+            Personen-Tage {jahr}
+          </span>
+          <span style={{ fontSize: FS.l, fontWeight: FW.bold, color: accent }}>
+            {auf.summe}
+          </span>
+        </div>
+        <div style={{ fontSize: FS.xxs, color: t.muted, padding: "2px 4px" }}>
+          Anzahl = gemeldete Personen im Abschnitt · Lücken zwischen Abschnitten zählen als Leerstand (0).
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Mieter-/Belegungs-Anzeigename (für die Übersicht). Nutzt Mitglieder-Namen,
+// sonst Belegungstyp-Label.
+function mieterAnzeigeName(beleg) {
+  if (!beleg) return "";
+  if (beleg.typ === "leerstand") return "Leerstand";
+  const hh = beleg.haushalt || null;
+  const ms = (hh && Array.isArray(hh.mitglieder)) ? hh.mitglieder : [];
+  const benannt = ms.filter(m => m && m.kontaktId != null && m.name);
+  const mieter = benannt.find(m => m.recht === "mieter") || benannt[0];
+  if (mieter && mieter.name) return mieter.name;
+  return BELEGUNG_LABEL[beleg.typ] || beleg.typ || "Belegung";
+}
+
+function EinheitDetail({ einheit, t, accent, editMode, belegungEdit = false, onClose, kontakte, setKontakte, onUpdate, geschwisterEinheiten = [], onKontaktClick = null, wjZeitraum = null }) {
   const isStellplatz = isStellplatzTyp(einheit.typ);
   // Der runde Einheit-Stift (belegungEdit) macht jetzt ALLES der Einheit
   // editierbar — auch die Stammdaten. Im Stammdaten-Tab greift daher der
@@ -3092,6 +3346,8 @@ function EinheitDetail({ einheit, t, accent, editMode, belegungEdit = false, onC
               kontakte={kontakte} teilIndex={teilIdxSicher} onKontaktClick={onKontaktClick} setKontakte={setKontakte}/>
           )}
           <BelegungsHistorie teil={teile[teilIdxSicher]} t={t} kontakte={kontakte}/>
+          <PersonenTageUebersicht einheit={{ ...einheit, teile }} t={t} accent={accent}
+            wjZeitraum={wjZeitraum} onUpdate={onUpdate}/>
         </div>
       )}
 
@@ -4597,7 +4853,8 @@ function GebaeudeEinheiten({ t, accent, editMode, karte, isTG,
     localEinheiten, setLocalEinheiten, persistEinheiten,
     activeEinheit, setActiveEinheit, kontakte, setKontakte,
     neueEinheitOffen, setNeueEinheitOffen, neueEinheit, setNeueEinheit,
-    defaultTyp, addEinheit, belegungEdit = false, setBelegungEdit = null, editGesperrt = false, onKontaktClick = null }) {
+    defaultTyp, addEinheit, belegungEdit = false, setBelegungEdit = null, editGesperrt = false, onKontaktClick = null,
+    wjZeitraum = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   // Snapshot der gerade bearbeiteten Einheit beim Eintritt in belegungEdit —
   // erlaubt echtes Abbrechen (Verwerfen). Beim Bestätigen wird er nur verworfen.
@@ -4669,7 +4926,7 @@ function GebaeudeEinheiten({ t, accent, editMode, karte, isTG,
               {activeEinheit === e.id && (
                 <EinheitDetail key={e.id + "-" + belegResetKey} einheit={e} t={t} accent={accent} editMode={editMode}
                   geschwisterEinheiten={localEinheiten} onKontaktClick={onKontaktClick}
-                  belegungEdit={belegungEdit}
+                  belegungEdit={belegungEdit} wjZeitraum={wjZeitraum}
                   kontakte={kontakte} setKontakte={setKontakte}
                   onUpdate={(neuE) => persistEinheiten(localEinheiten.map(x => x.id === e.id ? neuE : x))}
                   onClose={() => { setActiveEinheit(null); if (setBelegungEdit) setBelegungEdit(false); }}/>
@@ -5804,6 +6061,7 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
               neueEinheit={neueEinheit} setNeueEinheit={setNeueEinheit}
               defaultTyp={defaultTyp} addEinheit={addEinheit}
               editGesperrt={false}
+              wjZeitraum={wirtschaftsjahrZeitraum((etvStamm && etvStamm.wirtschaftsjahr) || "")}
               belegungEdit={belegungEdit} setBelegungEdit={setBelegungEdit}/>
           )}
 
@@ -7544,6 +7802,7 @@ export {
   LiegenschaftAnsicht,
   SeitenleisteKacheln,
   VerteilerSchluesselBlock,
+  PersonenTageUebersicht,
   VertragFirmaKarte,
   VertragForm,
   VertragZeile,

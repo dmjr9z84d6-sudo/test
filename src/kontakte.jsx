@@ -44,9 +44,11 @@ const KONTAKT_KATEGORIEN = [
   { id: "vertraglich", label: "Vertragliche Dienstleister", icon: "📄", defaultFarbe: "#2563EB", typ: "firma",
     rollen: ["Hausverwaltung", "Hausmeister", "Wartung", "Brandschutz", "Winterdienst",
              "Grünpflege", "Reinigung", "Messdienst", "Versicherung"],
+    vertragsKategorien: ["versicherungen", "messdienst", "vertraege"],
     sub: "Hausmeister, Reinigung, Wartung, Versicherung etc." },
   { id: "versorger", label: "Ver- und Entsorger", icon: "⚡", defaultFarbe: "#EA580C", typ: "firma",
     rollen: ["Versorger", "Müllabfuhr"],
+    vertragsKategorien: ["versorger"],
     sub: "Strom, Gas, Wasser, Müllabfuhr" },
   { id: "gelegentlich", label: "Gelegentliche Aufträge", icon: "🛠", defaultFarbe: "#71717A", typ: "firma",
     rollen: null, // null = keine Rolle ODER Sammelrolle "Dienstleister"
@@ -111,7 +113,8 @@ function sammleFuerKategorie(kat, ve, kontakte) {
   }
   return (kontakte || []).filter(k => {
     if (k.typ !== kat.typ) return false;
-    return (k.objektZuweisungen || []).some(z => {
+    // (a) Klassisch: Firma hat eine objektZuweisung mit passender Rolle.
+    const ueberRolle = (k.objektZuweisungen || []).some(z => {
       if (z.objektId !== ve.id) return false;
       if (kat.rollen === null) {
         // Gelegentlich: ohne Rolle oder Sammelrolle "Dienstleister"
@@ -119,7 +122,40 @@ function sammleFuerKategorie(kat, ve, kontakte) {
       }
       return kat.rollen.includes(z.rolle);
     });
+    if (ueberRolle) return true;
+    // (b) NEU (v12.19): Firma ist über einen VERTRAG am Objekt verknüpft
+    //     (Versicherungen/Versorger/Messdienst/Verträge tragen firmaId/maklerId
+    //     in karte.vertraege[], ohne separate Rollen-Zuweisung). Solche Firmen
+    //     sollen ebenfalls unter der passenden Kategorie erscheinen.
+    if (kat.vertragsKategorien && kat.vertragsKategorien.length > 0) {
+      const ids = vertragsfirmenIds(ve, kat.vertragsKategorien);
+      if (ids.has(k.id)) return true;
+    }
+    return false;
   });
+}
+
+// Sammelt alle Firmen-IDs, die über Verträge am Objekt verknüpft sind —
+// gefiltert auf bestimmte Karten-Kategorien (z. B. ["versicherungen",
+// "messdienst","vertraege"] für „Vertragliche Dienstleister"). Berücksichtigt
+// sowohl die Vertragsfirma (firmaId) als auch — bei Versicherungen — den
+// optionalen Makler (maklerId). firmaId ist numerisch.
+function vertragsfirmenIds(ve, kategorien) {
+  const out = new Set();
+  if (!ve) return out;
+  const katSet = kategorien || [];
+  const karten = (Array.isArray(ve.karten) && ve.karten.length > 0)
+    ? ve.karten
+    : (typeof buildInitialKarten === "function" ? buildInitialKarten(ve) : []);
+  (karten || []).forEach(karte => {
+    if (!karte || katSet.indexOf(karte.kategorie) < 0) return;
+    (karte.vertraege || []).forEach(v => {
+      if (!v) return;
+      if (v.firmaId != null) out.add(v.firmaId);
+      if (v.maklerId != null) out.add(v.maklerId);
+    });
+  });
+  return out;
 }
 
 // ── Sortierung der Kontakte in einer Gruppen-Karte ──────────────────────────

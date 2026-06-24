@@ -2138,15 +2138,31 @@ function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante 
                 <I name="plus" size={16} color={getContrastColor(accent)}/>
               </button>
             ) : null)
-          ) : (onClose ? (
-            <button onClick={onClose} title="Schließen" aria-label="Kalender schließen"
-              style={{ width: kopfH, height: kopfH, borderRadius: RAD.sm, flexShrink: 0,
-                border: `1px solid ${t.border}`, background: "transparent",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", boxSizing: "border-box" }}>
-              <I name="x" size={istDesktop ? 13 : 16} color={t.sub}/>
-            </button>
-          ) : null)}
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              {/* Neuer Termin — auch außerhalb des Docks, sofern Anlegen möglich. */}
+              {setVes ? (
+                <button onClick={() => setDockAnlegenOffen(true)}
+                  title="Neuer Termin" aria-label="Neuer Termin"
+                  style={{ width: kopfH, height: kopfH, borderRadius: RAD.sm, flexShrink: 0,
+                    background: accent, border: "none",
+                    boxShadow: `0 1px 2px ${accent}40`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", boxSizing: "border-box" }}>
+                  <I name="plus" size={istDesktop ? 14 : 16} color={getContrastColor(accent)}/>
+                </button>
+              ) : null}
+              {onClose ? (
+                <button onClick={onClose} title="Schließen" aria-label="Kalender schließen"
+                  style={{ width: kopfH, height: kopfH, borderRadius: RAD.sm, flexShrink: 0,
+                    border: `1px solid ${t.border}`, background: "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", boxSizing: "border-box" }}>
+                  <I name="x" size={istDesktop ? 13 : 16} color={t.sub}/>
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
         {/* Inhalt — fortlaufend scrollbar. KEIN WebkitOverflowScrolling:touch:
             erzwingt auf iOS einen Legacy-Layer, der bei sehr hohen Inhalten
@@ -2183,7 +2199,7 @@ function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante 
                       const freiKopf = !tagArbeitszeit(settings, probe).an;
                       return (
                         <div key={wt} style={{ flex: 1, fontSize: FS.xs,
-                          color: freiKopf ? t.border : t.muted,
+                          color: freiKopf ? t.muted : t.sub,
                           fontWeight: freiKopf ? FW.regular : FW.medium,
                           textAlign: "center" }}>{wt}</div>
                       );
@@ -2214,16 +2230,16 @@ function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante 
                                 style={{ flex: 1, minWidth: 0, minHeight: 32,
                                   borderRadius: RAD.sm, padding: "2px 2px",
                                   border: istHeute ? `1px solid ${accent}`
-                                    : frei ? `1px solid ${t.border}25` : `1px solid ${t.border}55`,
+                                    : frei ? `1px solid ${t.border}45` : `1px solid ${t.border}55`,
                                   background: !d ? "transparent"
                                     : frei ? t.bg : t.card,
-                                  opacity: frei ? 0.5 : 1,
+                                  opacity: frei ? 0.82 : 1,
                                   cursor: d ? "pointer" : "default",
                                   boxSizing: "border-box" }}>
                                 <div style={{ fontSize: FS.xs, textAlign: "center",
                                   fontWeight: istHeute ? FW.bold : FW.regular,
                                   color: !d ? "transparent"
-                                    : istHeute ? accent : (frei ? t.muted : t.text) }}>
+                                    : istHeute ? accent : (frei ? t.sub : t.text) }}>
                                   {d ? d.getDate() : "·"}
                                 </div>
                                 <div style={{ display: "flex", gap: 2, justifyContent: "center",
@@ -2477,7 +2493,7 @@ function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante 
           ) : null}
         </div>
       </div>
-      {istDock && dockAnlegenOffen && setVes && (() => {
+      {dockAnlegenOffen && setVes && (() => {
         const gefuehrt = !!(settings && settings.terminAnlegeModus === "gefuehrt");
         const schliessen = () => setDockAnlegenOffen(false);
         const aufAnlegen = (termin, objektId) => {

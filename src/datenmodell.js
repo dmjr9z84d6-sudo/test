@@ -797,8 +797,26 @@ function mitgliedPersonenTage(m, beleg, wjVon, wjBis) {
   const tage = personenTageImWj(von, bis, wjVon, wjBis);
   return tage * mitgliedKopfzahl(m);
 }
+// Personen-Tage eines einzelnen Abschnitts (Weg A): Tage im WJ × Anzahl.
+// Offene Ränder erben den Belegungs-Zeitraum, dann die WJ-Grenze.
+function abschnittPersonenTage(a, beleg, wjVon, wjBis) {
+  if (!a) return 0;
+  const von = (a.von && String(a.von).trim()) || (beleg && beleg.von) || "";
+  const bis = (a.bis && String(a.bis).trim()) || (beleg && beleg.bis) || "";
+  const tage = personenTageImWj(von, bis, wjVon, wjBis);
+  const anz = (typeof a.anzahl === "number" && a.anzahl >= 0) ? a.anzahl : 1;
+  return tage * anz;
+}
+// Personen-Tage einer Belegung. Hat sie GEFÜLLTE personenAbschnitte, sind diese
+// maßgeblich (Weg A) — Lücken zwischen Abschnitten zählen automatisch als 0.
+// Sonst Fallback auf die Haushalts-Mitglieder (Köpfe × Belegungs-Zeitraum).
 function belegungPersonenTage(beleg, wjVon, wjBis) {
-  const hh = (beleg && beleg.haushalt) || null;
+  if (!beleg) return 0;
+  const abschnitte = Array.isArray(beleg.personenAbschnitte) ? beleg.personenAbschnitte : [];
+  if (abschnitte.length > 0) {
+    return abschnitte.reduce((s, a) => s + abschnittPersonenTage(a, beleg, wjVon, wjBis), 0);
+  }
+  const hh = beleg.haushalt || null;
   if (!hh || !Array.isArray(hh.mitglieder)) return 0;
   return hh.mitglieder.reduce((s, m) => s + mitgliedPersonenTage(m, beleg, wjVon, wjBis), 0);
 }
@@ -809,6 +827,73 @@ function einheitPersonenTage(einheit, wjVon, wjBis) {
     const belegungen = (teil && Array.isArray(teil.belegungen)) ? teil.belegungen : [];
     return s + belegungen.reduce((ss, b) => ss + belegungPersonenTage(b, wjVon, wjBis), 0);
   }, 0);
+}
+
+// Aufschlüsselung der Personen-Tage einer Einheit im WJ — für die Übersicht/den
+// Editor. Liefert je Belegung (die das WJ schneidet) eine Liste von Zeilen
+// { id, von, bis, anzahl, tage, mieter, belegId, istAbschnitt }. Hat eine
+// Belegung GEFÜLLTE personenAbschnitte, kommt je Abschnitt eine Zeile
+// (istAbschnitt:true). Sonst eine abgeleitete Sammelzeile aus den Mitgliedern
+// (istAbschnitt:false → in der UI als „noch nicht aufgeschlüsselt" markierbar).
+// Die `tage` sind bereits gegen das WJ geschnitten.
+function personenTageAufschluesselung(einheit, wjVon, wjBis) {
+  const out = { zeilen: [], summe: 0, wjVon, wjBis };
+  if (!wjVon || !wjBis) return out;
+  const teile = teileVon(einheit);
+  teile.forEach(teil => {
+    const belegungen = (teil && Array.isArray(teil.belegungen)) ? teil.belegungen : [];
+    belegungen.forEach(beleg => {
+      // Belegungen, die das WJ gar nicht berühren, überspringen.
+      const belegTage = personenTageImWj(beleg.von || "", beleg.bis || "", wjVon, wjBis);
+      if (belegTage <= 0 && (beleg.von || beleg.bis)) {
+        // Prüfen, ob trotzdem ein Abschnitt ins WJ ragt (offene Belegungsränder).
+        const ragt = (Array.isArray(beleg.personenAbschnitte) ? beleg.personenAbschnitte : [])
+          .some(a => personenTageImWj(a.von || "", a.bis || "", wjVon, wjBis) > 0);
+        if (!ragt) return;
+      }
+      const mieter = mieterNameVon(beleg);
+      const abschnitte = Array.isArray(beleg.personenAbschnitte) ? beleg.personenAbschnitte : [];
+      if (abschnitte.length > 0) {
+        abschnitte.forEach(a => {
+          const tage = abschnittPersonenTage(a, beleg, wjVon, wjBis);
+          const vonEff = (a.von && String(a.von).trim()) || beleg.von || "";
+          const bisEff = (a.bis && String(a.bis).trim()) || beleg.bis || "";
+          const kalenderTage = personenTageImWj(vonEff, bisEff, wjVon, wjBis);
+          out.zeilen.push({
+            id: a.id, belegId: beleg.id, istAbschnitt: true,
+            von: a.von || beleg.von || "", bis: a.bis || beleg.bis || "",
+            anzahl: (typeof a.anzahl === "number" ? a.anzahl : 1),
+            kalenderTage, tage, mieter,
+          });
+          out.summe += tage;
+        });
+      } else {
+        // Fallback-Sammelzeile aus Mitgliedern.
+        const tage = belegungPersonenTage(beleg, wjVon, wjBis);
+        const hh = beleg.haushalt || null;
+        const koepfe = hh ? haushaltKopfzahl(hh) : 0;
+        const kalenderTage = personenTageImWj(beleg.von || "", beleg.bis || "", wjVon, wjBis);
+        out.zeilen.push({
+          id: beleg.id, belegId: beleg.id, istAbschnitt: false,
+          von: beleg.von || "", bis: beleg.bis || "",
+          anzahl: koepfe, kalenderTage, tage, mieter,
+        });
+        out.summe += tage;
+      }
+    });
+  });
+  return out;
+}
+
+// Mieter-/Vertragspartei-Name einer Belegung für die Anzeige (kurz).
+function mieterNameVon(beleg) {
+  if (!beleg) return "";
+  if (beleg.typ === "leerstand") return "Leerstand";
+  const hh = beleg.haushalt || null;
+  const ms = (hh && Array.isArray(hh.mitglieder)) ? hh.mitglieder : [];
+  const benannt = ms.filter(m => m && m.kontaktId != null && m.name);
+  const mieter = benannt.find(m => m.recht === "mieter") || benannt[0];
+  return (mieter && mieter.name) || "";
 }
 
 // Setzt die Personenzahl einer Einheit auf einen Zielwert, indem die Differenz
@@ -910,12 +995,33 @@ function neueBelegung(typ, von, bis) {
     von: von || "",
     bis: bis || "",
     haushalt: t === "leerstand" ? leererHaushalt() : leererHaushalt(),
+    // Personenzahl-über-Zeit (Weg A, ab v12.17). Liste von Abschnitten
+    // { id, von, bis, anzahl } für den Personen-Tage-Verteilerschlüssel.
+    // LEER = Fallback auf die Haushalts-Kopfzahl über den Belegungs-Zeitraum
+    // (Rückwärtskompatibilität). GEFÜLLT = maßgeblich; Lücken zwischen
+    // Abschnitten zählen als 0 Personen (Leerstand). Der Mieter/die Belegung
+    // ändert sich dabei NICHT — nur die gemeldete Personenzahl.
+    personenAbschnitte: [],
   };
   if (t === "vermietung") {
     b.vertragsparteiId = null;          // Kontakt-ID der Vertragspartei (≠ Bewohner möglich)
     b.mietvertrag = { von: von || "", kaution: "", hoehe: "", kuendigung: "" };
   }
   return b;
+}
+
+// Ein Personenzahl-Abschnitt: in [von, bis] (inkl.) waren `anzahl` Personen
+// gemeldet. Leeres von/bis = offener Rand (erbt Belegungs-/WJ-Grenze).
+function neuerPersonenAbschnittId() {
+  return "pa_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+}
+function neuerPersonenAbschnitt(von, anzahl, bis) {
+  return {
+    id: neuerPersonenAbschnittId(),
+    von: von || "",
+    bis: bis || "",
+    anzahl: (typeof anzahl === "number" && anzahl >= 0) ? anzahl : 1,
+  };
 }
 
 // ── Sondereigentumsverwaltung (SEV) ─────────────────────────────────────────
@@ -2135,6 +2241,10 @@ export {
   einheitKopfzahl,
   einheitPersonenTage,
   belegungPersonenTage,
+  abschnittPersonenTage,
+  personenTageAufschluesselung,
+  neuerPersonenAbschnitt,
+  mieterNameVon,
   mitgliedPersonenTage,
   setzeEinheitKopfzahl,
   setzeEinheitMea,
