@@ -1871,7 +1871,7 @@ function terminOverlayBody() {
 }
 
 function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante = "overlay",
-  ves = [], kontakte = [], setVes = null, setKontakte = null, onGotoVE = null, onGotoKontakt = null, onGotoTermin = null }) {
+  ves = [], kontakte = [], setVes = null, setKontakte = null, setFreieTermine = null, onGotoVE = null, onGotoKontakt = null, onGotoTermin = null }) {
   const istInline = variante === "inline";
   const istDock = variante === "dock";
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
@@ -2730,7 +2730,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
       {!kalIstDesktop && !dockAktiv ? (
         <KalenderPanel variante="overlay" offen={panelOffen} onClose={() => setPanelOffen(false)}
           termine={panelTermine} settings={settings} t={t} accent={kalFarbe}
-          ves={ves} kontakte={kontakte}
+          ves={ves} kontakte={kontakte} setVes={setVes} setKontakte={setKontakte} setFreieTermine={setFreieTermine}
           onGotoVE={(id, ziel) => gotoVE(id, ziel)} onGotoKontakt={gotoKontakt}
           onGotoTermin={(key) => {
             setPanelOffen(false);

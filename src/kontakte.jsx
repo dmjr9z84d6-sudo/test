@@ -16,7 +16,7 @@ import { Avatar, KontaktPicker } from "./components.jsx";
 // ZYKLISCHER Import aus der Hauptdatei: S5-Kern-Helfer (Laufzeit-Auflösung).
 import { KontaktDetailKarte } from "./kontakte-modul.jsx";
 import {
-  KARTEN_ICONS, KontaktZuweisungForm, buildInitialKarten
+  KARTEN_ICONS, KontaktZuweisungForm, buildInitialKarten, buildInitialVerwaltungsKarten
 } from "./liegenschaft.jsx";
 
 // ── VEKontakteTab (Personen+Dienstleister gruppiert nach Rolle) ─────────────
@@ -45,10 +45,12 @@ const KONTAKT_KATEGORIEN = [
     rollen: ["Hausverwaltung", "Hausmeister", "Wartung", "Brandschutz", "Winterdienst",
              "Grünpflege", "Reinigung", "Messdienst", "Versicherung"],
     vertragsKategorien: ["versicherungen", "messdienst", "vertraege"],
+    vertragTypFilter: { ohneTypen: ["Müllabfuhr"] },
     sub: "Hausmeister, Reinigung, Wartung, Versicherung etc." },
   { id: "versorger", label: "Ver- und Entsorger", icon: "⚡", defaultFarbe: "#EA580C", typ: "firma",
     rollen: ["Versorger", "Müllabfuhr"],
-    vertragsKategorien: ["versorger"],
+    vertragsKategorien: ["versorger", "vertraege"],
+    vertragTypFilter: { nurTypen: ["Müllabfuhr"] },
     sub: "Strom, Gas, Wasser, Müllabfuhr" },
   { id: "gelegentlich", label: "Gelegentliche Aufträge", icon: "🛠", defaultFarbe: "#71717A", typ: "firma",
     rollen: null, // null = keine Rolle ODER Sammelrolle "Dienstleister"
@@ -128,29 +130,52 @@ function sammleFuerKategorie(kat, ve, kontakte) {
     //     in karte.vertraege[], ohne separate Rollen-Zuweisung). Solche Firmen
     //     sollen ebenfalls unter der passenden Kategorie erscheinen.
     if (kat.vertragsKategorien && kat.vertragsKategorien.length > 0) {
-      const ids = vertragsfirmenIds(ve, kat.vertragsKategorien);
+      const ids = vertragsfirmenIds(ve, kat.vertragsKategorien, kat.vertragTypFilter || null);
       if (ids.has(k.id)) return true;
     }
     return false;
   });
 }
 
+// Prüft, ob ein Vertrag v laut typFilter berücksichtigt wird.
+//   typFilter = { nurTypen:[...] }   → nur Verträge mit v.typ in der Liste
+//   typFilter = { ohneTypen:[...] }  → alle AUSSER v.typ in der Liste
+//   typFilter = null                 → alle
+function vertragTypPasst(v, typFilter) {
+  if (!typFilter) return true;
+  const typ = (v && v.typ) || "";
+  if (Array.isArray(typFilter.nurTypen)) return typFilter.nurTypen.indexOf(typ) >= 0;
+  if (Array.isArray(typFilter.ohneTypen)) return typFilter.ohneTypen.indexOf(typ) < 0;
+  return true;
+}
+
 // Sammelt alle Firmen-IDs, die über Verträge am Objekt verknüpft sind —
 // gefiltert auf bestimmte Karten-Kategorien (z. B. ["versicherungen",
-// "messdienst","vertraege"] für „Vertragliche Dienstleister"). Berücksichtigt
-// sowohl die Vertragsfirma (firmaId) als auch — bei Versicherungen — den
-// optionalen Makler (maklerId). firmaId ist numerisch.
-function vertragsfirmenIds(ve, kategorien) {
+// "messdienst","vertraege"] für „Vertragliche Dienstleister"). Optional zusätzlich
+// auf bestimmte Vertragstypen (typFilter, s. vertragTypPasst) eingrenzen — so
+// landet z. B. nur „Müllabfuhr" aus der „Verträge"-Karte bei den Entsorgern.
+// Berücksichtigt sowohl die Vertragsfirma (firmaId) als auch — bei
+// Versicherungen — den optionalen Makler (maklerId). firmaId ist numerisch.
+function vertragsfirmenIds(ve, kategorien, typFilter = null) {
   const out = new Set();
   if (!ve) return out;
   const katSet = kategorien || [];
-  const karten = (Array.isArray(ve.karten) && ve.karten.length > 0)
-    ? ve.karten
-    : (typeof buildInitialKarten === "function" ? buildInitialKarten(ve) : []);
+  // Vertrags-Karten (Versicherungen/Versorger/Messdienst/Verträge) leben in
+  // ve.verwaltungsKarten — NICHT in ve.karten (das sind Gebäude/Zugang/Technik).
+  // Fehlen persistierte verwaltungsKarten, aus dem Builder rekonstruieren, der
+  // ve.vertraege in die „Verträge"-Karte zieht.
+  const karten = (Array.isArray(ve.verwaltungsKarten) && ve.verwaltungsKarten.length > 0)
+    ? ve.verwaltungsKarten
+    : (typeof buildInitialVerwaltungsKarten === "function" ? buildInitialVerwaltungsKarten(ve) : []);
   (karten || []).forEach(karte => {
     if (!karte || katSet.indexOf(karte.kategorie) < 0) return;
+    // typFilter NUR auf die allgemeine „Verträge"-Karte anwenden — Versorger,
+    // Versicherungen und Messdienst haben keine VERTRAG_TYPEN und sollen
+    // vollständig durchlaufen.
+    const filterAktiv = karte.kategorie === "vertraege" ? typFilter : null;
     (karte.vertraege || []).forEach(v => {
       if (!v) return;
+      if (!vertragTypPasst(v, filterAktiv)) return;
       if (v.firmaId != null) out.add(v.firmaId);
       if (v.maklerId != null) out.add(v.maklerId);
     });
