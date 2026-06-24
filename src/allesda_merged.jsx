@@ -1485,6 +1485,19 @@ export default function App() {
         sett.rollen = sett.rollen.map(r =>
           (r && r.name === "Bevollmächtigter" && r.kuerzel === "S")
             ? { ...r, kuerzel: "BV" } : r);
+        // Migration (v12.25): slotlose Rollen nachrüsten. Default-Rollen erhalten
+        // ihren bekannten Slot aus DEFAULT_ROLLEN; selbst angelegte Rollen ohne
+        // Slot (z. B. „VBR") wandern ins Gremium, damit sie in der Gremium-Gruppe
+        // erscheinen statt durch alle Kontakt-Gruppen zu fallen.
+        {
+          const slotVonDefault = {};
+          DEFAULT_ROLLEN.forEach(d => { if (d && d.name) slotVonDefault[d.name] = d.slot; });
+          sett.rollen = sett.rollen.map(r => {
+            if (!r || r.slot) return r;
+            const s = slotVonDefault[r.name] || "gremium";
+            return { ...r, slot: s };
+          });
+        }
         const vorhandeneNamen = sett.rollen.map(r => r && r.name);
         const fehlende = DEFAULT_ROLLEN.filter(r => vorhandeneNamen.indexOf(r.name) < 0);
         if (fehlende.length > 0) sett.rollen = [...sett.rollen, ...fehlende];
@@ -3230,7 +3243,7 @@ export default function App() {
           <KalenderPanel variante="dock" offen={true} onClose={() => setKalDockOffen(false)}
             termine={dockTermine} settings={effectiveSettings} t={t}
             accent={kalenderAccent}
-            ves={ves} kontakte={kontakte} setVes={setVes} setKontakte={setKontakte}
+            ves={ves} kontakte={kontakte} setVes={setVes} setKontakte={setKontakte} setFreieTermine={setFreieTermine}
             onGotoVE={(id, ziel) => gotoVE(id, ziel)} onGotoKontakt={gotoKontakt}
             onGotoTermin={gotoTermin}/>
         ) : null}
@@ -3239,7 +3252,7 @@ export default function App() {
             onClose={() => setKalPanelMobilOffen(false)}
             termine={dockTermine} settings={effectiveSettings} t={t}
             accent={kalenderAccent}
-            ves={ves} kontakte={kontakte}
+            ves={ves} kontakte={kontakte} setVes={setVes} setKontakte={setKontakte} setFreieTermine={setFreieTermine}
             onGotoVE={(id, ziel) => gotoVE(id, ziel)} onGotoKontakt={gotoKontakt}
             onGotoTermin={gotoTermin}/>
         ) : null}

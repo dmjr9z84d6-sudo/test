@@ -1950,6 +1950,7 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
   const [fName, setFName] = useState("");
   const [fKuerzel, setFKuerzel] = useState("");
   const [fColor, setFColor] = useState(accent);
+  const [fSlot, setFSlot] = useState("gremium");
   const [resetConfirm, setResetConfirm] = useState(false);
 
   useEffect(() => {
@@ -1965,18 +1966,21 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
     update(liste.map(r => r.name === name ? { ...r, badgeSichtbar: !rolleBadgeSichtbar(r) } : r));
   const loeschen = (name) => update(liste.filter(r => r.name !== name));
 
-  const startNeu = () => { setEditName(null); setFName(""); setFKuerzel(""); setFColor(accent); setFormOffen(true); };
-  const startEdit = (r) => { setEditName(r.name); setFName(r.name); setFKuerzel(r.kuerzel || ""); setFColor(r.color || accent); setFormOffen(true); };
+  const startNeu = () => { setEditName(null); setFName(""); setFKuerzel(""); setFColor(accent); setFSlot("gremium"); setFormOffen(true); };
+  const startEdit = (r) => { setEditName(r.name); setFName(r.name); setFKuerzel(r.kuerzel || ""); setFColor(r.color || accent); setFSlot(r.slot || "gremium"); setFormOffen(true); };
   const abbrechen = () => { setFormOffen(false); setEditName(null); };
   const speichern = () => {
     const name = fName.trim();
     if (!name) return;
     const kuerzel = (fKuerzel.trim() || name.slice(0, 2)).toUpperCase().slice(0, 3);
+    // Slot bestimmt die Zuordnung zu den Kontakt-Gruppen. Firmen-Rollen gehören
+    // immer in den Firma-Slot; Personen-Rollen bekommen den im Formular gewählten.
+    const slot = istFirma ? "firma" : fSlot;
     if (editName) {
-      update(liste.map(r => r.name === editName ? { ...r, name, kuerzel, color: fColor } : r));
+      update(liste.map(r => r.name === editName ? { ...r, name, kuerzel, color: fColor, slot } : r));
     } else {
       if (liste.some(r => r.name.toLowerCase() === name.toLowerCase())) { abbrechen(); return; }
-      update([...liste, { name, kuerzel, color: fColor, aktiv: true }]);
+      update([...liste, { name, kuerzel, color: fColor, slot, aktiv: true }]);
     }
     abbrechen();
   };
@@ -2108,6 +2112,32 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
               </>
             )}
           </div>
+          {!istFirma && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                Gruppe / Zuordnung
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[["ve", "Einheit / Nutzung"], ["sev", "Vertretung"], ["gremium", "Gremium"], ["firma", "Firma"]].map(([sid, slabel]) => {
+                  const slotAktiv = fSlot === sid;
+                  return (
+                    <button key={sid} onClick={() => setFSlot(sid)}
+                      style={{ padding: "5px 11px", borderRadius: RAD.pill, cursor: "pointer",
+                        fontFamily: "inherit", fontSize: FS.xs, fontWeight: FW.bold,
+                        background: slotAktiv ? accent + "22" : "transparent",
+                        border: `1px solid ${slotAktiv ? accent : t.border}`,
+                        color: slotAktiv ? accent : t.sub }}>
+                      {slabel}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: FS.xxs, color: t.muted, marginTop: 5, lineHeight: 1.4 }}>
+                Bestimmt, in welcher Kontakt-Gruppe die Rolle erscheint (z.\u00a0B. \u201EGremium\u201C f\u00fcr Verwaltungsbeirat).
+              </div>
+            </div>
+          )}
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 10 }}>
             <button onClick={abbrechen}
               style={{ fontSize: FS.s, padding: "5px 12px", background: "none", color: t.sub,

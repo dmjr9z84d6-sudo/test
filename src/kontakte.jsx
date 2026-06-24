@@ -39,7 +39,7 @@ const KONTAKT_KATEGORIEN = [
     rollen: null, bewohnerRechte: ["mieter"],
     sub: "Bewohner mit Mietvertrag" },
   { id: "gremium", label: "Gremium", icon: "👥", defaultFarbe: "#15803D", typ: "person",
-    rollen: ["Verwaltungsbeirat", "Rechnungsprüfer", "Bevollmächtigter"],
+    rollen: ["Verwaltungsbeirat", "Rechnungsprüfer", "Bevollmächtigter"], slot: "gremium",
     sub: "Verwaltungsbeirat · Rechnungsprüfer · Bevollmächtigte" },
   { id: "versicherungen", label: "Versicherungen", icon: "🛡", defaultFarbe: "#2563EB", typ: "firma",
     rollen: ["Versicherung"],
@@ -53,7 +53,7 @@ const KONTAKT_KATEGORIEN = [
   { id: "messdienst", label: "Messdienst", icon: "📊", defaultFarbe: "#9333EA", typ: "firma",
     rollen: ["Messdienst"],
     vertragsKategorien: ["messdienst"],
-    sub: "Heizkostenabrechnung · Verbrauchserfassung" },
+    sub: "Heizkostenabrechnung · Verbrauchserfassung · Rauchwarnmelder" },
   { id: "vertraege", label: "Verträge", icon: "📄", defaultFarbe: "#0891B2", typ: "firma",
     rollen: ["Hausverwaltung", "Hausmeister", "Wartung", "Brandschutz", "Winterdienst",
              "Grünpflege", "Reinigung"],
@@ -89,7 +89,21 @@ function farbeFuerKategorie(kat, personenRollen, firmenRollen) {
 // Liefert eine Liste von Kontakt-Objekten zurück, denen für die Bewohner-
 // Kategorien ein abgeleiteter `_bezug` (Einheit · Recht) angehängt wird, damit
 // KontaktZeile den Bezug ohne objektZuweisung anzeigen kann.
-function sammleFuerKategorie(kat, ve, kontakte) {
+function sammleFuerKategorie(kat, ve, kontakte, personenRollen = null) {
+  // Rollennamen, die in diese Kategorie zählen: die fest hinterlegten
+  // (kat.rollen) PLUS — wenn kat.slot gesetzt ist — alle (auch selbst
+  // angelegten) Rollen, die laut Rollen-Definition diesem Slot zugeordnet
+  // sind. So erscheint z. B. eine eigene Rolle „VBR" mit slot:"gremium"
+  // automatisch in der Gremium-Gruppe, ohne festen Namens-Eintrag.
+  let rollenNamen = Array.isArray(kat.rollen) ? kat.rollen.slice() : kat.rollen;
+  if (kat.slot && Array.isArray(personenRollen)) {
+    const ausSlot = personenRollen
+      .filter(r => r && r.slot === kat.slot && r.name)
+      .map(r => r.name);
+    const set = {};
+    (Array.isArray(rollenNamen) ? rollenNamen : []).concat(ausSlot).forEach(n => { set[n] = true; });
+    rollenNamen = Object.keys(set);
+  }
   // ── Bewohner-Kategorien: aus den aktiven Belegungen der Einheiten ableiten ──
   // Die Bewohner sitzen in belegung.haushalt.mitglieder[] mit eigener
   // Rechtsgrundlage (recht). Eine objektZuweisung existiert dafür NICHT.
@@ -126,11 +140,11 @@ function sammleFuerKategorie(kat, ve, kontakte) {
     // (a) Klassisch: Firma hat eine objektZuweisung mit passender Rolle.
     const ueberRolle = (k.objektZuweisungen || []).some(z => {
       if (z.objektId !== ve.id) return false;
-      if (kat.rollen === null) {
+      if (rollenNamen === null) {
         // Gelegentlich: ohne Rolle oder Sammelrolle "Dienstleister"
         return !z.rolle || z.rolle === "Dienstleister";
       }
-      return kat.rollen.includes(z.rolle);
+      return rollenNamen.includes(z.rolle);
     });
     if (ueberRolle) return true;
     // (b) NEU (v12.19): Firma ist über einen VERTRAG am Objekt verknüpft
@@ -1119,7 +1133,7 @@ function VEKontakteTab({ ve, setVes, t, accent, kontakte, setKontakte, onKontakt
   KONTAKT_KATEGORIEN.forEach(kat => {
     katMap[kat.id] = {
       kat: { ...kat, farbe: farbeFuerKategorie(kat, personenRollen, firmenRollen) },
-      items: sammleFuerKategorie(kat, ve, kontakte),
+      items: sammleFuerKategorie(kat, ve, kontakte, personenRollen),
     };
   });
   const gesamtPersonen = KONTAKT_KATEGORIEN
