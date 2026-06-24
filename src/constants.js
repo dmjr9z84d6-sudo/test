@@ -74,7 +74,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "12.08";
+export const APP_VERSION = "12.10";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
@@ -131,6 +131,54 @@ export function getContrastColor(hex) {
   }
 }
 
+// ── relLuminanz: WCAG-relative Luminance einer Hex-Farbe (0=schwarz, 1=weiß).
+// Interner Helfer für Kontrastberechnungen.
+function relLuminanz(hex) {
+  if (!hex || hex[0] !== "#" || hex.length < 7) return 1;
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const lin = (c) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+// ── iconAufBg: liefert eine Akzentfarbe, die auf dem gegebenen Hintergrund
+// (bg) lesbar bleibt. Helle Akzente (Gelb, helles Grün) auf hellem Header
+// verschwinden sonst — dann wird der Akzent so weit Richtung Schwarz
+// abgedunkelt (mit gemeinsamem Hintergrund gemischt), dass genug Kontrast
+// entsteht. Auf dunklem Hintergrund bleibt der Akzent unverändert.
+// Rückgabe ist immer ein gültiger Hex-String.
+export function iconAufBg(accent, bg) {
+  if (!accent || accent[0] !== "#" || accent.length < 7) return accent || "#000000";
+  const bgLum = relLuminanz(bg);
+  const acLum = relLuminanz(accent);
+  // Kontrast (WCAG) zwischen Akzent und Hintergrund.
+  const hell = Math.max(acLum, bgLum) + 0.05;
+  const dunkel = Math.min(acLum, bgLum) + 0.05;
+  const ratio = hell / dunkel;
+  if (ratio >= 3) return accent; // genug Kontrast → unverändert
+  // Zu wenig Kontrast. Auf hellem Hintergrund abdunkeln, auf dunklem aufhellen,
+  // indem der Akzent schrittweise Richtung Schwarz/Weiß gemischt wird, bis das
+  // 3:1-Ziel erreicht ist (oder das Maximum).
+  const zielSchwarz = bgLum > 0.5; // heller Hintergrund → Richtung Schwarz
+  const r0 = parseInt(accent.slice(1, 3), 16);
+  const g0 = parseInt(accent.slice(3, 5), 16);
+  const b0 = parseInt(accent.slice(5, 7), 16);
+  const ziel = zielSchwarz ? 0 : 255;
+  const toHex = (n) => Math.round(n).toString(16).padStart(2, "0");
+  for (let f = 0.1; f <= 1.0; f += 0.1) {
+    const r = r0 + (ziel - r0) * f;
+    const g = g0 + (ziel - g0) * f;
+    const b = b0 + (ziel - b0) * f;
+    const kand = "#" + toHex(r) + toHex(g) + toHex(b);
+    const kl = relLuminanz(kand);
+    const h2 = Math.max(kl, bgLum) + 0.05;
+    const d2 = Math.min(kl, bgLum) + 0.05;
+    if (h2 / d2 >= 3) return kand;
+  }
+  return zielSchwarz ? "#1A1A1A" : "#FFFFFF";
+}
+
 // Rollen-Slots (Avatar-Eckpositionen):
 //   "ve"      → unten-rechts (Eigentümer, Mieter, Nießbraucher, Wohnberechtigter)
 //   "sev"     → oben-links   (SEV-Bevollmächtigter)
@@ -157,7 +205,7 @@ export const DEFAULT_ROLLEN = [
   { name: "Angehöriger",              kuerzel: "AG",  color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer — mitwohnend ohne eigenen Rechtstitel
   { name: "Sonstige",                 kuerzel: "S",   color: "#64748B", slot: "ve",      aktiv: true, eckSichtbar: false }, // Schiefer
   // SEV
-  { name: "Bevollmächtigter",         kuerzel: "S",   color: "#0891B2", slot: "sev",     aktiv: true }, // Cyan
+  { name: "Bevollmächtigter",         kuerzel: "BV",  color: "#0891B2", slot: "sev",     aktiv: true }, // Cyan
   { name: "Betreuer",                 kuerzel: "BT",  color: "#0369A1", slot: "sev",     aktiv: true }, // Blau dunkel
   // Zusatzfunktionen (Gremium)
   { name: "Verwaltungsbeirat",        kuerzel: "VB",  color: "#15803D", slot: "gremium", aktiv: true }, // Grün; mit vorsitz:true wird das VBV

@@ -112,7 +112,7 @@ import React, { useState, useRef, useEffect, createContext, useContext, Fragment
 // ═════════════════════════════════════════════════════════════════════════════
 
 import {
-  ACCENT, APP_VERSION, DARK, DEFAULT_GEWERKE_LISTE, DEFAULT_KATEGORIEN, DEFAULT_LEISTUNGEN, DEFAULT_ROLLEN, DEFAULT_VERWENDUNGEN, FIRMEN_FARBE, FONT, FONT_URL, FS, FW, KACHEL_GRID, KACHEL_W, KONTAKTE_FARBE, LIGHT, PALETTE_FARBEN, RAD, SERIOES_GRAU, SLOT_TO_ECK, effColor, effKuerzel, feldInput, feldLabel, formatKontaktName, getContrastColor, kategorieVon, mischeRichtungGrau, rolleBadgeSichtbar, rolleEckPosition, rolleEckSichtbar, setFarbIntensitaet, sortKontakte, toGrau, verwendungBadgeSichtbar, verwendungEckPosition, verwendungEckSichtbar
+  ACCENT, APP_VERSION, DARK, DEFAULT_GEWERKE_LISTE, DEFAULT_KATEGORIEN, DEFAULT_LEISTUNGEN, DEFAULT_ROLLEN, DEFAULT_VERWENDUNGEN, FIRMEN_FARBE, FONT, FONT_URL, FS, FW, KACHEL_GRID, KACHEL_W, KONTAKTE_FARBE, LIGHT, PALETTE_FARBEN, RAD, SERIOES_GRAU, SLOT_TO_ECK, effColor, effKuerzel, feldInput, feldLabel, formatKontaktName, getContrastColor, iconAufBg, kategorieVon, mischeRichtungGrau, rolleBadgeSichtbar, rolleEckPosition, rolleEckSichtbar, setFarbIntensitaet, sortKontakte, toGrau, verwendungBadgeSichtbar, verwendungEckPosition, verwendungEckSichtbar
 } from "./constants.js";
 import {
   datumDe, isoHeute, istDatumGueltig, istEmailGueltig, istIbanGueltig,
@@ -1317,7 +1317,10 @@ function StatusBand({ t, status, dirty, onGotoDaten, onAktivieren,
 //   • sonst → generisches User-Icon als Fallback
 // Aktiv-Highlight (border/background dichter) wenn der Einstellungen-Screen
 // gerade offen ist.
-function HeaderProfilButton({ settings, kontakte, screen, suchErg, t, systemAccent, onClick }) {
+function HeaderProfilButton({ settings, kontakte, screen, suchErg, t, systemAccent, iconAccent, onClick }) {
+  // iconAccent: kontrast-gesicherte Icon-Farbe für den Ruhezustand (Fallback
+  // auf systemAccent, falls nicht übergeben).
+  const ruheAccent = iconAccent || systemAccent;
   // Profil-Daten kommen aus dem verknüpften Kontakt (settings.userKontaktId).
   // Backward-compat: falls noch kein Kontakt verknüpft, fallback auf altes
   // settings.userProfil (nur bis zur Migration in SektionProfil).
@@ -1335,17 +1338,17 @@ function HeaderProfilButton({ settings, kontakte, screen, suchErg, t, systemAcce
   let inhalt;
   if (!zeigeAvatar) {
     inhalt = <I name="settings" size={16}
-      color={istEinst ? getContrastColor(systemAccent) : systemAccent}/>;
+      color={istEinst ? getContrastColor(systemAccent) : ruheAccent}/>;
   } else if (hatFoto) {
     inhalt = <img src={p.foto} alt="" draggable={false} style={{
       width: "100%", height: "100%", objectFit: "cover",
       display: "block", borderRadius: RAD.full, pointerEvents: "none" }}/>;
   } else if (initials) {
     inhalt = <span style={{ fontSize: FS.l, fontWeight: FW.heavy,
-      color: istEinst ? getContrastColor(systemAccent) : systemAccent, lineHeight: 1 }}>{initials}</span>;
+      color: istEinst ? getContrastColor(systemAccent) : ruheAccent, lineHeight: 1 }}>{initials}</span>;
   } else {
     inhalt = <I name="user" size={16}
-      color={istEinst ? getContrastColor(systemAccent) : systemAccent}/>;
+      color={istEinst ? getContrastColor(systemAccent) : ruheAccent}/>;
   }
 
   // Einheitlich mit Mond/Kalender: transparent + grauer Rand (Ruhe),
@@ -1477,6 +1480,12 @@ export default function App() {
       // werden hinten angehängt — sonst fehlen sie nach App-Updates (z. B. die
       // in v4.32 hinzugefügten „Verwalter" + „Buchhalter").
       if (Array.isArray(sett.rollen)) {
+        // Migration: Bevollmächtigter-Kürzel „S" → „BV" (kollidierte mit
+        // „Sonstige"). Nur das alte Default-Kürzel umschreiben, vom User
+        // bewusst geändertes Kürzel bleibt unangetastet.
+        sett.rollen = sett.rollen.map(r =>
+          (r && r.name === "Bevollmächtigter" && r.kuerzel === "S")
+            ? { ...r, kuerzel: "BV" } : r);
         const vorhandeneNamen = sett.rollen.map(r => r && r.name);
         const fehlende = DEFAULT_ROLLEN.filter(r => vorhandeneNamen.indexOf(r.name) < 0);
         if (fehlende.length > 0) sett.rollen = [...sett.rollen, ...fehlende];
@@ -1757,6 +1766,11 @@ export default function App() {
         sub:   mode === "light" ? "#2A2E40" : "#D0D0E8",
         muted: mode === "light" ? "#454A60" : "#A8A8C5" }
     : tBase;
+
+  // Icon-Farbe der Header-Buttons (Mond/Kalender/Profil) im Ruhezustand:
+  // systemAccent, aber gegen den Header-Hintergrund kontrast-gesichert. Helle
+  // Akzente (Gelb, helles Grün) verschwinden sonst auf dem weißen Hell-Header.
+  const headerIconAccent = iconAufBg(systemAccent, t.header);
 
   // Schriftgröße/Dichte – wirkt auf die gesamte App via CSS-zoom
   const DICHTE_MULT = { compact: 0.9, normal: 1.0, relaxed: 1.18 };
@@ -2466,7 +2480,7 @@ export default function App() {
                       border: `1px solid ${t.border}`,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
-                    <I name={mode === "dark" ? "sun" : "moon"} size={16} color={systemAccent}/>
+                    <I name={mode === "dark" ? "sun" : "moon"} size={16} color={headerIconAccent}/>
                   </button>
                 )}
                 <button onClick={kalenderButtonKlick}
@@ -2478,10 +2492,10 @@ export default function App() {
                     display: "flex", alignItems: "center", justifyContent: "center",
                     cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
                   <I name="calendar" size={16}
-                    color={(istDesktop && kalDockOffen) ? getContrastColor(systemAccent) : systemAccent}/>
+                    color={(istDesktop && kalDockOffen) ? getContrastColor(systemAccent) : headerIconAccent}/>
                 </button>
                 <HeaderProfilButton settings={settings} kontakte={kontakte} screen={screen}
-                  suchErg={suchErg} t={t} systemAccent={systemAccent}
+                  suchErg={suchErg} t={t} systemAccent={systemAccent} iconAccent={headerIconAccent}
                   onClick={() => wechselScreen("einstellungen")}/>
               </div>
             </div>
@@ -2549,7 +2563,7 @@ export default function App() {
                     border: `1px solid ${t.border}`,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
-                  <I name={mode === "dark" ? "sun" : "moon"} size={16} color={systemAccent}/>
+                  <I name={mode === "dark" ? "sun" : "moon"} size={16} color={headerIconAccent}/>
                 </button>
               )}
               <button onClick={kalenderButtonKlick}
@@ -2561,10 +2575,10 @@ export default function App() {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
                 <I name="calendar" size={16}
-                  color={(istDesktop && kalDockOffen) ? getContrastColor(systemAccent) : systemAccent}/>
+                  color={(istDesktop && kalDockOffen) ? getContrastColor(systemAccent) : headerIconAccent}/>
               </button>
               <HeaderProfilButton settings={settings} kontakte={kontakte} screen={screen}
-                suchErg={suchErg} t={t} systemAccent={systemAccent}
+                suchErg={suchErg} t={t} systemAccent={systemAccent} iconAccent={headerIconAccent}
                 onClick={() => wechselScreen("einstellungen")}/>
             </div>
           </div>

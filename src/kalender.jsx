@@ -1846,7 +1846,7 @@ function terminOverlayBackdrop() {
 function terminOverlayPanel(t) {
   return { background: t.bg, border: `1px solid ${t.border}`,
     borderRadius: RAD.lg, width: "100%", maxWidth: 460,
-    height: "560px", maxHeight: "calc(100dvh - 32px)",
+    height: "auto", maxHeight: "calc(100dvh - 32px)",
     display: "flex", flexDirection: "column",
     boxSizing: "border-box", overflow: "hidden" };
 }
@@ -1867,7 +1867,7 @@ function terminOverlayKopf(t, titel, onClose) {
   );
 }
 function terminOverlayBody() {
-  return { flex: 1, minHeight: 0, overflowY: "auto", padding: "0 14px 14px 14px" };
+  return { flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 14px 14px 14px" };
 }
 
 function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante = "overlay",

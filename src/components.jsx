@@ -1107,7 +1107,7 @@ function RolleBadge({ rolle, size = 20, status = "aktiv", vorsitz = false, vertr
   const goldRing = (vorsitz || vertrag || selbstnutzend) && !ehemalig;
   const VORSITZ_GOLD = toGrau("#EAB308"); // Tailwind yellow-500, intensitätsabhängig
   const vorsitzShadow = goldRing
-    ? `0 0 0 1px ${VORSITZ_GOLD}, 0 0 ${size < 20 ? 5 : 7}px ${size < 20 ? 1 : 2}px ${VORSITZ_GOLD}99`
+    ? `0 0 0 2px ${VORSITZ_GOLD}, 0 0 ${size < 20 ? 6 : 8}px ${size < 20 ? 2 : 3}px ${VORSITZ_GOLD}99`
     : "none";
 
   return (
