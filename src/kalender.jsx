@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, Fragment } from "react";
-import { ACCENT, FS, FW, RAD, feldInput, getContrastColor } from "./constants.js";
+import { ACCENT, FS, FW, RAD, KACHEL_GRID, feldInput, getContrastColor } from "./constants.js";
 import { parseDatumWert } from "./utils-basis.js";
 import {
   aktiveBelegung, belegungsPhase, eigStatus, heuteLaufendeBelegung,
@@ -2966,8 +2966,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
               )}
               <div style={listenAnsicht === "liste"
                 ? { display: "flex", flexDirection: "column", gap: 6 }
-                : { display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+                : KACHEL_GRID}>
                 {(ves || []).map(veObj => listenAnsicht === "liste" ? (
                   <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={kalFarbe}
                     aktiv={false} kbItem id={"kal-obj-" + veObj.id}

@@ -16,7 +16,7 @@ import {
   quoteAnteil, quoteLabel
 } from "./liegenschaft.jsx";
 import { KALENDER_TYPEN, sammleTermine } from "./kalender.jsx";
-import { STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel, alleEinheitenVonVe } from "./objektansicht.jsx";
+import { STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel, VEKachel, alleEinheitenVonVe } from "./objektansicht.jsx";
 
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ LISTENGENERATOR — Vorlagen-Katalog + generischer Screen + Druck          ║
@@ -977,18 +977,10 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
       <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
         paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
 
-        {/* Kopf: um welches Objekt geht es */}
-        <div style={{ background: accent + "0E", border: `1px solid ${accent}55`,
-          borderRadius: RAD.lg, padding: "12px 16px", marginBottom: 14,
-          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 26, flexShrink: 0 }}>🏢</span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: accent }}>{ve.nr || "Objekt"}</div>
-            <div style={{ fontSize: FS.s, color: t.sub }}>{ve.adresse || "—"}</div>
-          </div>
-          <span style={{ marginLeft: "auto", fontSize: FS.xs, color: t.muted }}>
-            {einheiten.length} {einheiten.length === 1 ? "Einheit" : "Einheiten"}
-          </span>
+        {/* Kopf: um welches Objekt geht es — kanonische Objektkarte (VEKachel
+            kompakt), identisch zu Objekte/Kalender/ETV. Kein erfundener Kopf. */}
+        <div style={{ marginBottom: 14 }}>
+          <VEKachel ve={ve} t={t} accent={accent} kompakt onClick={() => {}}/>
         </div>
 
         {/* Pillen: Spalten zuschalten (Klick-Reihenfolge = links→rechts) */}
