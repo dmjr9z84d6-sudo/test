@@ -418,12 +418,11 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
   // Sektions-Kacheln folgen dem globalen Liste/Karten-Schalter (Erscheinungsbild).
   const istListe = (settings.listenAnsicht || "karten") === "liste";
   const systemAccent = useKontaktFarbe().system || accent;
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil);
+  const setKartenSpalten = settings.kartenSpalten != null ? settings.kartenSpalten : 2;
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil, setKartenSpalten);
   // Sektions-Kacheln neben dem Detail folgen dem Slider „Karten neben dem
   // Detail" (settings.kartenSpalten) — identisch zu Objekte/Kontakte.
-  const setKartenSpalten = settings.kartenSpalten != null ? settings.kartenSpalten : 2;
-  const setMasterW = mdLayout.masterWidth || cardWidth;
-  const setKartenCols = Math.max(1, Math.min(setKartenSpalten, Math.floor(setMasterW / 300)));
+  const setKartenCols = Math.max(1, Math.min(setKartenSpalten, mdLayout.masterCols || Math.floor((mdLayout.masterWidth || cardWidth) / 300)));
 
   // Sprung in eine Sektion von außen (z. B. Tastaturkürzel „?" → Tastatur).
   useEffect(() => {
@@ -568,7 +567,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
       {offenSektion && istDesktop && mdLayout.masterCols > 0 && (
         <div ref={mdRef} style={{ display: "flex", gap: 10,
           flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
-          <div data-ad-auslauf="1" style={{ flex: `0 1 ${mdLayout.masterWidth}px`, minWidth: 0, overflowY: "auto",
+          <div data-ad-auslauf="1" style={{ flex: `0 0 ${mdLayout.masterFest || mdLayout.masterWidth}px`, minWidth: 0, overflowY: "auto",
             padding: 2, boxSizing: "border-box",
             ...(istListe ? { display: "grid", alignContent: "start", gridTemplateColumns: "1fr", gap: 8 } : { ...KACHEL_GRID, alignContent: "start" }) }}>
             {sortierteSektionen.map((s, i) => (
@@ -577,7 +576,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
                 onClick={() => setAktSektion(s.id)}/>
             ))}
           </div>
-          <div data-ad-auslauf="1" style={{ flex: `0 0 ${mdLayout.detailBreite}px`, minWidth: 0, maxWidth: "100%", overflowY: "auto" }}>
+          <div data-ad-auslauf="1" style={{ flex: `1 1 ${mdLayout.detailBreite}px`, minWidth: 0, maxWidth: "100%", overflowY: "auto" }}>
             {renderSektionDetail(offenSektion)}
           </div>
         </div>

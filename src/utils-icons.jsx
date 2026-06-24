@@ -63,9 +63,10 @@ function useCardWidth(minCard = 280, gap = 10) {
 // Master-Spalten passen. Detail muss mindestens minDetailFactor × cardWidth
 // breit sein. Es werden so viele Master-Spalten gewählt wie passen (bis maxCols),
 // sonst runter bis 1, dann 0 (kein Master, nur Detail).
-function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCols = 5, detailFest = false, detailPx = null, maxAnteil = 0.6) {
+function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCols = 5, detailFest = false, detailPx = null, maxAnteil = 0.6, wunschCols = null) {
   const ref = useRef(null);
   const [layout, setLayout] = useState({ masterCols: 2, masterWidth: cardWidth * 2 + gap,
+    masterFest: cardWidth * 2 + gap,
     detailBreite: detailPx != null ? detailPx : Math.round(cardWidth * minDetailFactor), detailFest: detailFest });
   useEffect(() => {
     if (!ref.current) return;
@@ -101,7 +102,19 @@ function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCo
         let cols = Math.floor((masterRest + gap) / (cardWidth + gap));
         if (cols < 1) cols = 1;
         if (cols > maxCols) cols = maxCols;
-        setLayout({ masterCols: cols, masterWidth: masterRest, detailBreite: wunsch, detailFest: true });
+        // Wenn der Aufrufer eine Wunsch-Spaltenzahl vorgibt (kartenSpalten-Setting):
+        // Karten NICHT auf das Maximum aufblähen, sondern auf den Wunsch begrenzen.
+        // So bleibt die Kartenspalte schmal und das Detail kann den FREIEN Rest
+        // füllen, statt dass die Karten ihn schlucken.
+        if (wunschCols != null && wunschCols >= 1) {
+          cols = Math.min(cols, wunschCols);
+        }
+        // masterFest = exakte Rasterbreite für `cols` feste 340er-Karten (kein
+        // Dehnen, KACHEL_GRID-Philosophie). Damit kann der Aufrufer die Karten
+        // starr halten und das Detail den GANZEN Rest füllen lassen, statt
+        // umgekehrt — kein Leerraum mehr rechts neben dem Detail.
+        const masterFest = cols * cardWidth + (cols - 1) * gap;
+        setLayout({ masterCols: cols, masterWidth: masterRest, masterFest: masterFest, detailBreite: wunsch, detailFest: true });
         return;
       }
       const wunschDetail = Math.round(cardWidth * minDetailFactor);
@@ -124,7 +137,7 @@ function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCo
     }
     window.addEventListener("resize", messen);
     return () => window.removeEventListener("resize", messen);
-  }, [cardWidth, minDetailFactor, gap, maxCols, detailFest, detailPx, maxAnteil]);
+  }, [cardWidth, minDetailFactor, gap, maxCols, detailFest, detailPx, maxAnteil, wunschCols]);
   return [ref, layout];
 }
 

@@ -3751,8 +3751,8 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
 function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAnteil = 0.6, kartenSpalten = 2, listenAnsicht = "karten", renderKartenSpalte, aktivK, t, accent,
   ves, kontakte, setKontakte, onVEClick, setAktiv, updateKontakt, onDelete }) {
   const istListe = listenAnsicht === "liste";
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil);
-  const kartenCols = Math.max(1, Math.min(kartenSpalten, Math.floor((mdLayout.masterWidth || cardWidth) / 300)));
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil, kartenSpalten);
+  const kartenCols = Math.max(1, Math.min(kartenSpalten, mdLayout.masterCols || Math.floor((mdLayout.masterWidth || cardWidth) / 300)));
 
   // Fallback: kein Master mehr — Detail full-width + Zurück-Button
   if (mdLayout.masterCols === 0) {
@@ -3774,12 +3774,12 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAntei
     <div ref={mdRef} style={{ display: "flex", gap: 10,
       flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
       <div data-ad-auslauf="1" style={{
-        flex: mdLayout.detailFest ? "1 1 0%" : `0 0 ${mdLayout.masterWidth}px`, minWidth: 0,
+        flex: mdLayout.detailFest ? `0 0 ${mdLayout.masterFest}px` : `0 0 ${mdLayout.masterWidth}px`, minWidth: 0,
         overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
         {renderKartenSpalte(kartenCols)}
       </div>
       <div data-ad-auslauf="1" style={{
-        flex: mdLayout.detailFest ? `0 0 ${mdLayout.detailBreite}px` : "1 1 0%", minWidth: 0,
+        flex: mdLayout.detailFest ? `1 1 ${mdLayout.detailBreite}px` : "1 1 0%", minWidth: 0,
         overflowY: "auto" }}>
         <KontaktDetailKarte k={aktivK} t={t} accent={accent} listenModus={true}
           ves={ves} kontakte={kontakte} setKontakte={setKontakte}
