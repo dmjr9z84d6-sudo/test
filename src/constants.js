@@ -42,9 +42,14 @@ export const KACHEL_W = 340;
 // linksbündig, Rest bleibt leer. `minmax(min(100%, KACHEL_W), KACHEL_W)` hält
 // die Spalte exakt auf KACHEL_W (kein Dehnen), lässt sie aber auf schmalen
 // Containern (Mobil < KACHEL_W) auf 100 % schrumpfen statt überzulaufen.
+// Die Spalten-Formel steckt in der CSS-Variable `--ad-kg`: Desktop-Default =
+// festes 340px-Raster; auf Mobil setzt `.ad-root-mobile` (allesda_merged.jsx)
+// `--ad-kg: 1fr` → EINE Spalte volle Breite (flexibel, wie die Detail-Karte).
+// So wird das mobile 1-Spalten-Verhalten an EINER Stelle gesteuert, ohne jede
+// Grid-Nutzungsstelle anzufassen.
 export const KACHEL_GRID = {
   display: "grid",
-  gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${KACHEL_W}px), ${KACHEL_W}px))`,
+  gridTemplateColumns: `var(--ad-kg, repeat(auto-fill, minmax(min(100%, ${KACHEL_W}px), ${KACHEL_W}px)))`,
   justifyContent: "start",
   gap: 10,
 };
@@ -74,7 +79,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "12.12";
+export const APP_VERSION = "12.14";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────

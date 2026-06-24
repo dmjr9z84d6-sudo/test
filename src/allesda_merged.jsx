@@ -2401,6 +2401,11 @@ export default function App() {
             flex: none !important;
             min-height: auto !important;
           }
+          /* MOBILE: Übersichts-Kachelraster (KACHEL_GRID) wird zu EINER Spalte
+             voller Breite — die Karten laufen flexibel bis zum Rand wie die
+             Detail-Karte, statt als feste 340px-Kachel mit Rest-Raum rechts.
+             Desktop behält das feste 340px-Raster (Default-Wert von --ad-kg). */
+          .ad-root-mobile { --ad-kg: 1fr; }
         ` : ""}
         * { box-sizing: border-box; }
         button { font-family: ${FONT}; }
@@ -2646,7 +2651,7 @@ export default function App() {
           : { display: "flex", flexDirection: "column" }}>
           <div style={istDesktop
             ? { margin: "0 auto", padding: "0 10px", width: "100%", minWidth: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }
-            : { margin: "0 auto", padding: 0, width: "100%", display: "flex", flexDirection: "column" }}>
+            : { margin: "0 auto", padding: "0 10px", width: "100%", minWidth: 0, boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
             <div ref={contentRef} style={istDesktop
               ? { flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }
               : { display: "flex", flexDirection: "column" }}>
