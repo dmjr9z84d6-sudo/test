@@ -89,7 +89,7 @@ function farbeFuerKategorie(kat, personenRollen, firmenRollen) {
 // Liefert eine Liste von Kontakt-Objekten zurück, denen für die Bewohner-
 // Kategorien ein abgeleiteter `_bezug` (Einheit · Recht) angehängt wird, damit
 // KontaktZeile den Bezug ohne objektZuweisung anzeigen kann.
-function sammleFuerKategorie(kat, ve, kontakte, personenRollen = null) {
+function sammleFuerKategorie(kat, ve, kontakte, personenRollen = null, alleKontakte = null, ves = null) {
   // Rollennamen, die in diese Kategorie zählen: die fest hinterlegten
   // (kat.rollen) PLUS — wenn kat.slot gesetzt ist — alle (auch selbst
   // angelegten) Rollen, die laut Rollen-Definition diesem Slot zugeordnet
@@ -137,9 +137,17 @@ function sammleFuerKategorie(kat, ve, kontakte, personenRollen = null) {
   }
   return (kontakte || []).filter(k => {
     if (k.typ !== kat.typ) return false;
-    // (a) Klassisch: Firma hat eine objektZuweisung mit passender Rolle.
-    const ueberRolle = (k.objektZuweisungen || []).some(z => {
-      if (z.objektId !== ve.id) return false;
+    // (a) Rollen-Treffer: kanonische Auflösung über zuweisungenFuerAvatar, die
+    //     NEBEN den rohen objektZuweisungen auch die neuen Achsen (besitz[],
+    //     zustaendigkeiten[]) und die Live-Belegung berücksichtigt. So erscheint
+    //     z. B. ein Verwaltungsbeirat, der als zustaendigkeit gepflegt ist (und
+    //     nur ein Badge, aber keine rohe objektZuweisung hat), korrekt in der
+    //     Gremium-Gruppe. Fallback auf die rohen Zuweisungen, falls alleKontakte/
+    //     ves nicht durchgereicht wurden.
+    const zuwListe = (alleKontakte || ves)
+      ? zuweisungenFuerAvatar(k, ve.id, alleKontakte || kontakte, ves || [ve])
+      : (k.objektZuweisungen || []).filter(z => z.objektId === ve.id);
+    const ueberRolle = (zuwListe || []).some(z => {
       if (rollenNamen === null) {
         // Gelegentlich: ohne Rolle oder Sammelrolle "Dienstleister"
         return !z.rolle || z.rolle === "Dienstleister";
@@ -1133,7 +1141,7 @@ function VEKontakteTab({ ve, setVes, t, accent, kontakte, setKontakte, onKontakt
   KONTAKT_KATEGORIEN.forEach(kat => {
     katMap[kat.id] = {
       kat: { ...kat, farbe: farbeFuerKategorie(kat, personenRollen, firmenRollen) },
-      items: sammleFuerKategorie(kat, ve, kontakte, personenRollen),
+      items: sammleFuerKategorie(kat, ve, kontakte, personenRollen, kontakte, ves),
     };
   });
   const gesamtPersonen = KONTAKT_KATEGORIEN

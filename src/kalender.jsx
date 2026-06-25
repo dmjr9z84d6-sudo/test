@@ -2001,11 +2001,13 @@ function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante 
 
   const panelBreite = istDesktop ? 400 : "min(92vw, 400px)";
   // Kopf-Buttons: auf Mobil größere Touch-Ziele + größere Datum/Uhrzeit-Anzeige.
-  const btnGr = istDesktop ? 30 : 40;
-  // Einheitliche Höhe aller Kopf-Bedienelemente: das T/W/M-Segment ist das
-  // höchste (innere Buttons btnGr + 3px Padding oben/unten). Datum- und
-  // Schließen-Button werden auf dieselbe Höhe gebracht.
-  const kopfH = btnGr + 6;
+  // Einheitliche Höhe aller Kopf-Bedienelemente: maßgeblich ist das T/W/M-
+  // Segment. Dessen Außenhöhe = innerer Button (26 Desktop / 32 Mobil)
+  // + 2px Container-Padding oben/unten + 1px Rahmen oben/unten = +6.
+  // Datum-, Plus- und Schließen-Button werden exakt darauf gebracht, damit der
+  // Plus-Button nicht größer wirkt als der runde M-Knopf.
+  const segGr = istDesktop ? 26 : 32;
+  const kopfH = segGr + 6;
   const heuteFS = istDesktop ? FS.s : FS.m;
   const heutePad = istDesktop ? "0 10px" : "0 12px";
 
