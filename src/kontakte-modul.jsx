@@ -3779,8 +3779,7 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreit
         {renderKartenSpalte(kartenCols, mdLayout.kartenBreite)}
       </div>
       <div data-ad-auslauf="1" style={{
-        flex: !mdLayout.detailFest ? "1 1 0%"
-          : (istListe ? `0 0 ${mdLayout.detailBreite}px` : `1 1 ${mdLayout.detailBreite}px`), minWidth: 0,
+        flex: `0 0 ${mdLayout.detailBreite}px`, minWidth: 0,
         overflowY: "auto" }}>
         <KontaktDetailKarte k={aktivK} t={t} accent={accent} listenModus={true}
           ves={ves} kontakte={kontakte} setKontakte={setKontakte}

@@ -281,6 +281,8 @@ import {
   CopyBtn,
   DATUM_MONATE_KURZ,
   DatumFeld,
+  DetailRahmen,
+  KopfPille,
   DatumKalender,
   EckPille,
   EigentumBlock,
@@ -2889,7 +2891,7 @@ export default function App() {
         {!suchErg && screen === "auftraege" && (() => {
           const aAccent = (effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444";
           const istDesk = istDesktop;
-          const aufLayout = passendeMasterSpalten(auftragContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+          const aufLayout = passendeMasterSpalten(auftragContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMinBreiteEff, detailMinBreite, 10);
           const masterBreiteA = aufLayout.masterBreite;
           const istListeA = effectiveSettings.listenAnsicht === "liste";
           const firmen = (kontakteSichtbar || []).filter(k => k && k.typ === "firma");
@@ -2941,17 +2943,6 @@ export default function App() {
             detailListe = renderVorgaenge(gef); // TODO echte Quelle: Vorgänge dieser Firma
           }
 
-          const auftragPille = (id, label) => (
-            <button onClick={() => setAuftragView(id)}
-              style={{ padding: "6px 14px", borderRadius: RAD.ms, cursor: "pointer",
-                border: `1px solid ${auftragView === id ? aAccent : t.border}`,
-                background: auftragView === id ? aAccent : "transparent",
-                color: auftragView === id ? getContrastColor(aAccent) : t.sub,
-                fontSize: FS.s, fontWeight: FW.bold }}>
-              {label}
-            </button>
-          );
-
           const masterInhalt = auftragView === "objekt" ? (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
@@ -2985,11 +2976,9 @@ export default function App() {
           );
 
           const detailInhalt = hatAuswahl ? (
-            <div>
-              <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: aAccent, marginBottom: 12,
-                overflowWrap: "anywhere" }}>{detailKopf}</div>
+            <DetailRahmen t={t} accent={aAccent} titel={detailKopf}>
               {detailListe}
-            </div>
+            </DetailRahmen>
           ) : (
             <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "20px 8px" }}>
               {auftragView === "objekt" ? "Objekt links auswählen, um Vorgänge zu sehen."
@@ -3001,10 +2990,9 @@ export default function App() {
             <StickySectionHeader t={t} accent={aAccent}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
                 <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Vorgänge</div>
-                <div style={{ display: "flex", gap: 8, marginLeft: 4 }}>
-                  {auftragPille("objekt", "Objekte")}
-                  {auftragPille("firma", "Firmen")}
-                </div>
+                <KopfPille t={t} accent={aAccent}
+                  optionen={[{ id: "objekt", label: "Objekte" }, { id: "firma", label: "Firmen" }]}
+                  aktiv={auftragView} onWaehle={setAuftragView}/>
               </div>
             </StickySectionHeader>
           );

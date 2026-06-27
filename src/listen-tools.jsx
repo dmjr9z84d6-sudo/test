@@ -9,7 +9,7 @@ import {
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useMasterDetailLayout, useWindowWidth, passendeMasterSpalten, useContentWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
-import { DatumFeld } from "./components.jsx";
+import { DatumFeld, DetailRahmen, KopfPille, SegmentControl } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -1029,21 +1029,10 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
           <VEKachel ve={ve} t={t} accent={accent} kompakt onClick={() => {}}/>
         </div>
 
-        {/* Modus-Umschalter: Tabelle (Spalten-Schnelleingabe) ⇄ Personen-Tage. */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-          {[["tabelle", "📋 Tabelle"], ["personentage", "📊 Personen-Tage"]].map(([id, label]) => {
-            const an = modus === id;
-            return (
-              <button key={id} onClick={() => setModus(id)}
-                style={{ flex: 1, padding: "8px 10px", borderRadius: RAD.ms, cursor: "pointer",
-                  fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-                  border: `1px solid ${an ? accent : t.border}`,
-                  background: an ? accent : "none",
-                  color: an ? getContrastColor(accent) : t.sub }}>
-                {label}
-              </button>
-            );
-          })}
+        {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73). */}
+        <div style={{ marginBottom: 14 }}>
+          <SegmentControl t={t} accent={accent} value={modus} onChange={setModus}
+            options={[{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]}/>
         </div>
 
         {modus === "tabelle" ? (
@@ -1222,7 +1211,9 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
           </div>
         )}
         <div data-ad-auslauf="1" style={{ flex: seLayout.cols > 0 ? `0 0 ${detailMinBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto" }}>
-          {ve ? seMaske : (
+          {ve ? (
+            <DetailRahmen t={t} accent={accent}>{seMaske}</DetailRahmen>
+          ) : (
             <div style={{ height: "100%", minHeight: 240, display: "flex",
               alignItems: "center", justifyContent: "center", textAlign: "center",
               border: `1px dashed ${t.border}`, borderRadius: RAD.lg,
@@ -1497,27 +1488,15 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
     </div>
   );
 
-  const lgPille = (id, label) => (
-    <button onClick={() => { setLgView(id); setVorlageId(null); }}
-      style={{ padding: "6px 14px", borderRadius: RAD.ms, cursor: "pointer",
-        border: `1px solid ${lgView === id ? accent : t.border}`,
-        background: lgView === id ? accent : "transparent",
-        color: lgView === id ? getContrastColor(accent) : t.sub,
-        fontSize: FS.s, fontWeight: FW.bold }}>
-      {label}
-    </button>
-  );
-
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <StickySectionHeader t={t} accent={accent}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
           padding: "2px 0 10px 0" }}>
           <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Listengenerator</div>
-          <div style={{ display: "flex", gap: 8, marginLeft: 4 }}>
-            {lgPille("objekte", "Objekte")}
-            {lgPille("gruppen", "Gruppen")}
-          </div>
+          <KopfPille t={t} accent={accent}
+            optionen={[{ id: "objekte", label: "Objekte" }, { id: "gruppen", label: "Gruppen" }]}
+            aktiv={lgView} onWaehle={(id) => { setLgView(id); setVorlageId(null); }}/>
         </div>
       </StickySectionHeader>
 
@@ -1578,8 +1557,12 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
         <div data-ad-scroll="y" style={istDesktopLG
           ? { flex: `0 0 ${detailMinBreite}px`,
               minWidth: 0, overflowY: "auto",
+              ...(lgHatAuswahl ? { background: accent + "08", border: `1px solid ${accent}`,
+                borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box" } : {}),
               paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
           : { flex: 1, minHeight: 0, overflowY: "auto",
+              ...(lgHatAuswahl ? { background: accent + "08", border: `1px solid ${accent}`,
+                borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box" } : {}),
               paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
 
         {/* Mobil: Zurück zur Auswahl */}
@@ -1834,17 +1817,6 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   }
   const hatAuswahl = (statView === "objekte" && aktVEId) || (statView === "gruppen" && aktGruppe);
 
-  const pille = (id, label) => (
-    <button onClick={() => setStatView(id)}
-      style={{ padding: "6px 14px", borderRadius: RAD.ms, cursor: "pointer",
-        border: `1px solid ${statView === id ? accent : t.border}`,
-        background: statView === id ? accent : "transparent",
-        color: statView === id ? getContrastColor(accent) : t.sub,
-        fontSize: FS.s, fontWeight: FW.bold }}>
-      {label}
-    </button>
-  );
-
   // Master-Spalte: Objektauswahl (Karte/Liste) oder Gruppenauswahl (Liste).
   const masterGridStyle = istListe
     ? { display: "flex", flexDirection: "column", gap: 6 }
@@ -1882,7 +1854,9 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   );
 
   const detailInhalt = hatAuswahl && auswahlVes.length > 0 ? (
-    <StatistikInhalt ves={auswahlVes} kontakte={kontakte} t={t} accent={accent}/>
+    <DetailRahmen t={t} accent={accent} titel={auswahlTitel}>
+      <StatistikInhalt ves={auswahlVes} kontakte={kontakte} t={t} accent={accent}/>
+    </DetailRahmen>
   ) : (
     <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "20px 8px" }}>
       {statView === "objekte" ? "Objekt links auswählen, um die Statistik zu sehen."
@@ -1894,10 +1868,9 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
     <StickySectionHeader t={t} accent={accent}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
         <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Statistik</div>
-        <div style={{ display: "flex", gap: 8, marginLeft: 4 }}>
-          {pille("objekte", "Objekte")}
-          {pille("gruppen", "Gruppen")}
-        </div>
+        <KopfPille t={t} accent={accent}
+          optionen={[{ id: "objekte", label: "Objekte" }, { id: "gruppen", label: "Gruppen" }]}
+          aktiv={statView} onWaehle={setStatView}/>
       </div>
     </StickySectionHeader>
   );

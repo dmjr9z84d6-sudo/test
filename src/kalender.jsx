@@ -6,7 +6,7 @@ import {
   istAnonymesMitglied, sevStatus, teileVon
 } from "./datenmodell.js";
 import {
-  Avatar, DatumFeld, DatumKalender, FeldKontaktKarte, KontaktPicker,
+  Avatar, DatumFeld, DatumKalender, FeldKontaktKarte, KontaktPicker, KopfPille,
   Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat
 } from "./components.jsx";
 import {
@@ -2698,19 +2698,11 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
               userSelect: "none", transition: "color 0.15s" }}>
             Kalender
           </div>
-          {/* View-Umschalter: Timeline | Nach Objekten */}
-          <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: RAD.pill,
-            background: t.surface, border: `1px solid ${t.border}`, flexShrink: 0 }}>
-            {[{ id: "objekte", label: "Objekte" }, { id: "timeline", label: "Timeline" }].map(v => (
-              <button key={v.id} onClick={() => { if (setKalView) setKalView(v.id); if (setKalViewVEId) setKalViewVEId(null); }}
-                style={{ padding: "5px 12px", borderRadius: RAD.pill, cursor: "pointer",
-                  fontFamily: "inherit", fontSize: FS.s, fontWeight: FW.bold, border: "none",
-                  background: kalView === v.id ? kalFarbe : "transparent",
-                  color: kalView === v.id ? getContrastColor(kalFarbe) : t.sub }}>
-                {v.label}
-              </button>
-            ))}
-          </div>
+          {/* View-Umschalter: Objekte | Timeline — gemeinsame KopfPille (§73) */}
+          <KopfPille t={t} accent={kalFarbe}
+            optionen={[{ id: "objekte", label: "Objekte" }, { id: "timeline", label: "Timeline" }]}
+            aktiv={kalView}
+            onWaehle={(id) => { if (setKalView) setKalView(id); if (setKalViewVEId) setKalViewVEId(null); }}/>
           {kalView === "timeline" && (
             <FilterButtons arten={KALENDER_TYPEN} aktive={aktiveTypen}
               counts={counts} wert={typFilter} onWert={setTypFilter}

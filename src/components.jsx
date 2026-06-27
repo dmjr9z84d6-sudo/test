@@ -3233,9 +3233,61 @@ function FieldList({ fields, setFields, t, accent, editMode, kategorie, ohneVors
   );
 }
 
+// KopfPille — KANONISCHER Segment-Umschalter im Screen-Kopf (§73). Genau der
+// Kalender-Stil: EINE umschließende Kapsel (RAD.pill, t.surface-BG, 1px border),
+// darin randlose Buttons, der aktive ausgefüllt in accent. Vorbild war der
+// Kalender-Umschalter „Objekte | Timeline"; jetzt EINE Quelle für ALLE Screens
+// (Kalender, Statistik, Listengenerator, Vorgänge), damit nichts auseinanderläuft.
+// optionen = [{ id, label }]; aktiv = id; onWaehle(id).
+function KopfPille({ t, accent, optionen, aktiv, onWaehle }) {
+  return (
+    <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: RAD.pill,
+      background: t.surface, border: `1px solid ${t.border}`, flexShrink: 0 }}>
+      {optionen.map(o => (
+        <button key={o.id} onClick={() => onWaehle(o.id)}
+          style={{ padding: "5px 12px", borderRadius: RAD.pill, cursor: "pointer",
+            fontFamily: "inherit", fontSize: FS.s, fontWeight: FW.bold, border: "none",
+            background: aktiv === o.id ? accent : "transparent",
+            color: aktiv === o.id ? getContrastColor(accent) : t.sub }}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// DetailRahmen — KANONISCHER Detail-Rahmen (§73): die gerahmte Box, in der jeder
+// Master-Detail-Screen seinen Detail-Inhalt zeigt. Identisch zum Rahmen in
+// ObjektListeMitDetail (accent+"08"-BG, 1px solid accent, RAD.lg, Padding) plus
+// optionalem Kopf (titel groß in accent, sub klein). So sehen ALLE Detailfenster
+// gleich aus — Statistik, Listengenerator, Schnelleingabe, Vorgänge.
+function DetailRahmen({ t, accent, titel = null, sub = null, children }) {
+  return (
+    <div style={{ background: accent + "08", border: `1px solid ${accent}`,
+      borderRadius: RAD.lg, padding: "14px 16px",
+      boxSizing: "border-box", width: "100%", minWidth: 0, overflowWrap: "anywhere" }}>
+      {(titel != null) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
+              lineHeight: 1.1, overflowWrap: "anywhere" }}>{titel}</div>
+            {(sub != null) && (
+              <div style={{ fontSize: FS.s, color: t.sub, marginTop: 2,
+                overflowWrap: "anywhere" }}>{sub}</div>
+            )}
+          </div>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 // ╔═════════════════════════════════════════════════════════════════════════╗
 
 export {
+  KopfPille,
+  DetailRahmen,
   Toggle,
   SegmentControl,
   Inp,

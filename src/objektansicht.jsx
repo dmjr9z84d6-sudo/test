@@ -1620,8 +1620,8 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreite
         </div>
       </div>
       <div data-ad-auslauf="1" style={{
-        flex: !mdLayout.detailFest ? "1 1 0%"
-          : (istListe ? `0 0 ${mdLayout.detailBreite}px` : `1 1 ${mdLayout.detailBreite}px`), minWidth: 0,
+        flex: !mdLayout.detailFest ? `0 0 ${mdLayout.detailBreite}px`
+          : `0 0 ${mdLayout.detailBreite}px`, minWidth: 0,
         overflowY: "auto" }}>
         {renderDetail()}
       </div>
