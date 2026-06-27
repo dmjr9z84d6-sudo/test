@@ -6,12 +6,12 @@ import {
   istAnonymesMitglied, sevStatus, teileVon
 } from "./datenmodell.js";
 import {
-  Avatar, DatumFeld, DatumKalender, FeldKontaktKarte, KontaktPicker, KopfPille, ScreenKopf,
+  Avatar, DatumFeld, DatumKalender, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf,
   Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat
 } from "./components.jsx";
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useFirmenRollen, useKontaktFarbe,
-  useRollen, useTerminBezeichnungen, useWindowWidth, passendeMasterSpalten, useContentWidth, useZeitPicker
+  useRollen, useTerminBezeichnungen, useWindowWidth, useZeitPicker
 } from "./utils-icons.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 5b · KALENDER / TERMINE — ausgelagertes Modul                   ║
@@ -2615,7 +2615,6 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
   // Kalender-Fenster; Mobil: Overlay von rechts).
   const [panelOffen, setPanelOffen] = useState(false);
   const kalIstDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
-  const [tlContentRef, tlContentW] = useContentWidth();
   // Inline-Anlegeformular (über dem Listenbereich) — geöffnet per +-Button.
   const [anlegenOffen, setAnlegenOffen] = useState(false);
   // Termin in Bearbeitung: { quelle:"manuell"|"frei", id, objektId, start:{…} }
@@ -3001,9 +3000,6 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         // kartenMaxBreite), damit das Detail an GLEICHER x-Position aufgeht.
         // Rechts: das eine ausgewählte Termin-Detail (aufgeklappte KalenderZeile).
         // Mobil (kein Desktop): Detail ersetzt die Liste + „Zurück"-Button.
-        const tlVerf = tlContentW || 1200;
-        const tlLayout = passendeMasterSpalten(tlVerf, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10, detailMin, listenAnsicht === "liste" ? listeOpt : null);
-        const masterBreite = tlLayout.masterBreite;
         const offenerTermin = (function() {
           for (let bi = 0; bi < KALENDER_BUCKETS.length; bi++) {
             const arr = gruppen[KALENDER_BUCKETS[bi].id];
@@ -3100,16 +3096,13 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           </div>
         );
         // Detail: das eine ausgewählte Termin-Detail (aufgeklappte Zeile).
+        // Ohne Auswahl null — kein Platzhalter, rechts bleibt leer (§75-Regel).
         const detailInhalt = offenerTermin ? (
           <div style={{ background: kalFarbe + "08", border: `1px solid ${kalFarbe}`,
             borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box", width: "100%", minWidth: 0 }}>
             {baueZeile(offenerTermin, terminKey(offenerTermin), "detail", true, () => {})}
           </div>
-        ) : (
-          <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "20px 8px" }}>
-            Termin links auswählen, um Details zu sehen.
-          </div>
-        );
+        ) : null;
         // MOBIL: Detail ersetzt die Liste + „Zurück".
         if (!kalIstDesktop) {
           if (offenerTermin) {
@@ -3128,19 +3121,16 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           }
           return masterListe;
         }
-        // DESKTOP: Master-Detail nebeneinander. Master fest auf masterBreite,
-        // Detail füllt den Rest bis detailMinBreite — Position = gleiche x wie
-        // bei den Objekt-Karten.
+        // DESKTOP: Master-Detail über den kanonischen Baustein (§75).
         return (
-          <div ref={tlContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
-            minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
-            <div style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, display: "flex", flexDirection: "column" }}>
-              {masterListe}
-            </div>
-            <div data-ad-auslauf="1" style={{ flex: `0 0 ${tlLayout.detailBreite || detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
-              {detailInhalt}
-            </div>
-          </div>
+          <MasterDetailRahmen
+            master={masterListe}
+            detail={detailInhalt}
+            istDesktop={true}
+            listenAnsicht={listenAnsicht} listeOpt={listeOpt}
+            kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+            kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
+            gap={10}/>
         );
       })()
       )}

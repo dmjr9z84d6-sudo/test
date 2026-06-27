@@ -7,9 +7,9 @@ import {
   neuesHhMitglied, objektInGruppe, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
 } from "./datenmodell.js";
 import {
-  DESKTOP_MIN_WIDTH, I, useMasterDetailLayout, useWindowWidth, passendeMasterSpalten, useContentWidth, veKartenFeldWert
+  DESKTOP_MIN_WIDTH, I, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
-import { DatumFeld, DetailRahmen, KopfPille, ScreenKopf, SegmentControl } from "./components.jsx";
+import { DatumFeld, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, SegmentControl } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -720,9 +720,6 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   detailMinBreite = 540, detailMin = null, listeOpt = null, festeGridSpec = null, legendeEl = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [objektId, setObjektId] = useState(null); // null = Raster (Objektauswahl)
-  const [seContentRef, seContentW] = useContentWidth();
-  const seLayout = passendeMasterSpalten(seContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20, detailMin, listenAnsicht === "liste" ? listeOpt : null);
-  const masterBreiteSE = seLayout.masterBreite;
   const istListeSE = listenAnsicht === "liste";
 
   // Welche Spalten sind aktiv — in KLICK-Reihenfolge (links→rechts). Die fixe
@@ -972,7 +969,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   // ── MASTER-DETAIL (Benny v12.35): links Objektauswahl (Karte/Liste, festes
   //    Schema), rechts die Schnelleingabe-Maske an gleicher x-Position. Mobil:
   //    Vollbild-Wechsel mit „Zurück". ──
-  const seMasterInhalt = (
+  const seMasterInhalt = (layout) => (
     (ves || []).length === 0 ? (
       <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 }}>
         Noch keine Objekte vorhanden.
@@ -980,7 +977,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     ) : (
       <div style={istListeSE
         ? { display: "flex", flexDirection: "column", gap: 6 }
-        : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, seLayout.cols)}, ${seLayout.kartenBreite}px)` }}>
+        : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }}>
         {(ves || []).map(v => istListeSE ? (
           <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
             aktiv={objektId === v.id} kbItem id={"se-" + v.id}
@@ -1008,7 +1005,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
           {legendeEl}
-          {seMasterInhalt}
+          {seMasterInhalt({ cols: 1, kartenBreite: kartenMaxBreite })}
         </div>
       </div>
     );
@@ -1187,27 +1184,20 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     );
   }
 
-  // DESKTOP: Master-Detail nebeneinander, Detail an fester x-Position.
+  // DESKTOP: Master-Detail über den kanonischen Baustein (§75).
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {seHeader}
       {legendeEl ? (
         <div style={{ flexShrink: 0, padding: "0 2px" }}>{legendeEl}</div>
       ) : null}
-      <div ref={seContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
-        minWidth: 0, width: "100%", boxSizing: "border-box", gap: 20 }}>
-        {(seLayout.cols > 0 || !ve) && (
-          <div data-ad-scroll="y" style={{ flex: seLayout.cols > 0 ? `0 0 ${masterBreiteSE}px` : "1 1 0%", minWidth: 0, overflowY: "auto",
-            padding: 2, boxSizing: "border-box" }}>
-            {seMasterInhalt}
-          </div>
-        )}
-        {seLayout.cols > 0 && ve && (
-          <div data-ad-auslauf="1" style={{ flex: `0 0 ${seLayout.detailBreite || detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
-            <DetailRahmen t={t} accent={accent}>{seMaske}</DetailRahmen>
-          </div>
-        )}
-      </div>
+      <MasterDetailRahmen
+        master={seMasterInhalt}
+        detail={ve ? <DetailRahmen t={t} accent={accent}>{seMaske}</DetailRahmen> : null}
+        istDesktop={true}
+        listenAnsicht={listenAnsicht} listeOpt={listeOpt}
+        kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
     </div>
   );
 }
@@ -1238,9 +1228,6 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   // Master-Detail-Gerüst wie Statistik: links Objekt-/Gruppenauswahl, rechts
   // Vorlagenauswahl + Aufbau-Bereich. Detail an gleicher x-Position.
   const istDesktopLG = useWindowWidth() >= DESKTOP_MIN_WIDTH;
-  const [lgContentRef, lgContentW] = useContentWidth();
-  const lgLayout = passendeMasterSpalten(lgContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20, detailMin, listenAnsicht === "liste" ? listeOpt : null);
-  const masterBreiteLG = lgLayout.masterBreite;
   const istListeLG = listenAnsicht === "liste";
 
   // Gruppen-Auswahlliste: Alle Objekte → Verwaltungsarten → eigene Gruppen.
@@ -1473,6 +1460,231 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
     </div>
   );
 
+  const lgMasterInhalt = (layout) => (
+    lgView === "objekte" ? (
+      <div style={istListeLG
+        ? { display: "flex", flexDirection: "column", gap: 6 }
+        : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }}>
+        {(ves || []).map(v => istListeLG ? (
+          <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
+            aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
+            auswahlAccentOverride={accent}
+            onClick={() => { setObjektId(objektId === v.id ? null : v.id); setVorlageId(null); setHausId(null); }}/>
+        ) : (
+          <VEKachel key={v.id} ve={v} t={t} accent={accent}
+            aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
+            auswahlAccentOverride={accent}
+            onClick={() => { setObjektId(objektId === v.id ? null : v.id); setVorlageId(null); setHausId(null); }}/>
+        ))}
+      </div>
+    ) : (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {lgGruppen.map(g => {
+          const key = g.kind + ":" + g.id;
+          const aktiv = aktGruppe === key;
+          return (
+            <button key={key} onClick={() => { setAktGruppe(aktiv ? null : key); setVorlageId(null); }}
+              style={{ textAlign: "left", padding: "12px 14px", borderRadius: RAD.ms, cursor: "pointer",
+                border: `1px solid ${aktiv ? accent : t.border}`,
+                background: aktiv ? accent + "12" : t.card, width: "100%" }}>
+              <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: aktiv ? accent : t.text }}>{g.label}</div>
+              <div style={{ fontSize: FS.s, color: t.muted, marginTop: 2 }}>{g.sub}</div>
+            </button>
+          );
+        })}
+      </div>
+    )
+  );
+
+  // Detail: nur bei Auswahl (lgHatAuswahl). Mobil bekommt zusätzlich den
+  // Zurück-Button. Rahmen-Dekoration nur, wenn etwas ausgewählt ist.
+  const lgDetailKern = lgHatAuswahl ? (
+    <>
+      {!istDesktopLG && (
+        <button onClick={() => { setObjektId(null); setAktGruppe(null); setVorlageId(null); }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+            background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
+            padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
+          <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Auswahl
+        </button>
+      )}
+      {/* Vorlagenauswahl (bereichsgefiltert) — solange keine Vorlage gewählt. */}
+      {!vorlage && (
+        <div>
+          <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 10px" }}>
+            Welche Liste möchtest du erstellen?
+          </div>
+          <div style={KACHEL_GRID}>
+            {sichtbareVorlagen.map(v => (
+              <div key={v.id} onClick={() => { setVorlageId(v.id); setHausId(null); }} data-kb-item="1"
+                style={{ display: "flex", flexDirection: "column", cursor: "pointer",
+                  background: t.card, height: "100%",
+                  border: `1px solid ${t.border}`,
+                  borderRadius: RAD.lg, overflow: "hidden", transition: "all 0.15s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12,
+                  padding: "12px 14px", flex: 1, minHeight: 0 }}>
+                  <span style={{ fontSize: 22, flexShrink: 0 }}>{v.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{v.label}</div>
+                    <div style={{ fontSize: FS.s, color: t.sub }}>{v.sub}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Schritt 2: Konfiguration + Blatt-Vorschau */}
+      {vorlage && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 22 }}>{vorlage.icon}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>{vorlage.label}</div>
+              <div style={{ fontSize: FS.s, color: t.sub }}>
+                {vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " · " + ve.adresse : "") : vorlage.sub}
+              </div>
+            </div>
+            <button onClick={() => setVorlageId(null)} data-kb-zurueck="1"
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "none",
+                border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
+                padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
+                fontSize: FS.s, fontWeight: FW.medium, flexShrink: 0 }}>
+              Andere Liste
+            </button>
+          </div>
+
+          {vorlage.bereich === "objekt" && hausWaehlbar && (
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <div>
+                <div style={labelStyle}>Haus</div>
+                <select value={hausId == null ? "" : String(hausId)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val === "") { setHausId(null); return; }
+                    const h = haeuser.find(x => String(x.id) === val);
+                    setHausId(h ? h.id : null);
+                  }}
+                  style={selectStyle}>
+                  <option value="">Alle Häuser</option>
+                  {haeuser.map(h => <option key={String(h.id)} value={String(h.id)}>{h.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {vorlage.hatRollenFilter && (
+            <div>
+              <div style={labelStyle}>Rolle / Gewerk</div>
+              <select value={rolleFilter} onChange={e => setRolleFilter(e.target.value)}
+                style={selectStyle}>
+                <option value="">Alle Rollen</option>
+                {alleRollen.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <div style={labelStyle}>Spalten</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {vorlage.spalten.map(s => pill(spaltenState[s.id], s.label, () => toggleSpalte(s.id), s.id))}
+            </div>
+          </div>
+
+          {vorlage.filter.length > 0 && (
+            <div>
+              <div style={labelStyle}>Filter</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {vorlage.filter.map(fd => pill(filterState[fd.id], fd.label, () => toggleFilter(fd.id), fd.id))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            <div>
+              <div style={labelStyle}>Druckformat</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {pill(!quer, "Hochformat", () => setQuer(false), "hoch")}
+                {pill(quer, "Querformat", () => setQuer(true), "quer")}
+              </div>
+            </div>
+            <div>
+              <div style={labelStyle}>Schriftgröße</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {pill(fontGr === "s", "Klein", () => setFontGr("s"), "fs")}
+                {pill(fontGr === "m", "Normal", () => setFontGr("m"), "fm")}
+                {pill(fontGr === "l", "Groß", () => setFontGr("l"), "fl")}
+              </div>
+            </div>
+            <div>
+              <div style={labelStyle}>Zeilenabstand</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {pill(abstand === "kompakt", "Kompakt", () => setAbstand("kompakt"), "ak")}
+                {pill(abstand === "normal", "Normal", () => setAbstand("normal"), "an")}
+                {pill(abstand === "weit", "Weit", () => setAbstand("weit"), "aw")}
+              </div>
+            </div>
+            <div>
+              <div style={labelStyle}>Listenkopf</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {hv && pill(mitHv, "Hausverwaltung", () => setMitHv(!mitHv), "khv")}
+                {logoSrc ? pill(mitLogo, "Logo", () => setMitLogo(!mitLogo), "klogo")
+                  : pill(false, "Logo (in Einstellungen → Hausverwaltung hinterlegen)", () => {}, "klogo0")}
+              </div>
+            </div>
+            {vorlage.sonder === "klingelschild" && (
+              <div>
+                <div style={labelStyle}>Layout</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {pill(schildLayout === "tabelle", "Tabelle", () => setSchildLayout("tabelle"), "tab")}
+                  {pill(schildLayout === "schilder", "Schilder zum Ausschneiden", () => setSchildLayout("schilder"), "sch")}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={labelStyle}>Vorschau</div>
+            </div>
+            {rows.length === 0 ? (
+              <div style={{ padding: "14px 16px", fontSize: FS.s, color: t.muted,
+                fontStyle: "italic", background: t.surface, border: `1px solid ${t.border}`,
+                borderRadius: RAD.md }}>
+                Keine Einträge — Auswahl oder Filter prüfen.
+              </div>
+            ) : blattVorschau}
+          </div>
+
+          <div>
+            <button onClick={drucken} disabled={rows.length === 0}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8,
+                background: rows.length === 0 ? t.border : accent,
+                color: rows.length === 0 ? t.muted : getContrastColor(accent),
+                border: "none", borderRadius: RAD.ms, padding: "11px 20px",
+                cursor: rows.length === 0 ? "default" : "pointer",
+                fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.bold }}>
+              <I name="document" size={14} color={rows.length === 0 ? t.muted : getContrastColor(accent)}/>
+              Drucken / Als PDF sichern
+            </button>
+            <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 6 }}>
+              Im Druckdialog „Als PDF sichern" wählen, um eine PDF-Datei zu erhalten.
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  ) : null;
+  // Detail-Hülle: bei Auswahl mit Akzent-Rahmen (wie DetailRahmen), sonst null.
+  const lgDetailInhalt = lgHatAuswahl ? (
+    <div style={{ background: accent + "08", border: `1px solid ${accent}`,
+      borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box",
+      width: "100%", minWidth: 0 }}>
+      {lgDetailKern}
+    </div>
+  ) : null;
+
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <ScreenKopf t={t} accent={accent} titel="Listengenerator"
@@ -1485,261 +1697,14 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
       {lgView === "objekte" && legendeEl ? (
         <div style={{ flexShrink: 0, padding: "0 2px" }}>{legendeEl}</div>
       ) : null}
-      {/* Master-Detail: links Objekt-/Gruppenauswahl (Statistik-Modell),
-          rechts Vorlagenauswahl + Aufbau-Bereich. */}
-      <div ref={lgContentRef} style={istDesktopLG
-        ? { display: "flex", gap: 20, flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }
-        : { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-
-        {/* MASTER: Objekt-/Gruppenauswahl (Statistik-Modell). Auf Mobil nur
-            sichtbar, solange keine Auswahl getroffen ist. */}
-        {(istDesktopLG || !lgHatAuswahl) && (
-          <div data-ad-scroll="y" style={istDesktopLG
-            ? { flex: `0 0 ${masterBreiteLG}px`, minWidth: 0, overflowY: "auto",
-                padding: 2, boxSizing: "border-box",
-                paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
-            : { flex: 1, minHeight: 0, overflowY: "auto",
-                paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-            {lgView === "objekte" ? (
-              <div style={istListeLG
-                ? { display: "flex", flexDirection: "column", gap: 6 }
-                : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, lgLayout.cols)}, ${lgLayout.kartenBreite}px)` }}>
-                {(ves || []).map(v => istListeLG ? (
-                  <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
-                    aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
-                    auswahlAccentOverride={accent}
-                    onClick={() => { setObjektId(objektId === v.id ? null : v.id); setVorlageId(null); setHausId(null); }}/>
-                ) : (
-                  <VEKachel key={v.id} ve={v} t={t} accent={accent}
-                    aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
-                    auswahlAccentOverride={accent}
-                    onClick={() => { setObjektId(objektId === v.id ? null : v.id); setVorlageId(null); setHausId(null); }}/>
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {lgGruppen.map(g => {
-                  const key = g.kind + ":" + g.id;
-                  const aktiv = aktGruppe === key;
-                  return (
-                    <button key={key} onClick={() => { setAktGruppe(aktiv ? null : key); setVorlageId(null); }}
-                      style={{ textAlign: "left", padding: "12px 14px", borderRadius: RAD.ms, cursor: "pointer",
-                        border: `1px solid ${aktiv ? accent : t.border}`,
-                        background: aktiv ? accent + "12" : t.card, width: "100%" }}>
-                      <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: aktiv ? accent : t.text }}>{g.label}</div>
-                      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 2 }}>{g.sub}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* DETAIL: Vorlagenauswahl (bereichsgefiltert) + Aufbau-Bereich.
-            Auf Desktop immer sichtbar; auf Mobil nur bei getroffener Auswahl. */}
-        {(istDesktopLG || lgHatAuswahl) && (
-        <div data-ad-scroll="y" style={istDesktopLG
-          ? { flex: `0 0 ${lgLayout.detailBreite || detailMinBreite}px`,
-              minWidth: 0, overflowY: "auto",
-              ...(lgHatAuswahl ? { background: accent + "08", border: `1px solid ${accent}`,
-                borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box" } : {}),
-              paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
-          : { flex: 1, minHeight: 0, overflowY: "auto",
-              ...(lgHatAuswahl ? { background: accent + "08", border: `1px solid ${accent}`,
-                borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box" } : {}),
-              paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-
-        {/* Mobil: Zurück zur Auswahl */}
-        {!istDesktopLG && lgHatAuswahl && (
-          <button onClick={() => { setObjektId(null); setAktGruppe(null); setVorlageId(null); }}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
-              background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
-              padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-            <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Auswahl
-          </button>
-        )}
-
-        {/* Kein Platzhalter mehr bei leerer Auswahl — Detail bleibt leer. */}
-
-        {/* Vorlagenauswahl (bereichsgefiltert) — sichtbar bei Auswahl, solange
-            noch keine Vorlage gewählt ist. */}
-        {lgHatAuswahl && !vorlage && (
-          <div>
-            <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 10px" }}>
-              Welche Liste möchtest du erstellen?
-            </div>
-            <div style={KACHEL_GRID}>
-              {sichtbareVorlagen.map(v => (
-                <div key={v.id} onClick={() => { setVorlageId(v.id); setHausId(null); }} data-kb-item="1"
-                  style={{ display: "flex", flexDirection: "column", cursor: "pointer",
-                    background: t.card, height: "100%",
-                    border: `1px solid ${t.border}`,
-                    borderRadius: RAD.lg, overflow: "hidden", transition: "all 0.15s" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12,
-                    padding: "12px 14px", flex: 1, minHeight: 0 }}>
-                    <span style={{ fontSize: 22, flexShrink: 0 }}>{v.icon}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{v.label}</div>
-                      <div style={{ fontSize: FS.s, color: t.sub }}>{v.sub}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Schritt 2: Konfiguration + Blatt-Vorschau */}
-        {vorlage && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 22 }}>{vorlage.icon}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>{vorlage.label}</div>
-                <div style={{ fontSize: FS.s, color: t.sub }}>
-                  {vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " · " + ve.adresse : "") : vorlage.sub}
-                </div>
-              </div>
-              <button onClick={() => setVorlageId(null)} data-kb-zurueck="1"
-                style={{ display: "flex", alignItems: "center", gap: 6, background: "none",
-                  border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
-                  padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
-                  fontSize: FS.s, fontWeight: FW.medium, flexShrink: 0 }}>
-                Andere Liste
-              </button>
-            </div>
-
-            {/* Hauswahl — das Objekt selbst wird links gewählt; hier nur noch
-                die Haus-Verfeinerung, falls ein Objekt mehrere Häuser hat. */}
-            {vorlage.bereich === "objekt" && hausWaehlbar && (
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                <div>
-                  <div style={labelStyle}>Haus</div>
-                  <select value={hausId == null ? "" : String(hausId)}
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (val === "") { setHausId(null); return; }
-                      const h = haeuser.find(x => String(x.id) === val);
-                      setHausId(h ? h.id : null);
-                    }}
-                    style={selectStyle}>
-                    <option value="">Alle Häuser</option>
-                    {haeuser.map(h => <option key={String(h.id)} value={String(h.id)}>{h.name}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {/* Rollen-Filter (nur Kontaktliste) */}
-            {vorlage.hatRollenFilter && (
-              <div>
-                <div style={labelStyle}>Rolle / Gewerk</div>
-                <select value={rolleFilter} onChange={e => setRolleFilter(e.target.value)}
-                  style={selectStyle}>
-                  <option value="">Alle Rollen</option>
-                  {alleRollen.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-            )}
-
-            {/* Spaltenauswahl */}
-            <div>
-              <div style={labelStyle}>Spalten</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {vorlage.spalten.map(s => pill(spaltenState[s.id], s.label, () => toggleSpalte(s.id), s.id))}
-              </div>
-            </div>
-
-            {/* Filter */}
-            {vorlage.filter.length > 0 && (
-              <div>
-                <div style={labelStyle}>Filter</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {vorlage.filter.map(fd => pill(filterState[fd.id], fd.label, () => toggleFilter(fd.id), fd.id))}
-                </div>
-              </div>
-            )}
-
-            {/* Darstellung: Format, Schrift, Abstand, Kopf */}
-            <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-              <div>
-                <div style={labelStyle}>Druckformat</div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {pill(!quer, "Hochformat", () => setQuer(false), "hoch")}
-                  {pill(quer, "Querformat", () => setQuer(true), "quer")}
-                </div>
-              </div>
-              <div>
-                <div style={labelStyle}>Schriftgröße</div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {pill(fontGr === "s", "Klein", () => setFontGr("s"), "fs")}
-                  {pill(fontGr === "m", "Normal", () => setFontGr("m"), "fm")}
-                  {pill(fontGr === "l", "Groß", () => setFontGr("l"), "fl")}
-                </div>
-              </div>
-              <div>
-                <div style={labelStyle}>Zeilenabstand</div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {pill(abstand === "kompakt", "Kompakt", () => setAbstand("kompakt"), "ak")}
-                  {pill(abstand === "normal", "Normal", () => setAbstand("normal"), "an")}
-                  {pill(abstand === "weit", "Weit", () => setAbstand("weit"), "aw")}
-                </div>
-              </div>
-              <div>
-                <div style={labelStyle}>Listenkopf</div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {hv && pill(mitHv, "Hausverwaltung", () => setMitHv(!mitHv), "khv")}
-                  {logoSrc ? pill(mitLogo, "Logo", () => setMitLogo(!mitLogo), "klogo")
-                    : pill(false, "Logo (in Einstellungen → Hausverwaltung hinterlegen)", () => {}, "klogo0")}
-                </div>
-              </div>
-              {vorlage.sonder === "klingelschild" && (
-                <div>
-                  <div style={labelStyle}>Layout</div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {pill(schildLayout === "tabelle", "Tabelle", () => setSchildLayout("tabelle"), "tab")}
-                    {pill(schildLayout === "schilder", "Schilder zum Ausschneiden", () => setSchildLayout("schilder"), "sch")}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Blatt-Vorschau */}
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <div style={labelStyle}>Vorschau</div>
-              </div>
-              {rows.length === 0 ? (
-                <div style={{ padding: "14px 16px", fontSize: FS.s, color: t.muted,
-                  fontStyle: "italic", background: t.surface, border: `1px solid ${t.border}`,
-                  borderRadius: RAD.md }}>
-                  Keine Einträge — Auswahl oder Filter prüfen.
-                </div>
-              ) : blattVorschau}
-            </div>
-
-            {/* Druck-Button */}
-            <div>
-              <button onClick={drucken} disabled={rows.length === 0}
-                style={{ display: "inline-flex", alignItems: "center", gap: 8,
-                  background: rows.length === 0 ? t.border : accent,
-                  color: rows.length === 0 ? t.muted : getContrastColor(accent),
-                  border: "none", borderRadius: RAD.ms, padding: "11px 20px",
-                  cursor: rows.length === 0 ? "default" : "pointer",
-                  fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.bold }}>
-                <I name="document" size={14} color={rows.length === 0 ? t.muted : getContrastColor(accent)}/>
-                Drucken / Als PDF sichern
-              </button>
-              <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 6 }}>
-                Im Druckdialog „Als PDF sichern" wählen, um eine PDF-Datei zu erhalten.
-              </div>
-            </div>
-          </div>
-        )}
-        </div>
-        )}
-      </div>
+      <MasterDetailRahmen
+        master={lgMasterInhalt}
+        detail={lgDetailInhalt}
+        mobilDetail={lgDetailKern}
+        istDesktop={istDesktopLG}
+        listenAnsicht={listenAnsicht} listeOpt={listeOpt}
+        kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
     </div>
   );
 }
@@ -1755,12 +1720,6 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   const [statView, setStatView] = useState("objekte"); // "objekte" | "gruppen"
   const [aktVEId, setAktVEId] = useState(null);
   const [aktGruppe, setAktGruppe] = useState(null); // {kind,id} | null
-  const [mdContentRef, mdContentW] = useContentWidth();
-  // Spalten + Master-Breite an die ECHTE verfügbare Breite anpassen (Reduktion
-  // wie useMasterDetailLayout): passt Spalten×Maxbreite+Detail nicht, fallen
-  // Spalten weg statt Überlauf. §73.4.
-  const stLayout = passendeMasterSpalten(mdContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20, detailMin, listenAnsicht === "liste" ? listeOpt : null);
-  const masterBreite = stLayout.masterBreite;
   const istListe = listenAnsicht === "liste";
 
   // Gruppen-Auswahlliste: Alle Objekte → Verwaltungsarten → eigene Gruppen.
@@ -1794,10 +1753,11 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   const hatAuswahl = (statView === "objekte" && aktVEId) || (statView === "gruppen" && aktGruppe);
 
   // Master-Spalte: Objektauswahl (Karte/Liste) oder Gruppenauswahl (Liste).
-  const masterGridStyle = istListe
-    ? { display: "flex", flexDirection: "column", gap: 6 }
-    : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, stLayout.cols)}, ${stLayout.kartenBreite}px)` };
-  const masterInhalt = statView === "objekte" ? (
+  const masterInhalt = (layout) => {
+    const masterGridStyle = istListe
+      ? { display: "flex", flexDirection: "column", gap: 6 }
+      : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` };
+    return statView === "objekte" ? (
     <div style={masterGridStyle}>
       {ves.map(ve => istListe ? (
         <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
@@ -1827,7 +1787,8 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
         );
       })}
     </div>
-  );
+    );
+  };
 
   const detailInhalt = hatAuswahl && auswahlVes.length > 0 ? (
     <DetailRahmen t={t} accent={accent} titel={auswahlTitel}>
@@ -1862,34 +1823,27 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
         ) : (
           <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
             {statView === "objekte" ? legendeEl : null}
-            {masterInhalt}
+            {masterInhalt({ cols: 1, kartenBreite: kartenMaxBreite })}
           </div>
         )}
       </div>
     );
   }
 
-  // DESKTOP: Master-Detail nebeneinander, Detail an fester x-Position.
+  // DESKTOP: Master-Detail über den kanonischen Baustein (§75).
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {header}
       {statView === "objekte" && legendeEl ? (
         <div style={{ flexShrink: 0, padding: "0 2px" }}>{legendeEl}</div>
       ) : null}
-      <div ref={mdContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
-        minWidth: 0, width: "100%", boxSizing: "border-box", gap: 20 }}>
-        {(stLayout.cols > 0 || !hatAuswahl) && (
-          <div data-ad-scroll="y" style={{ flex: stLayout.cols > 0 ? `0 0 ${masterBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto",
-            padding: 2, boxSizing: "border-box" }}>
-            {masterInhalt}
-          </div>
-        )}
-        {stLayout.cols > 0 && hatAuswahl && (
-          <div data-ad-auslauf="1" style={{ flex: `0 0 ${stLayout.detailBreite || detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
-            {detailInhalt}
-          </div>
-        )}
-      </div>
+      <MasterDetailRahmen
+        master={masterInhalt}
+        detail={detailInhalt}
+        istDesktop={true}
+        listenAnsicht={listenAnsicht} listeOpt={listeOpt}
+        kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
     </div>
   );
 }

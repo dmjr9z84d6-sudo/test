@@ -256,7 +256,6 @@ import {
   useKontaktFarbe,
   useLeistungen,
   useLoeschenErlaubt,
-  useMasterDetailLayout,
   useObjektTabs,
   useOutsideClick,
   useRechnungsadresseAn,
@@ -283,6 +282,7 @@ import {
   DatumFeld,
   DetailRahmen,
   KopfPille,
+  MasterDetailRahmen,
   ScreenKopf,
   DatumKalender,
   EckPille,
@@ -429,7 +429,6 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
   // kleine Lücke zum Detail — bewusst akzeptiert (Bennys Entscheidung v12.48),
   // damit der Slider überall gleich wirkt.
   const setWunschCols = Math.max(1, setKartenSpalten);
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, setWunschCols, kartenMin, istListe ? listeOpt : null, detailMin);
 
   // Sprung in eine Sektion von außen (z. B. Tastaturkürzel „?" → Tastatur).
   useEffect(() => {
@@ -539,6 +538,25 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
     ? sortierteSektionen.find(x => x.id === aktSektion)
     : null;
 
+  // Master = Sektions-Kacheln (Funktion(layout) für Karten-Spalten). In der
+  // Übersicht ohne offene Sektion bleibt die Breite über listeBreiteAus gedeckelt
+  // (Liste-Modus) bzw. nutzt das feste Grid (Karten-Modus).
+  const sektionsGrid = (layout, alsMaster) => (
+    <div style={istListe
+      ? (alsMaster
+          ? { display: "grid", alignContent: "start", gridTemplateColumns: "1fr", gap: 8 }
+          : { display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: listeBreiteAus(listeOpt), width: "100%" })
+      : (alsMaster
+          ? { ...KACHEL_GRID, alignContent: "start", gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }
+          : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID))}>
+      {sortierteSektionen.map((s) => (
+        <SektionKachel key={s.id} sektion={s}
+          aktiv={offenSektion && offenSektion.id === s.id} t={t} id={"set-" + s.id}
+          onClick={() => setAktSektion(s.id)}/>
+      ))}
+    </div>
+  );
+
   return (
     <div style={istDesktop
       ? { flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }
@@ -558,63 +576,18 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
         </div>
       </StickySectionHeader>
 
-      {/* Master-Detail (Desktop) — nutzt dasselbe Layout wie Objekte/Kontakte:
-          Sektions-Kacheln als Master-Spalten in Kartenbreite, Detail rechts mit
-          dem Detailbreite-Faktor. Bei sehr schmalem Fenster (masterCols 0) wird
-          das Detail full-width mit Zurück-Button. */}
-      {offenSektion && istDesktop && mdLayout.masterCols === 0 && (
-        <div ref={mdRef} style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
-          <ZurueckButton onClick={() => setAktSektion(null)} variante="body"
-            t={t} kbZurueck={true}/>
-          <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto" }}>
-            {renderSektionDetail(offenSektion)}
-          </div>
-        </div>
-      )}
-      {offenSektion && istDesktop && mdLayout.masterCols > 0 && (
-        <div ref={mdRef} style={{ display: "flex", gap: 20,
-          flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
-          <div data-ad-auslauf="1" style={{ flex: `0 0 ${mdLayout.masterFest || mdLayout.masterWidth}px`, minWidth: 0, overflowY: "auto",
-            padding: 2, boxSizing: "border-box",
-            ...(istListe ? { display: "grid", alignContent: "start", gridTemplateColumns: "1fr", gap: 8 }
-              : { ...KACHEL_GRID, alignContent: "start", gridTemplateColumns: `repeat(${mdLayout.masterCols}, ${mdLayout.kartenBreite}px)` }) }}>
-            {sortierteSektionen.map((s, i) => (
-              <SektionKachel key={s.id} sektion={s}
-                aktiv={offenSektion && offenSektion.id === s.id} t={t} id={"set-" + s.id}
-                onClick={() => setAktSektion(s.id)}/>
-            ))}
-          </div>
-          <div data-ad-auslauf="1" style={{ flex: `0 0 ${mdLayout.detailBreite}px`, minWidth: 0, maxWidth: "100%", overflowY: "auto" }}>
-            {renderSektionDetail(offenSektion)}
-          </div>
-        </div>
-      )}
-
-      {/* Vollbild-Detail (Mobile) — Zurück-Button sitzt in der Header-Zeile,
-          deshalb hier nur noch der Inhalt. */}
-      {offenSektion && !istDesktop && (
-        <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
-          paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-          {renderSektionDetail(offenSektion)}
-        </div>
-      )}
-
-      {/* Sektions-Grid (Übersicht) — Startansicht in ALLEN Layouts, solange
-          keine Sektion offen ist. Der mdRef misst hier die Breite, damit
-          masterCols korrekt bestimmt wird. */}
-      {!offenSektion && (
-        <div ref={mdRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto",
-          paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-          <div style={istListe ? { display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: listeBreiteAus(listeOpt), width: "100%" }
-            : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
-            {sortierteSektionen.map((s, i) => (
-              <SektionKachel key={s.id} sektion={s} aktiv={false} t={t}
-                id={"set-" + s.id}
-                onClick={() => setAktSektion(s.id)}/>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Master-Detail über den kanonischen Baustein (§75). Master = Sektions-
+          Kacheln; Detail nur bei offener Sektion. Ohne Auswahl steht die Über-
+          sicht allein (kein reservierter Detail-Slot). Mobil: Detail ersetzt
+          die Liste (Zurück sitzt im Header). */}
+      <MasterDetailRahmen
+        master={(layout) => sektionsGrid(layout, !!offenSektion)}
+        detail={offenSektion ? renderSektionDetail(offenSektion) : null}
+        mobilDetail={offenSektion ? renderSektionDetail(offenSektion) : null}
+        istDesktop={istDesktop}
+        listenAnsicht={settings.listenAnsicht || "karten"} listeOpt={listeOpt}
+        kartenSpalten={setWunschCols} kartenMaxBreite={kartenMaxBreite}
+        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
     </div>
   );
 }
@@ -1622,9 +1595,6 @@ export default function App() {
   // verwendet diese im Master-Detail-Modus für die linke Spalte → kein
   // Sprung beim Aufklappen einer Karte.
   const [contentRef, cardWidth] = useCardWidth(settings.kartenMinBreite || 280, 10);
-  // Eigene Messung der verfügbaren Breite für Pille-Screens, die ihr Master-Detail
-  // inline im Haupt-Render aufbauen (Vorgänge). §73.4 — Spalten-Reduktion.
-  const [auftragContentRef, auftragContentW] = useContentWidth();
   // Detailbreite relativ zur Kartenbreite (minDetailFactor): größer = breitere
   // Detailansicht, dafür weniger Master-Spalten. Default 1.1 (= bisheriges Verhalten).
   // Detailfenster-Breite jetzt absolut in px (settings.detailMinBreite).
@@ -2913,8 +2883,6 @@ export default function App() {
         {!suchErg && screen === "auftraege" && (() => {
           const aAccent = (effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444";
           const istDesk = istDesktop;
-          const aufLayout = passendeMasterSpalten(auftragContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMinBreiteEff, detailMinBreite, 20, detailMinBreiteEff, effectiveSettings.listenAnsicht === "liste" ? listeOpt : null);
-          const masterBreiteA = aufLayout.masterBreite;
           const istListeA = effectiveSettings.listenAnsicht === "liste";
           const firmen = (kontakteSichtbar || []).filter(k => k && k.typ === "firma");
           // Demo-Vorgänge (echte Quelle folgt). Je nach Achse nach Objekt bzw.
@@ -2965,10 +2933,10 @@ export default function App() {
             detailListe = renderVorgaenge(gef); // TODO echte Quelle: Vorgänge dieser Firma
           }
 
-          const masterInhalt = auftragView === "objekt" ? (
+          const masterInhalt = (layout) => auftragView === "objekt" ? (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
-              : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, aufLayout.cols)}, ${aufLayout.kartenBreite}px)` }}>
+              : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }}>
               {(vesSichtbar || []).map(v => istListeA ? (
                 <VEListenZeile key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
@@ -2984,7 +2952,7 @@ export default function App() {
           ) : (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
-              : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, aufLayout.cols)}, ${aufLayout.kartenBreite}px)` }}>
+              : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }}>
               {firmen.length === 0 ? (
                 <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 12 }}>
                   Keine Firmen-Kontakte vorhanden.
@@ -3029,7 +2997,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
-                    {masterInhalt}
+                    {masterInhalt({ cols: 1, kartenBreite: kartenMaxBreite })}
                   </div>
                 )}
               </div>
@@ -3041,20 +3009,13 @@ export default function App() {
               {auftragView === "objekt" && aufLegende ? (
                 <div style={{ flexShrink: 0, padding: "0 2px" }}>{aufLegende}</div>
               ) : null}
-              <div ref={auftragContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
-                minWidth: 0, width: "100%", boxSizing: "border-box", gap: 20 }}>
-                {(aufLayout.cols > 0 || !hatAuswahl) && (
-                  <div data-ad-scroll="y" style={{ flex: aufLayout.cols > 0 ? `0 0 ${masterBreiteA}px` : "1 1 0%", minWidth: 0, overflowY: "auto",
-                    padding: 2, boxSizing: "border-box" }}>
-                    {masterInhalt}
-                  </div>
-                )}
-                {aufLayout.cols > 0 && hatAuswahl && (
-                  <div data-ad-auslauf="1" style={{ flex: `0 0 ${aufLayout.detailBreite || detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
-                    {detailInhalt}
-                  </div>
-                )}
-              </div>
+              <MasterDetailRahmen
+                master={masterInhalt}
+                detail={detailInhalt}
+                istDesktop={true}
+                listenAnsicht={effectiveSettings.listenAnsicht} listeOpt={listeOpt}
+                kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+                kartenMin={kartenMinBreiteEff} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff}/>
             </div>
           );
         })()}

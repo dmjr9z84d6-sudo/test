@@ -13,7 +13,8 @@ import {
   eigStatus, findeKontaktKandidaten, verwendungenVon
 } from "./datenmodell.js";
 import {
-  I, StickySectionHeader, formatNameMitCtx, useAvatarIcons, useFirmenRollen, useKategorien,
+  I, StickySectionHeader, formatNameMitCtx, passendeMasterSpalten, useAvatarIcons,
+  useContentWidth, useFirmenRollen, useKategorien,
   useKontaktAnzeige, useKontaktFarbe, useLeistungen, useRollen, useVerwendungen,
   useZeitPicker, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
@@ -3325,12 +3326,93 @@ function DetailRahmen({ t, accent, titel = null, sub = null, children }) {
   );
 }
 
+// ── MasterDetailRahmen — DAS kanonische Master-Detail-Gerüst (§73/§75) ───────
+// EIN Baustein für ALLE Screens, die ihr Master-Detail selbst aufbauen
+// (Schnelleingabe, Listengenerator, Statistik, Vorgänge, Kalender-Timeline).
+// Vorher baute jeder Screen sein eigenes flex-row-Gerüst mit eigener Breiten-
+// rechnung und eigenem Detail-Platzhalter → drei verschiedene Breiten trotz
+// „Liste-Modus überall gleich". Jetzt schreiben alle ihre Liste + ihr Detail
+// hier rein, das Gerüst ist identisch.
+//
+// VERBINDLICHE Liste-Modus-Regel (Benny v12.57): im Liste-Modus richtet sich die
+// Master-Breite NUR nach den Liste-Slidern (listeOpt), Karten kommen nicht vor.
+// OHNE offenes Detail wird RECHTS NICHTS reserviert — die schmale Liste steht
+// allein links, der Rest bleibt leer (wie Objekte/Kontakte). Erst mit Auswahl
+// erscheint das Detail rechts.
+//
+// Props:
+//   master      = React-Node: die Master-Liste (Buckets/flache Liste, egal)
+//   detail      = React-Node | null: der Detail-Inhalt (null = keine Auswahl)
+//   istDesktop  = bool
+//   listenAnsicht, listeOpt, kartenSpalten, kartenMaxBreite, kartenMin,
+//   detailMinBreite, detailMin = Layout-Parameter (wie an die Screens gereicht)
+//   gap         = Abstand Master↔Detail (default 20)
+//   mobilDetail = React-Node für den Mobil-Detail-Pfad (default = detail)
+function MasterDetailRahmen({ master, detail = null, istDesktop = true,
+  listenAnsicht = "karten", listeOpt = null, kartenSpalten = 2,
+  kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, detailMin = null,
+  gap = 20, mobilDetail = undefined }) {
+  const [contentRef, contentW] = useContentWidth();
+  const istListe = listenAnsicht === "liste";
+  const hatDetail = detail != null;
+  const verf = contentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80);
+  const layout = passendeMasterSpalten(verf, kartenSpalten, kartenMaxBreite,
+    kartenMin, detailMinBreite, gap, detailMin, istListe ? listeOpt : null);
+  const masterBreite = layout.masterBreite;
+  const detailBreite = layout.detailBreite || detailMinBreite;
+  // master darf Node ODER Funktion(layout) sein — so kann die Master-Liste im
+  // Karten-Modus die berechneten Spalten/Kartenbreite nutzen (layout.cols /
+  // layout.kartenBreite), ohne dass der Screen selbst rechnet.
+  const masterNode = (typeof master === "function") ? master(layout) : master;
+
+  // MOBIL: Detail ersetzt die Liste (Detail offen → nur Detail, sonst nur Liste).
+  if (!istDesktop) {
+    const md = mobilDetail !== undefined ? mobilDetail : detail;
+    if (hatDetail && md != null) {
+      return (
+        <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
+          minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 2px",
+          boxSizing: "border-box" }}>
+          {md}
+        </div>
+      );
+    }
+    return (
+      <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0,
+        width: "100%", overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
+        {masterNode}
+      </div>
+    );
+  }
+
+  // DESKTOP: Master links (feste Breite), Detail NUR bei Auswahl rechts.
+  // Ohne Auswahl: Master steht allein, KEIN reservierter Detail-Slot, KEIN
+  // "1 1 0%"-Dehnen → Liste behält ihre feste Master-Breite, Rest bleibt leer.
+  return (
+    <div ref={contentRef} style={{ display: "flex", flexDirection: "row", flex: 1,
+      minHeight: 0, minWidth: 0, width: "100%", boxSizing: "border-box", gap }}>
+      <div data-ad-scroll="y" style={{
+        flex: (layout.cols > 0 && masterBreite > 0) ? `0 0 ${masterBreite}px` : "1 1 0%",
+        minWidth: 0, overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
+        {masterNode}
+      </div>
+      {hatDetail && layout.cols > 0 && (
+        <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailBreite}px`,
+          minWidth: 0, overflowY: "auto" }}>
+          {detail}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ╔═════════════════════════════════════════════════════════════════════════╗
 
 export {
   KopfPille,
   ScreenKopf,
   DetailRahmen,
+  MasterDetailRahmen,
   Toggle,
   SegmentControl,
   Inp,

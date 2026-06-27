@@ -5,12 +5,12 @@ import {
   flaecheVon, isStellplatzTyp, istAnonymesMitglied, teileVon
 } from "./datenmodell.js";
 import {
-  EinheitOffenContext, I, scrollToCard, useHandlungsbedarf, useKontaktFarbe,
-  useLoeschenErlaubt, useMasterDetailLayout, useObjektTabs, useStatusLeiste, veKartenFeldWert
+  DESKTOP_MIN_WIDTH, EinheitOffenContext, I, scrollToCard, useHandlungsbedarf, useKontaktFarbe,
+  useLoeschenErlaubt, useObjektTabs, useStatusLeiste, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
 import {
   Avatar, DATUM_MONATE_KURZ, DatumFeld, FeldKontaktKarte, LEGIONELLEN_BEFUNDE,
-  LEGIONELLEN_STATUS_FARBE, MonatJahrPickerModal, VerwendungenBadges,
+  LEGIONELLEN_STATUS_FARBE, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
@@ -1549,19 +1549,12 @@ const TE_MUSTER_PUNKTE = [
 function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, gefiltert, expandedVEId, setExpandedVEId, sprungZiel = null,
   offenVE, t, accent, kontakte, setKontakte, ves, setVes, gotoKontakt, listenAnsicht = "karten", renderDetailOverride = null, auswahlAccentOverride = null }) {
   const istListe = listenAnsicht === "liste";
-  // Detail immer fest (absolute px aus dem Slider), Master nimmt den Rest. Bei
-  // Karten teilt sich der Rest in kartenSpalten gleich breite Spalten. Im
-  // Liste-Modus übernimmt listeOpt die Schrumpf-Kaskade (Liste→Detail→Nur-Detail).
-  // detailMin (v12.47): erlaubt dem Detail im Karten-Modus zu schrumpfen.
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null, detailMin);
-  // Karten im Master nutzen das einheitliche KACHEL_GRID (feste Kachelbreite,
-  // nie gedehnt) — identisch zu Liste/Kontakten/Einstellungen.
   // Auswahl-Akzent: Mehr-Farbe = Objekt-Bereichsfarbe, Graumodus = System-Akzent.
   // Override (z. B. Kalenderfarbe) hat Vorrang.
   const auswahlAccent = auswahlAccentOverride || useKontaktFarbe().auswahlObjekt || accent;
+  const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
 
   // Border/Background auf eigenem inneren Wrapper (analog KontaktDetailKarte).
-  // KEIN minHeight: 100% — sonst scrollt die Pane nicht.
   // renderDetailOverride: erlaubt fremden Detail-Inhalt (z. B. Kalender-Termine
   // eines Objekts) bei gleichem Master-Detail-Gerüst.
   const renderDetail = () => renderDetailOverride ? renderDetailOverride(offenVE) : (
@@ -1579,54 +1572,46 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = nul
     </div>
   );
 
-  // Fallback: kein Master mehr (= Mobil-Detail). Einheitlich zum Objekte-/
-  // Kontakte-Tab: DetailMobilScrollTop scrollt den Detail-Kopf beim Öffnen unter
-  // den Sticky-Header (Header sichtbar) statt unten kleben zu lassen. KEIN
-  // eigener „Zurück zur Liste"-Body-Button mehr — das „Zurück" oben rechts
-  // liefert der aufrufende Sticky-Header (Kalender/ETV/Kommunikation via
-  // ObjektListeMitDetail). So sind alle Master-Detail-Pfade konsistent.
-  if (mdLayout.masterCols === 0) {
-    return (
-      <div ref={mdRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0,
-        display: "flex", flexDirection: "column", overflowY: "auto" }}>
-        <DetailMobilScrollTop offenId={offenVE && offenVE.id} t={t}
-          headerSelector="[data-app-fixed-header]">
-          {renderDetail()}
-        </DetailMobilScrollTop>
-      </div>
-    );
-  }
+  // Master-Liste (Karten/Zeilen). Funktion(layout) → Karten-Spalten aus dem
+  // Baustein-Layout.
+  const masterListe = (layout) => (
+    <div style={listenAnsicht === "liste"
+      ? { display: "flex", flexDirection: "column", gap: 6 }
+      : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }}>
+      {gefiltert.map(ve => listenAnsicht === "liste" ? (
+        <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
+          aktiv={expandedVEId === ve.id} kbItem id={"obj-" + ve.id}
+          auswahlAccentOverride={auswahlAccentOverride}
+          onClick={() => setExpandedVEId(expandedVEId === ve.id ? null : ve.id)}/>
+      ) : (
+        <VEKachel key={ve.id} ve={ve} t={t} accent={accent}
+          aktiv={expandedVEId === ve.id} kbItem
+          id={"obj-" + ve.id}
+          auswahlAccentOverride={auswahlAccentOverride}
+          onClick={() => setExpandedVEId(expandedVEId === ve.id ? null : ve.id)}/>
+      ))}
+    </div>
+  );
+
+  // Mobil-Detail: DetailMobilScrollTop scrollt den Detail-Kopf unter den Sticky-
+  // Header (Header sichtbar). Kein eigener Body-Zurück-Button — das „Zurück" oben
+  // rechts liefert der aufrufende Sticky-Header.
+  const mobilDetail = (
+    <DetailMobilScrollTop offenId={offenVE && offenVE.id} t={t}
+      headerSelector="[data-app-fixed-header]">
+      {renderDetail()}
+    </DetailMobilScrollTop>
+  );
 
   return (
-    <div ref={mdRef} style={{ display: "flex", gap: 20,
-      flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
-      <div data-ad-scroll="y" data-ad-auslauf="1" style={{
-        flex: mdLayout.detailFest ? `0 0 ${mdLayout.masterFest}px` : `0 0 ${mdLayout.masterWidth}px`, minWidth: 0,
-        overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
-        <div style={listenAnsicht === "liste"
-          ? { display: "flex", flexDirection: "column", gap: 6 }
-          : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${mdLayout.masterCols}, ${mdLayout.kartenBreite}px)` }}>
-          {gefiltert.map(ve => listenAnsicht === "liste" ? (
-            <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
-              aktiv={expandedVEId === ve.id} kbItem id={"obj-" + ve.id}
-              auswahlAccentOverride={auswahlAccentOverride}
-              onClick={() => setExpandedVEId(expandedVEId === ve.id ? null : ve.id)}/>
-          ) : (
-            <VEKachel key={ve.id} ve={ve} t={t} accent={accent}
-              aktiv={expandedVEId === ve.id} kbItem
-              id={"obj-" + ve.id}
-              auswahlAccentOverride={auswahlAccentOverride}
-              onClick={() => setExpandedVEId(expandedVEId === ve.id ? null : ve.id)}/>
-          ))}
-        </div>
-      </div>
-      <div data-ad-auslauf="1" style={{
-        flex: !mdLayout.detailFest ? `0 0 ${mdLayout.detailBreite}px`
-          : `0 0 ${mdLayout.detailBreite}px`, minWidth: 0,
-        overflowY: "auto" }}>
-        {renderDetail()}
-      </div>
-    </div>
+    <MasterDetailRahmen
+      master={masterListe}
+      detail={renderDetail()}
+      mobilDetail={mobilDetail}
+      istDesktop={istDesktop}
+      listenAnsicht={listenAnsicht} listeOpt={listeOpt}
+      kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+      kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
   );
 }
 

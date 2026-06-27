@@ -14,11 +14,11 @@ import {
   DESKTOP_MIN_WIDTH, I, ZurueckButton, ableiteStatusVonBis, belegungsRollenFuerKontakt,
   eingehendeVertretungen, feldWertGueltig, findScrollParent, flacheZuweisungen,
   formatNameMitCtx, kontaktAllesGueltig, useAlleKontakte, useAlleVes, useFirmenRollen, useKartenBadges,
-  useKontaktAnzeige, useKontaktFarbe, useLeistungen, useLoeschenErlaubt, useMasterDetailLayout,
+  useKontaktAnzeige, useKontaktFarbe, useLeistungen, useLoeschenErlaubt,
   useRollen, useStatusLeiste, useVerwendungen, useWindowWidth, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
 import {
-  Avatar, DatumFeld, KontaktPicker, RolleBadge, Tip, Toggle, VerwendungBadge
+  Avatar, DatumFeld, KontaktPicker, MasterDetailRahmen, RolleBadge, Tip, Toggle, VerwendungBadge
 } from "./components.jsx";
 import {
   EinheitKachel, FeldEinheitKarte, FeldObjektKarte, StatusLeiste, VEKachel, berechneKontaktStatus
@@ -3753,43 +3753,31 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
 //   · nur Detail mit "Zurück"-Button (wenn auch 1-Spalten-Master nicht passt)
 function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, listenAnsicht = "karten", renderKartenSpalte, aktivK, t, accent,
   ves, kontakte, setKontakte, onVEClick, setAktiv, updateKontakt, onDelete }) {
-  const istListe = listenAnsicht === "liste";
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null);
-  const kartenCols = mdLayout.masterCols || 1;
-
-  // Fallback: kein Master mehr — Detail full-width + Zurück-Button
-  if (mdLayout.masterCols === 0) {
-    return (
-      <div ref={mdRef} style={{ flex: 1, minHeight: 0, minWidth: 0,
-        display: "flex", flexDirection: "column" }}>
-        <ZurueckButton onClick={() => setAktiv(null)} variante="body" t={t}/>
-        <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto" }}>
-          <KontaktDetailKarte k={aktivK} t={t} accent={accent} listenModus={true}
-            ves={ves} kontakte={kontakte} setKontakte={setKontakte}
-            onVEClick={onVEClick} onKontaktClick={(id) => setAktiv(id)}
-            onUpdate={updateKontakt} onDelete={onDelete}/>
-        </div>
+  const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
+  const detailKarte = (
+    <KontaktDetailKarte k={aktivK} t={t} accent={accent} listenModus={true}
+      ves={ves} kontakte={kontakte} setKontakte={setKontakte}
+      onVEClick={onVEClick} onKontaktClick={(id) => setAktiv(id)}
+      onUpdate={updateKontakt} onDelete={onDelete}/>
+  );
+  // Mobil-Detail: voller Detail + Zurück-Button (wie bisher).
+  const mobilDetail = (
+    <>
+      <ZurueckButton onClick={() => setAktiv(null)} variante="body" t={t}/>
+      <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto" }}>
+        {detailKarte}
       </div>
-    );
-  }
-
+    </>
+  );
   return (
-    <div ref={mdRef} style={{ display: "flex", gap: 20,
-      flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
-      <div data-ad-auslauf="1" style={{
-        flex: mdLayout.detailFest ? `0 0 ${mdLayout.masterFest}px` : `0 0 ${mdLayout.masterWidth}px`, minWidth: 0,
-        overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
-        {renderKartenSpalte(kartenCols, mdLayout.kartenBreite)}
-      </div>
-      <div data-ad-auslauf="1" style={{
-        flex: `0 0 ${mdLayout.detailBreite}px`, minWidth: 0,
-        overflowY: "auto" }}>
-        <KontaktDetailKarte k={aktivK} t={t} accent={accent} listenModus={true}
-          ves={ves} kontakte={kontakte} setKontakte={setKontakte}
-          onVEClick={onVEClick} onKontaktClick={(id) => setAktiv(id)}
-          onUpdate={updateKontakt} onDelete={onDelete}/>
-      </div>
-    </div>
+    <MasterDetailRahmen
+      master={(layout) => renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite)}
+      detail={detailKarte}
+      mobilDetail={mobilDetail}
+      istDesktop={istDesktop}
+      listenAnsicht={listenAnsicht} listeOpt={listeOpt}
+      kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+      kartenMin={kartenMin} detailMinBreite={detailMinBreite}/>
   );
 }
 
