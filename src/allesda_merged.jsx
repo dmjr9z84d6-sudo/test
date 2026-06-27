@@ -418,20 +418,19 @@ function SektionKachel({ sektion, aktiv, t, onClick, id }) {
 }
 
 function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
-  ves = [], setVes, t, accent, mode, setMode, cardWidth = 340, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, festeGridSpec = null }) {
+  ves = [], setVes, t, accent, mode, setMode, cardWidth = 340, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, festeGridSpec = null }) {
   const [aktSektion, setAktSektion] = useState(null);
   // Sektions-Kacheln folgen dem globalen Liste/Karten-Schalter (Erscheinungsbild).
   const istListe = (settings.listenAnsicht || "karten") === "liste";
   const systemAccent = useKontaktFarbe().system || accent;
   const setKartenSpalten = settings.kartenSpalten != null ? settings.kartenSpalten : 2;
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, setKartenSpalten, kartenMin);
-  // TIMELINE-VERHALTEN (Benny v12.33): Wie im Kalender soll das Detail an
-  // GLEICHER x-Position aufgehen — Master fest auf Spalten × Karten-Maxbreite,
-  // Detail füllt den Rest (Position gewinnt, Freiraum bleibt rechts).
-  const setMasterBreite = setKartenSpalten * kartenMaxBreite + (setKartenSpalten - 1) * 10;
-  // Sektions-Kacheln neben dem Detail folgen dem Slider „Karten neben dem
-  // Detail" (settings.kartenSpalten) — identisch zu Objekte/Kontakte.
-  const setKartenCols = Math.max(1, Math.min(setKartenSpalten, mdLayout.masterCols || Math.floor((mdLayout.masterWidth || cardWidth) / 300)));
+  // Einstellungen-Sektionen (v12.47): Der Master darf HÖCHSTENS 2 Kachel-Spalten
+  // breit werden — sonst zieht sich die kurze Sektionsliste (11 Kacheln) über
+  // viele Spalten und das Detail klebt nicht mehr an der letzten Kachel (großes
+  // Loch). Mit max. 2 Spalten bleibt der Master kompakt, Detail schließt direkt
+  // an und bekommt den meisten Platz. Folgt sonst dem Spalten-Slider.
+  const setWunschCols = Math.max(1, Math.min(2, setKartenSpalten));
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, setWunschCols, kartenMin, null, detailMin);
 
   // Sprung in eine Sektion von außen (z. B. Tastaturkürzel „?" → Tastatur).
   useEffect(() => {
@@ -1109,7 +1108,7 @@ function NeuesObjektModal({ t, accent, onClose, onSave, vorhandeneVes = [] }) {
 // ObjekteMasterDetail. NICHT für jeden Screen ein eigenes Grid bauen — diese
 // Komponente verwenden (Kalender, ETV, Aufträge …).
 function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
-  gotoVE, gotoKontakt, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null,
+  gotoVE, gotoKontakt, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null,
   listenAnsicht = "karten", viewVEId = null, setViewVEId = null, festeGridSpec = null,
   renderDetail = null, istDesktop = true, emptyText = "Keine Einträge.",
   titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null }) {
@@ -1183,7 +1182,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
           <ObjekteMasterDetail
             listenAnsicht={listenAnsicht}
             cardWidth={cardWidth}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
+            detailMinBreite={detailMinBreite} detailMin={detailMin} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
             kartenSpalten={kartenSpalten}
             gefiltert={ves}
             expandedVEId={viewVEId}
@@ -1645,6 +1644,10 @@ export default function App() {
     settings.kartenSchrumpf != null ? settings.kartenSchrumpf : 20));
   // Mindest-Kartenbreite = Max × (1 − Toleranz). Untergrenze 160px Sicherheit.
   const kartenMinBreiteEff = Math.max(160, Math.round(kartenMaxBreite * (1 - kartenSchrumpf / 100)));
+  // Mindest-DETAILbreite (Karten-Modus, v12.47): das Detailfenster darf bei
+  // Platzmangel mit DERSELBEN Schrumpf-Toleranz wie die Karten schrumpfen
+  // (Bennys Entscheidung). Untergrenze 400px für Lesbarkeit des Detail-Inhalts.
+  const detailMinBreiteEff = Math.max(400, Math.round(detailMinBreite * (1 - kartenSchrumpf / 100)));
   const kartenSpalten = settings.kartenSpalten != null ? settings.kartenSpalten : 2;
   // ÜBERSICHT FESTE SPALTENZAHL (v12.31, Schalter): Wenn an, zeigt auch die
   // frische Übersicht (ohne offenes Detail) IMMER genau kartenSpalten Spalten
@@ -2148,7 +2151,7 @@ export default function App() {
         <ObjekteMasterDetail
           listenAnsicht={effectiveSettings.listenAnsicht}
           cardWidth={cardWidth}
-          detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt}
+          detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt}
           kartenSpalten={kartenSpalten}
           gefiltert={gefiltert}
           expandedVEId={expandedVEId}
@@ -2757,7 +2760,7 @@ export default function App() {
             ves={ves} setVes={setVes}
             t={t} accent={objektAccent}
             mode={mode} setMode={setMode}
-            cardWidth={cardWidth} detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} festeGridSpec={festeGridSpec}/>
+            cardWidth={cardWidth} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} festeGridSpec={festeGridSpec}/>
         )}
 
         {/* Suchergebnisse — werden über JEDEN aktuellen Screen gerendert
@@ -2781,7 +2784,7 @@ export default function App() {
             kalView={kalView} setKalView={setKalView}
             kalViewVEId={kalViewVEId} setKalViewVEId={setKalViewVEId}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             dockOffen={kalDockAktiv}/>
         )}
 
@@ -2865,7 +2868,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#10B981"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={etvViewVEId} setViewVEId={setEtvViewVEId}
             istDesktop={istDesktop}
             titel="ETV" anzahl={(vesSichtbar || []).length}
@@ -2915,7 +2918,7 @@ export default function App() {
         {!suchErg && screen === "auftraege" && (() => {
           const aAccent = (effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444";
           const istDesk = istDesktop;
-          const aufLayout = passendeMasterSpalten(auftragContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMinBreiteEff, detailMinBreite, 20);
+          const aufLayout = passendeMasterSpalten(auftragContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMinBreiteEff, detailMinBreite, 20, detailMinBreiteEff);
           const masterBreiteA = aufLayout.masterBreite;
           const istListeA = effectiveSettings.listenAnsicht === "liste";
           const firmen = (kontakteSichtbar || []).filter(k => k && k.typ === "firma");
@@ -3052,7 +3055,7 @@ export default function App() {
                   </div>
                 )}
                 {aufLayout.cols > 0 && hatAuswahl && (
-                  <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+                  <div data-ad-auslauf="1" style={{ flex: `0 0 ${aufLayout.detailBreite || detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
                     {detailInhalt}
                   </div>
                 )}
@@ -3067,7 +3070,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "beschluss") || {}).farbe || "#F59E0B"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={beschlussViewVEId} setViewVEId={setBeschlussViewVEId}
             istDesktop={istDesktop}
             titel="Beschlusssammlung" anzahl={(vesSichtbar || []).length}
@@ -3123,7 +3126,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={technikViewVEId} setViewVEId={setTechnikViewVEId}
             istDesktop={istDesktop}
             titel="Technik" anzahl={(vesSichtbar || []).length}
@@ -3181,7 +3184,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "dokumente") || {}).farbe || "#64748B"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={dokumenteViewVEId} setViewVEId={setDokumenteViewVEId}
             istDesktop={istDesktop}
             titel="Dokumente" anzahl={(vesSichtbar || []).length}
@@ -3236,7 +3239,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={fotosViewVEId} setViewVEId={setFotosViewVEId}
             istDesktop={istDesktop}
             titel="Fotos" anzahl={(vesSichtbar || []).length}
@@ -3294,7 +3297,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "kommunikation") || {}).farbe || "#0EA5E9"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={kommunikationViewVEId} setViewVEId={setKommunikationViewVEId}
             istDesktop={istDesktop}
             titel="Kommunikation" anzahl={(vesSichtbar || []).length}
@@ -3349,7 +3352,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "finanzen") || {}).farbe || "#22C55E"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={finanzenViewVEId} setViewVEId={setFinanzenViewVEId}
             istDesktop={istDesktop}
             titel="Finanzen" anzahl={(vesSichtbar || []).length}
@@ -3401,7 +3404,7 @@ export default function App() {
           <ListenGeneratorScreen ves={vesSichtbar} kontakte={kontakteSichtbar} t={t} settings={effectiveSettings}
             listenAnsicht={effectiveSettings.listenAnsicht} kartenSpalten={kartenSpalten}
             kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
-            detailMinBreite={detailMinBreite} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} festeGridSpec={festeGridSpec}
             legendeEl={baueObjektLegende((effectiveSettings.kacheln.find(k => k.id === "listen") || {}).farbe || "#0E7490")}
             accent={(effectiveSettings.kacheln.find(k => k.id === "listen") || {}).farbe || "#0E7490"}/>
         )}
@@ -3409,7 +3412,7 @@ export default function App() {
           <SchnelleingabeScreen ves={vesSichtbar} setVes={setVes} kontakte={kontakteSichtbar} t={t}
             settings={effectiveSettings} listenAnsicht={effectiveSettings.listenAnsicht}
             kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
-            detailMinBreite={detailMinBreite} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} festeGridSpec={festeGridSpec}
             legendeEl={baueObjektLegende((effectiveSettings.kacheln.find(k => k.id === "schnelleingabe") || {}).farbe || "#0080FF")}
             accent={(effectiveSettings.kacheln.find(k => k.id === "schnelleingabe") || {}).farbe || "#0080FF"}/>
         )}
@@ -3417,7 +3420,7 @@ export default function App() {
           <StatistikScreen ves={vesSichtbar} kontakte={kontakteSichtbar} t={t}
             settings={effectiveSettings} listenAnsicht={effectiveSettings.listenAnsicht}
             kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
-            detailMinBreite={detailMinBreite} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} festeGridSpec={festeGridSpec}
             legendeEl={baueObjektLegende((effectiveSettings.kacheln.find(k => k.id === "statistik") || {}).farbe || "#6366F1")}
             accent={(effectiveSettings.kacheln.find(k => k.id === "statistik") || {}).farbe || "#6366F1"}/>
         )}

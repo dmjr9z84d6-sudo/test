@@ -2609,7 +2609,7 @@ function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante 
   );
 }
 
-function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes = null, setKontakte = null, plusAccent = null, settings = null, dockOffen = false, freieTermine = [], setFreieTermine = null, pendingTerminKey = null, kalView = "objekte", setKalView = null, kalViewVEId = null, setKalViewVEId = null, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, festeGridSpec = null, listenAnsicht = "karten" }) {
+function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes = null, setKontakte = null, plusAccent = null, settings = null, dockOffen = false, freieTermine = [], setFreieTermine = null, pendingTerminKey = null, kalView = "objekte", setKalView = null, kalViewVEId = null, setKalViewVEId = null, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, festeGridSpec = null, listenAnsicht = "karten" }) {
   const [typFilter, setTypFilter] = useState("alle");
   // Orientierungskalender-Panel (Desktop: Inline-Seitenpanel rechts im
   // Kalender-Fenster; Mobil: Overlay von rechts).
@@ -3003,7 +3003,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         // Rechts: das eine ausgewählte Termin-Detail (aufgeklappte KalenderZeile).
         // Mobil (kein Desktop): Detail ersetzt die Liste + „Zurück"-Button.
         const tlVerf = tlContentW || 1200;
-        const tlLayout = passendeMasterSpalten(tlVerf, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+        const tlLayout = passendeMasterSpalten(tlVerf, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10, detailMin);
         const masterBreite = tlLayout.masterBreite;
         const offenerTermin = (function() {
           for (let bi = 0; bi < KALENDER_BUCKETS.length; bi++) {
@@ -3138,7 +3138,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
             <div style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, display: "flex", flexDirection: "column" }}>
               {masterListe}
             </div>
-            <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+            <div data-ad-auslauf="1" style={{ flex: `0 0 ${tlLayout.detailBreite || detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
               {detailInhalt}
             </div>
           </div>

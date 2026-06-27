@@ -1546,13 +1546,14 @@ const TE_MUSTER_PUNKTE = [
 // Hierher verschoben (aus dem App-Rumpf), weil alle Bausteine (VEDetail/VEKachel/
 // VEListenZeile) hier leben und so KEIN Modul-Init-Zyklus entsteht; Nutzer sind
 // der App-Rumpf UND der Kalender (renderDetailOverride für Objekt-Termine).
-function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, gefiltert, expandedVEId, setExpandedVEId, sprungZiel = null,
+function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, gefiltert, expandedVEId, setExpandedVEId, sprungZiel = null,
   offenVE, t, accent, kontakte, setKontakte, ves, setVes, gotoKontakt, listenAnsicht = "karten", renderDetailOverride = null, auswahlAccentOverride = null }) {
   const istListe = listenAnsicht === "liste";
   // Detail immer fest (absolute px aus dem Slider), Master nimmt den Rest. Bei
   // Karten teilt sich der Rest in kartenSpalten gleich breite Spalten. Im
   // Liste-Modus übernimmt listeOpt die Schrumpf-Kaskade (Liste→Detail→Nur-Detail).
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null);
+  // detailMin (v12.47): erlaubt dem Detail im Karten-Modus zu schrumpfen.
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null, detailMin);
   // Karten im Master nutzen das einheitliche KACHEL_GRID (feste Kachelbreite,
   // nie gedehnt) — identisch zu Liste/Kontakten/Einstellungen.
   // Auswahl-Akzent: Mehr-Farbe = Objekt-Bereichsfarbe, Graumodus = System-Akzent.
