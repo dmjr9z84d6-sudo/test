@@ -3578,7 +3578,13 @@ function KontaktListenZeile({ k, t, accent, aktiv, onClick, id, kbItem = false }
         alignItems: "baseline", gap: 8 }}>
         <span style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
           flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis",
-          whiteSpace: "nowrap", maxWidth: "60%" }}>{name}</span>
+          whiteSpace: "nowrap", maxWidth: "60%",
+          // Firmen-Kennung: Name unterstrichen (text-decoration belegt KEINEN
+          // zusätzlichen Platz → Zeilenhöhe bleibt identisch zu Personen).
+          textDecoration: istFirma ? "underline" : "none",
+          textDecorationColor: istFirma ? farbe : undefined,
+          textDecorationThickness: istFirma ? 2 : undefined,
+          textUnderlineOffset: istFirma ? 2 : undefined }}>{name}</span>
         {rollenText ? (
           <span style={{ fontSize: FS.s, color: t.sub, overflow: "hidden",
             textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rollenText}</span>
@@ -3695,10 +3701,7 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: FS.l, fontWeight: FW.heavy, color: farbe,
             textDecoration: istFirma ? "underline" : "none", textDecorationColor: farbe,
-            textDecorationThickness: 2, textUnderlineOffset: 4,
-            // overflow:hidden (für Ellipsis) clippt sonst die 4px tiefer liegende
-            // Unterstreichung weg → bei Firmen etwas Unterkante schaffen.
-            paddingBottom: istFirma ? 4 : 0,
+            textDecorationThickness: 2, textUnderlineOffset: 2,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {name || "—"}
           </div>
@@ -4343,8 +4346,12 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   }
 
   const alphaTrennerAn = anzeige.alphaTrenner !== false;
+  // Feste Listenbreite in der Übersicht (kein offenes Detail) — analog zum
+  // Master-Detail-Zustand. Quelle: listeOpt.listeMax (zentral aus settings.listeBreite,
+  // Default 400). So läuft die Liste NICHT über den ganzen Screen.
+  const listeBreiteMax = (listeOpt && listeOpt.listeMax) || 400;
   const renderGruppe = (liste, typ) => {
-    const listenWrap = { display: "flex", flexDirection: "column", gap: 6 };
+    const listenWrap = { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteMax, width: "100%" };
     // Ohne Trenner: ein einziges Karten-Raster (bzw. Liste).
     if (!alphaTrennerAn) {
       return (

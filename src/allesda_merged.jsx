@@ -418,7 +418,7 @@ function SektionKachel({ sektion, aktiv, t, onClick, id }) {
 }
 
 function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
-  ves = [], setVes, t, accent, mode, setMode, cardWidth = 340, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, festeGridSpec = null }) {
+  ves = [], setVes, t, accent, mode, setMode, cardWidth = 340, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, festeGridSpec = null }) {
   const [aktSektion, setAktSektion] = useState(null);
   // Sektions-Kacheln folgen dem globalen Liste/Karten-Schalter (Erscheinungsbild).
   const istListe = (settings.listenAnsicht || "karten") === "liste";
@@ -429,7 +429,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
   // kleine Lücke zum Detail — bewusst akzeptiert (Bennys Entscheidung v12.48),
   // damit der Slider überall gleich wirkt.
   const setWunschCols = Math.max(1, setKartenSpalten);
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, setWunschCols, kartenMin, null, detailMin);
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, setWunschCols, kartenMin, istListe ? listeOpt : null, detailMin);
 
   // Sprung in eine Sektion von außen (z. B. Tastaturkürzel „?" → Tastatur).
   useEffect(() => {
@@ -605,7 +605,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
       {!offenSektion && (
         <div ref={mdRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-          <div style={istListe ? { display: "grid", gridTemplateColumns: "1fr", gap: 10 }
+          <div style={istListe ? { display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: (listeOpt && listeOpt.listeMax) || 400, width: "100%" }
             : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
             {sortierteSektionen.map((s, i) => (
               <SektionKachel key={s.id} sektion={s} aktiv={false} t={t}
@@ -2188,7 +2188,7 @@ export default function App() {
       detailInhalt = (
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           <div style={istListe
-            ? { display: "flex", flexDirection: "column", gap: 6 }
+            ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteMax, width: "100%" }
             : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
             {gefiltert.map(ve => istListe ? (
               <VEListenZeile key={ve.id} ve={ve} t={t} accent={objektAccent}
@@ -2755,7 +2755,7 @@ export default function App() {
             ves={ves} setVes={setVes}
             t={t} accent={objektAccent}
             mode={mode} setMode={setMode}
-            cardWidth={cardWidth} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} festeGridSpec={festeGridSpec}/>
+            cardWidth={cardWidth} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} festeGridSpec={festeGridSpec}/>
         )}
 
         {/* Suchergebnisse — werden über JEDEN aktuellen Screen gerendert
