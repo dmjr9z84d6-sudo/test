@@ -267,8 +267,15 @@ function StickySectionHeader({ children, t, accent }) {
       marginBottom: 0,
       // Inhalt in einer Zeile halten — kein Wrap, der die Höhe ändern würde
       whiteSpace: "nowrap",
+      // Feste Inhalts-Mindesthöhe: der Kopf jeder Sektion ist GLEICH HOCH, egal
+      // ob darin nur ein Titel, eine WEG-Pille oder eine KopfPille (höher) steht.
+      // §73: Master-Detail-Screens sollen einheitlich aussehen.
+      boxSizing: "border-box",
     }}>
-      {children}
+      <div style={{ minHeight: istDesktop ? 40 : 32, display: "flex",
+        alignItems: "center" }}>
+        {children}
+      </div>
     </div>
   );
 }

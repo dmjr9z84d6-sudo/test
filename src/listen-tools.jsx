@@ -721,7 +721,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [objektId, setObjektId] = useState(null); // null = Raster (Objektauswahl)
   const [seContentRef, seContentW] = useContentWidth();
-  const seLayout = passendeMasterSpalten(seContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
+  const seLayout = passendeMasterSpalten(seContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
   const masterBreiteSE = seLayout.masterBreite;
   const istListeSE = listenAnsicht === "liste";
 
@@ -1197,20 +1197,22 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {seHeader}
+      {legendeEl ? (
+        <div style={{ flexShrink: 0, padding: "0 2px" }}>{legendeEl}</div>
+      ) : null}
       <div ref={seContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", boxSizing: "border-box", gap: 20 }}>
-        {seLayout.cols > 0 && (
-          <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteSE}px`, minWidth: 0, overflowY: "auto",
+        {(seLayout.cols > 0 || !ve) && (
+          <div data-ad-scroll="y" style={{ flex: seLayout.cols > 0 ? `0 0 ${masterBreiteSE}px` : "1 1 0%", minWidth: 0, overflowY: "auto",
             padding: 2, boxSizing: "border-box" }}>
-            {legendeEl}
             {seMasterInhalt}
           </div>
         )}
-        <div data-ad-auslauf="1" style={{ flex: seLayout.cols > 0 ? `0 0 ${detailMinBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto" }}>
-          {ve ? (
+        {seLayout.cols > 0 && ve && (
+          <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
             <DetailRahmen t={t} accent={accent}>{seMaske}</DetailRahmen>
-          ) : null}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1243,7 +1245,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   // Vorlagenauswahl + Aufbau-Bereich. Detail an gleicher x-Position.
   const istDesktopLG = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [lgContentRef, lgContentW] = useContentWidth();
-  const lgLayout = passendeMasterSpalten(lgContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
+  const lgLayout = passendeMasterSpalten(lgContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
   const masterBreiteLG = lgLayout.masterBreite;
   const istListeLG = listenAnsicht === "liste";
 
@@ -1489,6 +1491,9 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
         </div>
       </StickySectionHeader>
 
+      {lgView === "objekte" && legendeEl ? (
+        <div style={{ flexShrink: 0, padding: "0 2px" }}>{legendeEl}</div>
+      ) : null}
       {/* Master-Detail: links Objekt-/Gruppenauswahl (Statistik-Modell),
           rechts Vorlagenauswahl + Aufbau-Bereich. */}
       <div ref={lgContentRef} style={istDesktopLG
@@ -1504,7 +1509,6 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
                 paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
             : { flex: 1, minHeight: 0, overflowY: "auto",
                 paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-            {lgView === "objekte" ? legendeEl : null}
             {lgView === "objekte" ? (
               <div style={istListeLG
                 ? { display: "flex", flexDirection: "column", gap: 6 }
@@ -1764,7 +1768,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   // Spalten + Master-Breite an die ECHTE verfügbare Breite anpassen (Reduktion
   // wie useMasterDetailLayout): passt Spalten×Maxbreite+Detail nicht, fallen
   // Spalten weg statt Überlauf. §73.4.
-  const stLayout = passendeMasterSpalten(mdContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
+  const stLayout = passendeMasterSpalten(mdContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
   const masterBreite = stLayout.masterBreite;
   const istListe = listenAnsicht === "liste";
 
@@ -1880,18 +1884,22 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {header}
+      {statView === "objekte" && legendeEl ? (
+        <div style={{ flexShrink: 0, padding: "0 2px" }}>{legendeEl}</div>
+      ) : null}
       <div ref={mdContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", boxSizing: "border-box", gap: 20 }}>
-        {stLayout.cols > 0 && (
-          <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, overflowY: "auto",
+        {(stLayout.cols > 0 || !hatAuswahl) && (
+          <div data-ad-scroll="y" style={{ flex: stLayout.cols > 0 ? `0 0 ${masterBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto",
             padding: 2, boxSizing: "border-box" }}>
-            {statView === "objekte" ? legendeEl : null}
             {masterInhalt}
           </div>
         )}
-        <div data-ad-auslauf="1" style={{ flex: stLayout.cols > 0 ? `0 0 ${detailMinBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto" }}>
-          {detailInhalt}
-        </div>
+        {stLayout.cols > 0 && hatAuswahl && (
+          <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+            {detailInhalt}
+          </div>
+        )}
       </div>
     </div>
   );

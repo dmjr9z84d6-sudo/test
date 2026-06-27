@@ -2905,7 +2905,7 @@ export default function App() {
         {!suchErg && screen === "auftraege" && (() => {
           const aAccent = (effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444";
           const istDesk = istDesktop;
-          const aufLayout = passendeMasterSpalten(auftragContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMinBreiteEff, detailMinBreite, 20);
+          const aufLayout = passendeMasterSpalten(auftragContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMinBreiteEff, detailMinBreite, 20);
           const masterBreiteA = aufLayout.masterBreite;
           const istListeA = effectiveSettings.listenAnsicht === "liste";
           const firmen = (kontakteSichtbar || []).filter(k => k && k.typ === "firma");
@@ -2995,6 +2995,7 @@ export default function App() {
             </DetailRahmen>
           ) : null;
 
+          const aufLegende = baueObjektLegende(aAccent);
           const auftragHeader = (
             <StickySectionHeader t={t} accent={aAccent}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
@@ -3031,18 +3032,22 @@ export default function App() {
           return (
             <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
               {auftragHeader}
+              {auftragView === "objekt" && aufLegende ? (
+                <div style={{ flexShrink: 0, padding: "0 2px" }}>{aufLegende}</div>
+              ) : null}
               <div ref={auftragContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
                 minWidth: 0, width: "100%", boxSizing: "border-box", gap: 20 }}>
-                {aufLayout.cols > 0 && (
-                  <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteA}px`, minWidth: 0, overflowY: "auto",
+                {(aufLayout.cols > 0 || !hatAuswahl) && (
+                  <div data-ad-scroll="y" style={{ flex: aufLayout.cols > 0 ? `0 0 ${masterBreiteA}px` : "1 1 0%", minWidth: 0, overflowY: "auto",
                     padding: 2, boxSizing: "border-box" }}>
-                    {auftragView === "objekt" ? baueObjektLegende(aAccent) : null}
                     {masterInhalt}
                   </div>
                 )}
-                <div data-ad-auslauf="1" style={{ flex: aufLayout.cols > 0 ? `0 0 ${detailMinBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto" }}>
-                  {detailInhalt}
-                </div>
+                {aufLayout.cols > 0 && hatAuswahl && (
+                  <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+                    {detailInhalt}
+                  </div>
+                )}
               </div>
             </div>
           );
