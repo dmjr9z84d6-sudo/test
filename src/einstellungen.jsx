@@ -534,6 +534,13 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
           onChange={v => save({ kartenIconsAn: v })} color={accent}/>
       </EinstellZeile>
       {(settings.listenAnsicht || "karten") === "karten" && (
+        <EinstellZeile label="Übersicht: feste Spaltenzahl"
+          sub="An: Die Übersicht zeigt immer genau die eingestellte Spaltenzahl (Karten auf Maximalbreite, Rest bleibt rechts frei) — die Karten springen beim Öffnen eines Details nicht mehr. Aus: Die Übersicht füllt die ganze Breite mit so vielen Spalten wie passen." t={t}>
+          <Toggle value={settings.festeSpalten !== false}
+            onChange={v => save({ festeSpalten: v })} color={accent}/>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "karten" && (
         <EinstellZeile label="Karten neben dem Detail" sub="Wie viele Karten-Spalten höchstens neben dem geöffneten Detailfenster stehen (Desktop). Reicht der Platz nicht, werden es automatisch weniger." t={t}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
             <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
@@ -545,13 +552,6 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
               onChange={e => save({ kartenSpalten: parseInt(e.target.value, 10) })}
               style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
           </div>
-        </EinstellZeile>
-      )}
-      {(settings.listenAnsicht || "karten") === "karten" && (
-        <EinstellZeile label="Übersicht: feste Spaltenzahl"
-          sub="An: Die Übersicht zeigt immer genau die eingestellte Spaltenzahl (Karten auf Maximalbreite, Rest bleibt rechts frei) — die Karten springen beim Öffnen eines Details nicht mehr. Aus: Die Übersicht füllt die ganze Breite mit so vielen Spalten wie passen." t={t}>
-          <Toggle value={settings.festeSpalten !== false}
-            onChange={v => save({ festeSpalten: v })} color={accent}/>
         </EinstellZeile>
       )}
       {(settings.listenAnsicht || "karten") === "karten" && (

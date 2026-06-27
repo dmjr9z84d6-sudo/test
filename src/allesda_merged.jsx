@@ -424,12 +424,11 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
   const istListe = (settings.listenAnsicht || "karten") === "liste";
   const systemAccent = useKontaktFarbe().system || accent;
   const setKartenSpalten = settings.kartenSpalten != null ? settings.kartenSpalten : 2;
-  // Einstellungen-Sektionen (v12.47): Der Master darf HÖCHSTENS 2 Kachel-Spalten
-  // breit werden — sonst zieht sich die kurze Sektionsliste (11 Kacheln) über
-  // viele Spalten und das Detail klebt nicht mehr an der letzten Kachel (großes
-  // Loch). Mit max. 2 Spalten bleibt der Master kompakt, Detail schließt direkt
-  // an und bekommt den meisten Platz. Folgt sonst dem Spalten-Slider.
-  const setWunschCols = Math.max(1, Math.min(2, setKartenSpalten));
+  // Einstellungs-Sektionen folgen dem globalen Spalten-Slider (1–5), genau wie
+  // Objekte/Kontakte. Bei ungleicher letzter Kachelzeile bleibt rechts ggf. eine
+  // kleine Lücke zum Detail — bewusst akzeptiert (Bennys Entscheidung v12.48),
+  // damit der Slider überall gleich wirkt.
+  const setWunschCols = Math.max(1, setKartenSpalten);
   const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, setWunschCols, kartenMin, null, detailMin);
 
   // Sprung in eine Sektion von außen (z. B. Tastaturkürzel „?" → Tastatur).
@@ -2207,41 +2206,39 @@ export default function App() {
     }
     return (
       <>
-        <StickySectionHeader t={t} accent={objektAccent}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div onClick={() => { setFilterArt("alle"); setFilterObjektGruppe("alle"); setExpandedVEId(null); }}
-              title="Alle Objekte anzeigen"
-              style={{ fontSize: FS.xxl, fontWeight: FW.heavy, flexShrink: 0,
-                color: titleAktiv ? t.text : t.sub, cursor: "pointer",
-                userSelect: "none", transition: "color 0.15s" }}>
-              Objekte
-            </div>
-            <FilterButtons arten={VERWALTUNGSARTEN} aktive={aktiveArten}
-              counts={countsArt} wert={filterArt} onWert={setFilterArt}
-              t={t} accent={objektAccent} ohneAlle={true}/>
-            {objGruppenArten.length > 0 && (
-              <FilterButtons arten={objGruppenArten} aktive={objGruppenArten.map(a => a.id)}
-                counts={objGruppenCounts} wert={filterObjektGruppe}
-                onWert={(w) => { setFilterObjektGruppe(w); setExpandedVEId(null); }}
+        <ScreenKopf t={t} accent={objektAccent} titel="Objekte"
+          titelAktiv={titleAktiv}
+          onTitelClick={() => { setFilterArt("alle"); setFilterObjektGruppe("alle"); setExpandedVEId(null); }}
+          mitte={
+            <>
+              <FilterButtons arten={VERWALTUNGSARTEN} aktive={aktiveArten}
+                counts={countsArt} wert={filterArt} onWert={setFilterArt}
                 t={t} accent={objektAccent} ohneAlle={true}/>
-            )}
-            {istMobileDetail ? (
+              {objGruppenArten.length > 0 && (
+                <FilterButtons arten={objGruppenArten} aktive={objGruppenArten.map(a => a.id)}
+                  counts={objGruppenCounts} wert={filterObjektGruppe}
+                  onWert={(w) => { setFilterObjektGruppe(w); setExpandedVEId(null); }}
+                  t={t} accent={objektAccent} ohneAlle={true}/>
+              )}
+            </>
+          }
+          rechts={
+            istMobileDetail ? (
               <ZurueckButton onClick={() => setExpandedVEId(null)}
                 variante="header" t={t} kbZurueck={true}/>
             ) : (
               <button onClick={() => setNeuesObjektOffen(true)}
                 data-kb-neu="1" title="Neues Objekt" aria-label="Neues Objekt" style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0, marginLeft: "auto",
+                  width: 36, height: 36, flexShrink: 0,
                   background: objektAccent, border: "none",
                   borderRadius: RAD.pill, cursor: "pointer",
                   boxShadow: `0 1px 2px ${objektAccent}40`,
                 }}>
                 <I name="plus" size={16} color={getContrastColor(objektAccent)}/>
               </button>
-            )}
-          </div>
-        </StickySectionHeader>
+            )
+          }/>
         {objektLegendeEl}
         {detailInhalt}
         {gefiltert.length === 0 && (
@@ -2275,42 +2272,40 @@ export default function App() {
     const titleAktiv = filterKontaktart === "alle" && !aktiveKonGruppe;
     return (
       <>
-        <StickySectionHeader t={t} accent={kontaktAccent}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div onClick={() => { setFilterKontaktart("alle"); setFilterKontaktGruppe("alle"); setAktivKontaktId(null); }}
-              title="Alle Kontakte anzeigen"
-              style={{ fontSize: FS.xxl, fontWeight: FW.heavy, flexShrink: 0,
-                color: titleAktiv ? t.text : t.sub, cursor: "pointer",
-                userSelect: "none", transition: "color 0.15s" }}>
-              Kontakte
-            </div>
-            <FilterButtons arten={arten} aktive={aktiveArten}
-              counts={countsArt} wert={filterKontaktart}
-              onWert={(w) => { setFilterKontaktart(w); setAktivKontaktId(null); }}
-              t={t} accent={kontaktAccent} ohneAlle={true}/>
-            {konGruppenArten.length > 0 && (
-              <FilterButtons arten={konGruppenArten} aktive={konGruppenArten.map(a => a.id)}
-                counts={konGruppenCounts} wert={filterKontaktGruppe}
-                onWert={(w) => { setFilterKontaktGruppe(w); setAktivKontaktId(null); }}
+        <ScreenKopf t={t} accent={kontaktAccent} titel="Kontakte"
+          titelAktiv={titleAktiv}
+          onTitelClick={() => { setFilterKontaktart("alle"); setFilterKontaktGruppe("alle"); setAktivKontaktId(null); }}
+          mitte={
+            <>
+              <FilterButtons arten={arten} aktive={aktiveArten}
+                counts={countsArt} wert={filterKontaktart}
+                onWert={(w) => { setFilterKontaktart(w); setAktivKontaktId(null); }}
                 t={t} accent={kontaktAccent} ohneAlle={true}/>
-            )}
-            {aktivKontaktId && !istDesktop ? (
+              {konGruppenArten.length > 0 && (
+                <FilterButtons arten={konGruppenArten} aktive={konGruppenArten.map(a => a.id)}
+                  counts={konGruppenCounts} wert={filterKontaktGruppe}
+                  onWert={(w) => { setFilterKontaktGruppe(w); setAktivKontaktId(null); }}
+                  t={t} accent={kontaktAccent} ohneAlle={true}/>
+              )}
+            </>
+          }
+          rechts={
+            (aktivKontaktId && !istDesktop) ? (
               <ZurueckButton onClick={() => setAktivKontaktId(null)}
                 variante="header" t={t} kbZurueck={true}/>
             ) : (
               <button onClick={() => setNeuerKontaktOffen(true)}
                 data-kb-neu="1" title="Neuer Kontakt" aria-label="Neuer Kontakt" style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0, marginLeft: "auto",
+                  width: 36, height: 36, flexShrink: 0,
                   background: kontaktAccent, border: "none",
                   borderRadius: RAD.pill, cursor: "pointer",
                   boxShadow: `0 1px 2px ${kontaktAccent}40`,
                 }}>
                 <I name="plus" size={16} color={getContrastColor(kontaktAccent)}/>
               </button>
-            )}
-          </div>
-        </StickySectionHeader>
+            )
+          }/>
         <KontakteScreen t={t} accent={kontaktAccent}
           listenAnsicht={effectiveSettings.listenAnsicht}
           kontaktart={filterKontaktart}
