@@ -3751,7 +3751,7 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
 function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, listenAnsicht = "karten", renderKartenSpalte, aktivK, t, accent,
   ves, kontakte, setKontakte, onVEClick, setAktiv, updateKontakt, onDelete }) {
   const istListe = listenAnsicht === "liste";
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null);
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null);
   const kartenCols = mdLayout.masterCols || 1;
 
   // Fallback: kein Master mehr — Detail full-width + Zurück-Button
@@ -3771,7 +3771,7 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreit
   }
 
   return (
-    <div ref={mdRef} style={{ display: "flex", gap: 10,
+    <div ref={mdRef} style={{ display: "flex", gap: 20,
       flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
       <div data-ad-auslauf="1" style={{
         flex: mdLayout.detailFest ? `0 0 ${mdLayout.masterFest}px` : `0 0 ${mdLayout.masterWidth}px`, minWidth: 0,
@@ -4161,7 +4161,7 @@ function KontaktTrenner({ buchstabe, t, accent }) {
 }
 
 function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle", kontaktart, kontakte, setKontakte, ves, cardWidth = 340, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, legendeAn = true, listenAnsicht = "karten",
-  externAktiv, setExternAktiv, externEditMode, setExternEditMode, mobileDetailHeaderOhneEditBtn = false, kartenSpalten = 2 }) {
+  externAktiv, setExternAktiv, externEditMode, setExternEditMode, mobileDetailHeaderOhneEditBtn = false, kartenSpalten = 2, festeGridSpec = null }) {
   const [internAktiv, setInternAktiv] = useState(initialKontaktId || null);
   // Aktiver Kontakt: extern kontrollierbar (Mobile: App-Ebene weiß Bescheid,
   // um Plus → Stift im Sticky-Header zu wechseln), sonst lokaler State.
@@ -4234,7 +4234,9 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   // Einheitliches KACHEL_GRID (feste Kachelbreite, nie gedehnt) — identisch zu
   // Objekten/Einstellungen. Bei wenig Inhalt bleibt rechts Abstand statt
   // breitgezogener Karten.
-  const wrapStyle = { ...KACHEL_GRID, gridAutoFlow: "dense" };
+  const wrapStyle = festeGridSpec
+    ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" }
+    : { ...KACHEL_GRID, gridAutoFlow: "dense" };
 
   // Master-Detail: linke schmale Spalte mit Karten, rechts Detail
   const windowW = useWindowWidth();
@@ -4254,26 +4256,38 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
     const gridStyle = kartenBreite
       ? { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${kartenBreite}px)`, alignContent: "start" }
       : { ...KACHEL_GRID, alignContent: "start" };
+    const alphaTrennerAn = anzeige.alphaTrenner !== false;
+    // EINE Gruppe rendern — identisch zur Vollbild-Logik (renderGruppe), nur mit
+    // dem Master-Detail-Grid und Toggle-Klick. So gibt es die Buchstaben-Einteilung
+    // (A/D/F…) auch bei offenem Detail (Benny-Wunsch: „die Einteilung immer geben").
+    const renderGruppeMD = (liste, typ, extraStyle) => {
+      const listenWrap = { display: "flex", flexDirection: "column", gap: 6, ...(extraStyle || {}) };
+      const rasterStyle = istListe ? listenWrap : { ...gridStyle, ...(extraStyle || {}) };
+      const klick = (k) => () => setAktiv(aktiv === k.id ? null : k.id);
+      if (!alphaTrennerAn) {
+        return (
+          <div style={rasterStyle}>
+            {liste.map(k => renderKontaktItem(k, aktiv, klick(k), false))}
+          </div>
+        );
+      }
+      const sektionen = gruppiereNachBuchstabe(liste, anzeige.nameFormat);
+      return (
+        <div style={rasterStyle}>
+          {sektionen.map(sek => (
+            <React.Fragment key={typ + "-" + sek.buchstabe}>
+              <KontaktTrenner buchstabe={sek.buchstabe} t={t} accent={accent}/>
+              {sek.kontakte.map(k => renderKontaktItem(k, aktiv, klick(k), false))}
+            </React.Fragment>
+          ))}
+        </div>
+      );
+    };
     return (
     <>
-      {zeigePersonen && personenGef.length > 0 && (
-        <div style={istListe
-          ? { display: "flex", flexDirection: "column", gap: 6 }
-          : gridStyle}>
-          {personenGef.map(k => renderKontaktItem(k, aktiv,
-            () => setAktiv(aktiv === k.id ? null : k.id), false))}
-        </div>
-      )}
-      {zeigeFirmen && firmenGef.length > 0 && (
-        <div style={istListe
-          ? { display: "flex", flexDirection: "column", gap: 6,
-              marginTop: (zeigePersonen && personenGef.length > 0) ? 12 : 0 }
-          : { ...gridStyle,
-              marginTop: (zeigePersonen && personenGef.length > 0) ? 12 : 0 }}>
-          {firmenGef.map(k => renderKontaktItem(k, aktiv,
-            () => setAktiv(aktiv === k.id ? null : k.id), false))}
-        </div>
-      )}
+      {zeigePersonen && personenGef.length > 0 && renderGruppeMD(personenGef, "person")}
+      {zeigeFirmen && firmenGef.length > 0 && renderGruppeMD(firmenGef, "firma",
+        (zeigePersonen && personenGef.length > 0) ? { marginTop: 12 } : null)}
     </>
     );
   };

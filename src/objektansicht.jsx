@@ -1552,7 +1552,7 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreite
   // Detail immer fest (absolute px aus dem Slider), Master nimmt den Rest. Bei
   // Karten teilt sich der Rest in kartenSpalten gleich breite Spalten. Im
   // Liste-Modus übernimmt listeOpt die Schrumpf-Kaskade (Liste→Detail→Nur-Detail).
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null);
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 20, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null);
   // Karten im Master nutzen das einheitliche KACHEL_GRID (feste Kachelbreite,
   // nie gedehnt) — identisch zu Liste/Kontakten/Einstellungen.
   // Auswahl-Akzent: Mehr-Farbe = Objekt-Bereichsfarbe, Graumodus = System-Akzent.
@@ -1597,7 +1597,7 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreite
   }
 
   return (
-    <div ref={mdRef} style={{ display: "flex", gap: 10,
+    <div ref={mdRef} style={{ display: "flex", gap: 20,
       flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
       <div data-ad-scroll="y" data-ad-auslauf="1" style={{
         flex: mdLayout.detailFest ? `0 0 ${mdLayout.masterFest}px` : `0 0 ${mdLayout.masterWidth}px`, minWidth: 0,

@@ -717,11 +717,11 @@ function seBaueZeilen(schema, params) {
 
 function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = null,
   listenAnsicht = "karten", kartenSpalten = 2, kartenMaxBreite = 340, kartenMin = 272,
-  detailMinBreite = 540, festeGridSpec = null }) {
+  detailMinBreite = 540, festeGridSpec = null, legendeEl = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [objektId, setObjektId] = useState(null); // null = Raster (Objektauswahl)
   const [seContentRef, seContentW] = useContentWidth();
-  const seLayout = passendeMasterSpalten(seContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+  const seLayout = passendeMasterSpalten(seContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
   const masterBreiteSE = seLayout.masterBreite;
   const istListeSE = listenAnsicht === "liste";
 
@@ -1011,9 +1011,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         {seHeader}
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-          <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
-            Objekt wählen, um Einheiten schnell zu bearbeiten.
-          </div>
+          {legendeEl}
           {seMasterInhalt}
         </div>
       </div>
@@ -1200,27 +1198,18 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {seHeader}
       <div ref={seContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
-        minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
+        minWidth: 0, width: "100%", boxSizing: "border-box", gap: 20 }}>
         {seLayout.cols > 0 && (
           <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteSE}px`, minWidth: 0, overflowY: "auto",
             padding: 2, boxSizing: "border-box" }}>
-            <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
-              Objekt wählen, um Einheiten schnell zu bearbeiten.
-            </div>
+            {legendeEl}
             {seMasterInhalt}
           </div>
         )}
         <div data-ad-auslauf="1" style={{ flex: seLayout.cols > 0 ? `0 0 ${detailMinBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto" }}>
           {ve ? (
             <DetailRahmen t={t} accent={accent}>{seMaske}</DetailRahmen>
-          ) : (
-            <div style={{ height: "100%", minHeight: 240, display: "flex",
-              alignItems: "center", justifyContent: "center", textAlign: "center",
-              border: `1px dashed ${t.border}`, borderRadius: RAD.lg,
-              color: t.muted, fontSize: FS.m, padding: 24 }}>
-              Links ein Objekt wählen, um Einheiten schnell zu bearbeiten.
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
@@ -1231,7 +1220,7 @@ const LG_FONT = { s: 9.5, m: 11, l: 13 };          // Druck-pt ≈ Vorschau-px
 const LG_PAD  = { kompakt: 2, normal: 4, weit: 8 }; // vertikales Zellen-Padding
 function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   listenAnsicht = "karten", kartenSpalten = 2, kartenMaxBreite = 340, kartenMin = 272,
-  detailMinBreite = 540, festeGridSpec = null }) {
+  detailMinBreite = 540, festeGridSpec = null, legendeEl = null }) {
   const [vorlageId, setVorlageId] = useState(null);
   // AUSWAHL-EBENE (Benny v12.35, Statistik-Modell): Pille Objekte/Gruppen.
   // Objekte → einzelnes Objekt (objektId), Detail zeigt "je Objekt"-Listen.
@@ -1254,7 +1243,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   // Vorlagenauswahl + Aufbau-Bereich. Detail an gleicher x-Position.
   const istDesktopLG = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [lgContentRef, lgContentW] = useContentWidth();
-  const lgLayout = passendeMasterSpalten(lgContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+  const lgLayout = passendeMasterSpalten(lgContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
   const masterBreiteLG = lgLayout.masterBreite;
   const istListeLG = listenAnsicht === "liste";
 
@@ -1503,7 +1492,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
       {/* Master-Detail: links Objekt-/Gruppenauswahl (Statistik-Modell),
           rechts Vorlagenauswahl + Aufbau-Bereich. */}
       <div ref={lgContentRef} style={istDesktopLG
-        ? { display: "flex", gap: 10, flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }
+        ? { display: "flex", gap: 20, flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }
         : { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
 
         {/* MASTER: Objekt-/Gruppenauswahl (Statistik-Modell). Auf Mobil nur
@@ -1515,6 +1504,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
                 paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
             : { flex: 1, minHeight: 0, overflowY: "auto",
                 paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
+            {lgView === "objekte" ? legendeEl : null}
             {lgView === "objekte" ? (
               <div style={istListeLG
                 ? { display: "flex", flexDirection: "column", gap: 6 }
@@ -1575,16 +1565,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
           </button>
         )}
 
-        {/* Platzhalter, solange keine Auswahl getroffen (nur Desktop). */}
-        {!lgHatAuswahl && (
-          <div style={{ height: "100%", minHeight: 240, display: "flex",
-            alignItems: "center", justifyContent: "center", textAlign: "center",
-            border: `1px dashed ${t.border}`, borderRadius: RAD.lg,
-            color: t.muted, fontSize: FS.m, padding: 24 }}>
-            {lgView === "objekte" ? "Links ein Objekt wählen, um Listen dafür zu erstellen."
-              : "Links eine Gruppe wählen, um objektübergreifende Listen zu erstellen."}
-          </div>
-        )}
+        {/* Kein Platzhalter mehr bei leerer Auswahl — Detail bleibt leer. */}
 
         {/* Vorlagenauswahl (bereichsgefiltert) — sichtbar bei Auswahl, solange
             noch keine Vorlage gewählt ist. */}
@@ -1774,7 +1755,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
 // Statistik über die Objekte der Auswahl. Detail an gleicher x-Position (feste
 // Master-Breite = Spalten × Karten-Maxbreite). (Benny v12.34)
 function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsicht = "karten",
-  kartenSpalten = 2, kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, festeGridSpec = null }) {
+  kartenSpalten = 2, kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, festeGridSpec = null, legendeEl = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [statView, setStatView] = useState("objekte"); // "objekte" | "gruppen"
   const [aktVEId, setAktVEId] = useState(null);
@@ -1783,7 +1764,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   // Spalten + Master-Breite an die ECHTE verfügbare Breite anpassen (Reduktion
   // wie useMasterDetailLayout): passt Spalten×Maxbreite+Detail nicht, fallen
   // Spalten weg statt Überlauf. §73.4.
-  const stLayout = passendeMasterSpalten(mdContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+  const stLayout = passendeMasterSpalten(mdContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 20);
   const masterBreite = stLayout.masterBreite;
   const istListe = listenAnsicht === "liste";
 
@@ -1857,12 +1838,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
     <DetailRahmen t={t} accent={accent} titel={auswahlTitel}>
       <StatistikInhalt ves={auswahlVes} kontakte={kontakte} t={t} accent={accent}/>
     </DetailRahmen>
-  ) : (
-    <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "20px 8px" }}>
-      {statView === "objekte" ? "Objekt links auswählen, um die Statistik zu sehen."
-        : "Gruppe links auswählen, um die Statistik zu sehen."}
-    </div>
-  );
+  ) : null;
 
   const header = (
     <StickySectionHeader t={t} accent={accent}>
@@ -1892,6 +1868,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
           </div>
         ) : (
           <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+            {statView === "objekte" ? legendeEl : null}
             {masterInhalt}
           </div>
         )}
@@ -1904,10 +1881,11 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {header}
       <div ref={mdContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
-        minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
+        minWidth: 0, width: "100%", boxSizing: "border-box", gap: 20 }}>
         {stLayout.cols > 0 && (
           <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, overflowY: "auto",
             padding: 2, boxSizing: "border-box" }}>
+            {statView === "objekte" ? legendeEl : null}
             {masterInhalt}
           </div>
         )}
