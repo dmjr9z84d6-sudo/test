@@ -6,7 +6,7 @@ import {
   istAnonymesMitglied, sevStatus, teileVon
 } from "./datenmodell.js";
 import {
-  Avatar, DatumFeld, DatumKalender, FeldKontaktKarte, KontaktPicker, KopfPille,
+  Avatar, DatumFeld, DatumKalender, FeldKontaktKarte, KontaktPicker, KopfPille, ScreenKopf,
   Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat
 } from "./components.jsx";
 import {
@@ -2690,38 +2690,37 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
 
   return (
     <>
-      <StickySectionHeader t={t} accent={accent}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div onClick={() => { setTypFilter("alle"); if (setKalViewVEId) setKalViewVEId(null); }} title="Alle Termine anzeigen"
-            style={{ fontSize: FS.xxl, fontWeight: FW.heavy, flexShrink: 0,
-              color: typFilter === "alle" ? t.text : t.sub, cursor: "pointer",
-              userSelect: "none", transition: "color 0.15s" }}>
-            Kalender
-          </div>
-          {/* View-Umschalter: Objekte | Timeline — gemeinsame KopfPille (§73) */}
-          <KopfPille t={t} accent={kalFarbe}
-            optionen={[{ id: "objekte", label: "Objekte" }, { id: "timeline", label: "Timeline" }]}
-            aktiv={kalView}
-            onWaehle={(id) => { if (setKalView) setKalView(id); if (setKalViewVEId) setKalViewVEId(null); }}/>
-          {kalView === "timeline" && (
-            <FilterButtons arten={KALENDER_TYPEN} aktive={aktiveTypen}
-              counts={counts} wert={typFilter} onWert={setTypFilter}
-              t={t} accent={accent} ohneAlle={true}/>
-          )}
-          {setVes && !dockAktiv && !(kalView === "objekte" && kalViewVEId) && (
+      <ScreenKopf t={t} accent={accent} titel="Kalender"
+        titelAktiv={typFilter === "alle"}
+        onTitelClick={() => { setTypFilter("alle"); if (setKalViewVEId) setKalViewVEId(null); }}
+        mitte={
+          <>
+            {/* View-Umschalter: Objekte | Timeline — gemeinsame KopfPille (§73) */}
+            <KopfPille t={t} accent={kalFarbe}
+              optionen={[{ id: "objekte", label: "Objekte" }, { id: "timeline", label: "Timeline" }]}
+              aktiv={kalView}
+              onWaehle={(id) => { if (setKalView) setKalView(id); if (setKalViewVEId) setKalViewVEId(null); }}/>
+            {kalView === "timeline" && (
+              <FilterButtons arten={KALENDER_TYPEN} aktive={aktiveTypen}
+                counts={counts} wert={typFilter} onWert={setTypFilter}
+                t={t} accent={accent} ohneAlle={true}/>
+            )}
+          </>
+        }
+        rechts={
+          (setVes && !dockAktiv && !(kalView === "objekte" && kalViewVEId)) ? (
             <button onClick={() => setAnlegenOffen(o => !o)}
               data-kb-neu="1" title="Neuer Termin" aria-label="Neuer Termin" style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
-                width: 36, height: 36, flexShrink: 0, marginLeft: "auto",
+                width: 36, height: 36, flexShrink: 0,
                 background: kalFarbe, border: "none",
                 borderRadius: RAD.pill, cursor: "pointer",
                 boxShadow: `0 1px 2px ${kalFarbe}40`,
               }}>
               <I name={anlegenOffen ? "x" : "plus"} size={16} color={getContrastColor(kalFarbe)}/>
             </button>
-          )}
-        </div>
-      </StickySectionHeader>
+          ) : null
+        }/>
       {!kalIstDesktop && !dockAktiv ? (
         <KalenderPanel variante="overlay" offen={panelOffen} onClose={() => setPanelOffen(false)}
           termine={panelTermine} settings={settings} t={t} accent={kalFarbe}
