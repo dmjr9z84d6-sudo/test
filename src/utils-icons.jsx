@@ -196,8 +196,34 @@ function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCo
 //   3) reicht detailMin neben 1 Karte nicht → cols=0 (Nur-Detail)
 // Gibt { cols, kartenBreite, masterBreite, detailBreite } zurück; cols=0 ⇒ Nur-
 // Detail (detailBreite = verfuegbar). VERBINDLICH §73.4 — EINE gemeinsame Wahrheit.
-function passendeMasterSpalten(verfuegbar, wunschCols, kartenMax, kartenMin, detailBreite, gap, detailMin) {
+function passendeMasterSpalten(verfuegbar, wunschCols, kartenMax, kartenMin, detailBreite, gap, detailMin, listeOpt) {
   const g = gap != null ? gap : 10;
+  // LISTE-MODUS: Master = feste Listenbreite (eigene Slider listeMax/detailMax),
+  // Karten kommen NICHT vor. Gleiche Schrumpf-Kaskade wie useMasterDetailLayout:
+  //   1) Liste voll + Detail voll (Rest bleibt rechts frei)
+  //   2) Liste schrumpft bis Liste-Min, Detail bleibt voll
+  //   3) Liste am Min, Detail schrumpft in den Rest (bis Detail-Min)
+  //   4) reicht selbst Detail-Min nicht → Liste weg (Nur-Detail)
+  if (listeOpt) {
+    const lMax = Math.max(160, listeOpt.listeMax || 360);
+    const lMin = Math.max(120, Math.min(lMax, listeOpt.listeMin || Math.round(lMax * 0.8)));
+    const dMax = Math.max(240, listeOpt.detailMax || detailBreite || 540);
+    const dMin = Math.max(200, Math.min(dMax, listeOpt.detailMin || Math.round(dMax * 0.8)));
+    const platz = verfuegbar - g;
+    let listeB = Math.min(lMax, platz - dMax);
+    let detailB = dMax;
+    if (listeB >= lMin) {
+      listeB = Math.min(lMax, listeB);
+      return { cols: 1, kartenBreite: listeB, masterBreite: listeB, detailBreite: detailB };
+    }
+    listeB = lMin;
+    detailB = platz - listeB;
+    if (detailB >= dMin) {
+      detailB = Math.min(dMax, detailB);
+      return { cols: 1, kartenBreite: listeB, masterBreite: listeB, detailBreite: detailB };
+    }
+    return { cols: 0, kartenBreite: 0, masterBreite: 0, detailBreite: verfuegbar };
+  }
   const kMax = Math.max(160, kartenMax || 340);
   const kMin = Math.max(120, Math.min(kMax, kartenMin || Math.round(kMax * 0.8)));
   const dMax = detailBreite;

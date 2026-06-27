@@ -289,3 +289,15 @@ export function zuIsoDatum(wert) {
   if (de) return `${de[3]}-${de[2].padStart(2, "0")}-${de[1].padStart(2, "0")}`;
   return "";
 }
+
+// ── Listen-Übersicht: EINE Quelle für die feste Breite ─────────────────────
+// Übersichts-Listen (Liste-Modus OHNE offenes Detail) sollen NICHT über den
+// ganzen Screen laufen, sondern dieselbe feste Breite haben wie die Master-
+// Spalte im Master-Detail-Zustand. Quelle: listeOpt.listeMax (zentral aus
+// settings.listeBreite, Default 400). ALLE Übersichts-Listen (Objekte,
+// Kontakte, Einstellungen, ObjektListeMitDetail → Kalender/ETV/Listengenerator/
+// Kommunikation/Finanzen/Technik/Beschlusssammlung) MÜSSEN diesen Wert nutzen,
+// damit die Liste überall gleich breit ist (Benny-Regel: ein Schema oder keins).
+export function listeBreiteAus(listeOpt) {
+  return (listeOpt && listeOpt.listeMax) || 400;
+}

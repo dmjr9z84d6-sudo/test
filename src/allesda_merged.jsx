@@ -117,7 +117,7 @@ import {
 import {
   datumDe, isoHeute, istDatumGueltig, istEmailGueltig, istIbanGueltig,
   istPlzGueltig, istSteuerNrGueltig, istTelefonGueltig, istUrlGueltig,
-  joinPlzOrt, matchScore, parseDatumWert, splitPlzOrt, zuIsoDatum
+  joinPlzOrt, listeBreiteAus, matchScore, parseDatumWert, splitPlzOrt, zuIsoDatum
 } from "./utils-basis.js";
 
 import {
@@ -605,7 +605,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
       {!offenSektion && (
         <div ref={mdRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-          <div style={istListe ? { display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: (listeOpt && listeOpt.listeMax) || 400, width: "100%" }
+          <div style={istListe ? { display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: listeBreiteAus(listeOpt), width: "100%" }
             : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
             {sortierteSektionen.map((s, i) => (
               <SektionKachel key={s.id} sektion={s} aktiv={false} t={t}
@@ -1209,7 +1209,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
             onGotoHandlungsbedarf={onGotoStatusEinstellungen || undefined}/>
         )}
         <div style={listenAnsicht === "liste"
-          ? { display: "flex", flexDirection: "column", gap: 6 }
+          ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" }
           : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
           {(ves || []).map(veObj => listenAnsicht === "liste" ? (
             <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={accent}
@@ -2188,7 +2188,7 @@ export default function App() {
       detailInhalt = (
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           <div style={istListe
-            ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteMax, width: "100%" }
+            ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" }
             : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
             {gefiltert.map(ve => istListe ? (
               <VEListenZeile key={ve.id} ve={ve} t={t} accent={objektAccent}
@@ -2913,7 +2913,7 @@ export default function App() {
         {!suchErg && screen === "auftraege" && (() => {
           const aAccent = (effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444";
           const istDesk = istDesktop;
-          const aufLayout = passendeMasterSpalten(auftragContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMinBreiteEff, detailMinBreite, 20, detailMinBreiteEff);
+          const aufLayout = passendeMasterSpalten(auftragContentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80), kartenSpalten, kartenMaxBreite, kartenMinBreiteEff, detailMinBreite, 20, detailMinBreiteEff, effectiveSettings.listenAnsicht === "liste" ? listeOpt : null);
           const masterBreiteA = aufLayout.masterBreite;
           const istListeA = effectiveSettings.listenAnsicht === "liste";
           const firmen = (kontakteSichtbar || []).filter(k => k && k.typ === "firma");
@@ -3399,7 +3399,7 @@ export default function App() {
           <ListenGeneratorScreen ves={vesSichtbar} kontakte={kontakteSichtbar} t={t} settings={effectiveSettings}
             listenAnsicht={effectiveSettings.listenAnsicht} kartenSpalten={kartenSpalten}
             kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
-            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} listeOpt={listeOpt} festeGridSpec={festeGridSpec}
             legendeEl={baueObjektLegende((effectiveSettings.kacheln.find(k => k.id === "listen") || {}).farbe || "#0E7490")}
             accent={(effectiveSettings.kacheln.find(k => k.id === "listen") || {}).farbe || "#0E7490"}/>
         )}
@@ -3407,7 +3407,7 @@ export default function App() {
           <SchnelleingabeScreen ves={vesSichtbar} setVes={setVes} kontakte={kontakteSichtbar} t={t}
             settings={effectiveSettings} listenAnsicht={effectiveSettings.listenAnsicht}
             kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
-            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} listeOpt={listeOpt} festeGridSpec={festeGridSpec}
             legendeEl={baueObjektLegende((effectiveSettings.kacheln.find(k => k.id === "schnelleingabe") || {}).farbe || "#0080FF")}
             accent={(effectiveSettings.kacheln.find(k => k.id === "schnelleingabe") || {}).farbe || "#0080FF"}/>
         )}
@@ -3415,7 +3415,7 @@ export default function App() {
           <StatistikScreen ves={vesSichtbar} kontakte={kontakteSichtbar} t={t}
             settings={effectiveSettings} listenAnsicht={effectiveSettings.listenAnsicht}
             kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
-            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} festeGridSpec={festeGridSpec}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} listeOpt={listeOpt} festeGridSpec={festeGridSpec}
             legendeEl={baueObjektLegende((effectiveSettings.kacheln.find(k => k.id === "statistik") || {}).farbe || "#6366F1")}
             accent={(effectiveSettings.kacheln.find(k => k.id === "statistik") || {}).farbe || "#6366F1"}/>
         )}

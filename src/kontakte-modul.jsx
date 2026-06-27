@@ -3,7 +3,7 @@ import {
   ACCENT, FS, FW, RAD, KACHEL_GRID, KACHEL_W, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
 } from "./constants.js";
 import {
-  datumDe, istEmailGueltig, istPlzGueltig, istTelefonGueltig, istUrlGueltig, joinPlzOrt
+  datumDe, istEmailGueltig, istPlzGueltig, istTelefonGueltig, istUrlGueltig, joinPlzOrt, listeBreiteAus
 } from "./utils-basis.js";
 import {
   SUGGESTIONS, ausgehendeBefugnisse, buildKontaktarten, gruppiereRollenkarten, isStellplatzTyp,
@@ -4346,12 +4346,11 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   }
 
   const alphaTrennerAn = anzeige.alphaTrenner !== false;
-  // Feste Listenbreite in der Übersicht (kein offenes Detail) — analog zum
-  // Master-Detail-Zustand. Quelle: listeOpt.listeMax (zentral aus settings.listeBreite,
-  // Default 400). So läuft die Liste NICHT über den ganzen Screen.
-  const listeBreiteMax = (listeOpt && listeOpt.listeMax) || 400;
   const renderGruppe = (liste, typ) => {
-    const listenWrap = { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteMax, width: "100%" };
+    // Feste Listenbreite in der Übersicht — EINE Quelle (listeBreiteAus), damit
+    // ALLE Übersichts-Listen gleich breit sind (Objekte/Kontakte/Einstellungen/
+    // Kalender/ETV/…). Siehe utils-basis.listeBreiteAus.
+    const listenWrap = { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" };
     // Ohne Trenner: ein einziges Karten-Raster (bzw. Liste).
     if (!alphaTrennerAn) {
       return (

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, Fragment } from "react";
 import { ACCENT, FS, FW, RAD, KACHEL_GRID, feldInput, getContrastColor } from "./constants.js";
-import { parseDatumWert } from "./utils-basis.js";
+import { listeBreiteAus, parseDatumWert } from "./utils-basis.js";
 import {
   aktiveBelegung, belegungsPhase, eigStatus, heuteLaufendeBelegung,
   istAnonymesMitglied, sevStatus, teileVon
@@ -2975,7 +2975,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
                   }}/>
               )}
               <div style={listenAnsicht === "liste"
-                ? { display: "flex", flexDirection: "column", gap: 6 }
+                ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" }
                 : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
                 {(ves || []).map(veObj => listenAnsicht === "liste" ? (
                   <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={kalFarbe}
@@ -3002,7 +3002,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         // Rechts: das eine ausgewählte Termin-Detail (aufgeklappte KalenderZeile).
         // Mobil (kein Desktop): Detail ersetzt die Liste + „Zurück"-Button.
         const tlVerf = tlContentW || 1200;
-        const tlLayout = passendeMasterSpalten(tlVerf, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10, detailMin);
+        const tlLayout = passendeMasterSpalten(tlVerf, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10, detailMin, listenAnsicht === "liste" ? listeOpt : null);
         const masterBreite = tlLayout.masterBreite;
         const offenerTermin = (function() {
           for (let bi = 0; bi < KALENDER_BUCKETS.length; bi++) {
