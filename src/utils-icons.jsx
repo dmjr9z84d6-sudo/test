@@ -63,58 +63,96 @@ function useCardWidth(minCard = 280, gap = 10) {
 // Master-Spalten passen. Detail muss mindestens minDetailFactor × cardWidth
 // breit sein. Es werden so viele Master-Spalten gewählt wie passen (bis maxCols),
 // sonst runter bis 1, dann 0 (kein Master, nur Detail).
-function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCols = 5, detailFest = false, detailPx = null, maxAnteil = 0.6, wunschCols = null) {
+function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCols = 5, detailFest = false, detailPx = null, kartenMax = 340, wunschCols = null, kartenMin = 272, listeOpt = null) {
   const ref = useRef(null);
   const [layout, setLayout] = useState({ masterCols: 2, masterWidth: cardWidth * 2 + gap,
-    masterFest: cardWidth * 2 + gap,
+    masterFest: cardWidth * 2 + gap, kartenBreite: kartenMax, listeBreite: (listeOpt && listeOpt.listeMax) || 0,
     detailBreite: detailPx != null ? detailPx : Math.round(cardWidth * minDetailFactor), detailFest: detailFest });
   useEffect(() => {
     if (!ref.current) return;
     const messen = () => {
       const cw = ref.current.offsetWidth;
       if (cw <= 0) return;
-      // Bei detailFest ist die Detailbreite eine px-Vorgabe (detailPx) — aber als
-      // WUNSCH/MAXIMUM, nicht starr: Das Detail darf bis detailPx wachsen, wird
-      // aber auf maxAnteil der Gesamtbreite gedeckelt und schrumpft mit, wenn der
-      // Platz knapp wird. So entsteht nie ein quetschendes Verhältnis (z. B.
-      // Detail 1200 neben einer 280px-Karte auf einem kleinen Schirm).
-      if (detailFest && detailPx != null) {
-        // Mindest-Kartenspalte, die daneben stehen bleiben muss; sonst Vollbild.
-        const minSpalte = 280;
-        // 1) Wunsch auf Anteil der Gesamtbreite deckeln (proportionale Obergrenze).
-        const anteilMax = Math.round(cw * maxAnteil);
-        let wunsch = Math.min(detailPx, anteilMax);
-        // 2) Reicht der Rest für eine Mindestspalte? Wenn nicht → Detail weiter
-        //    schrumpfen, bis genau minSpalte daneben passt …
-        let masterRest = cw - gap - wunsch;
-        if (masterRest < minSpalte) {
-          wunsch = cw - gap - minSpalte;
-          masterRest = minSpalte;
-        }
-        // 3) … aber wenn das Detail dadurch unter eine vernünftige Mindestbreite
-        //    fiele, lieber Vollbild-Detail (Liste weicht ganz).
-        const detailMin = Math.min(detailPx, 400);
-        if (wunsch < detailMin) {
-          setLayout({ masterCols: 0, masterWidth: 0, detailBreite: cw, detailFest: true });
+      // ── LISTE-MODUS (Benny v12.30): eigene Schrumpf-Kaskade ──────────────
+      // Liste (1 Spalte) + Detail konkurrieren um die Breite. Beide haben eine
+      // Max-Breite und eine Min-Breite (= Max × (1−Schrumpf%)). Reihenfolge beim
+      // Engerwerden (Bennys Entscheidung):
+      //   1) beide auf Max, Freiraum rechts wird zuerst aufgebraucht
+      //   2) Liste schrumpft zuerst (bis Liste-Min), Detail bleibt Max
+      //   3) dann Detail schrumpft (bis Detail-Min)
+      //   4) beide am Min, immer noch zu eng → Liste WEG, Nur-Detail (voll breit)
+      if (listeOpt && detailFest) {
+        const lMax = Math.max(160, listeOpt.listeMax || 360);
+        const lMin = Math.max(120, Math.min(lMax, listeOpt.listeMin || Math.round(lMax * 0.8)));
+        const dMax = Math.max(240, listeOpt.detailMax || detailPx || 540);
+        const dMin = Math.max(200, Math.min(dMax, listeOpt.detailMin || Math.round(dMax * 0.8)));
+        // Verfügbar für Liste+Detail (ein Gap dazwischen).
+        const platz = cw - gap;
+        // Schritt 1+2: Liste = min(lMax, platz − dMax), aber nicht unter lMin.
+        let listeB = Math.min(lMax, platz - dMax);
+        let detailB = dMax;
+        if (listeB >= lMin) {
+          // Liste passt (ggf. geschrumpft), Detail bleibt voll. Rest bleibt rechts.
+          listeB = Math.min(lMax, listeB);
+          setLayout({ masterCols: 1, masterWidth: listeB, masterFest: listeB,
+            listeBreite: listeB, detailBreite: detailB, detailFest: true });
           return;
         }
-        // Spaltenzahl im verbleibenden Master-Bereich (mind. 1).
-        let cols = Math.floor((masterRest + gap) / (cardWidth + gap));
-        if (cols < 1) cols = 1;
-        if (cols > maxCols) cols = maxCols;
-        // Wenn der Aufrufer eine Wunsch-Spaltenzahl vorgibt (kartenSpalten-Setting):
-        // Karten NICHT auf das Maximum aufblähen, sondern auf den Wunsch begrenzen.
-        // So bleibt die Kartenspalte schmal und das Detail kann den FREIEN Rest
-        // füllen, statt dass die Karten ihn schlucken.
-        if (wunschCols != null && wunschCols >= 1) {
-          cols = Math.min(cols, wunschCols);
+        // Schritt 3: Liste am Min fixieren, Detail schrumpft in den Rest.
+        listeB = lMin;
+        detailB = platz - listeB;
+        if (detailB >= dMin) {
+          detailB = Math.min(dMax, detailB);
+          setLayout({ masterCols: 1, masterWidth: listeB, masterFest: listeB,
+            listeBreite: listeB, detailBreite: detailB, detailFest: true });
+          return;
         }
-        // masterFest = exakte Rasterbreite für `cols` feste 340er-Karten (kein
-        // Dehnen, KACHEL_GRID-Philosophie). Damit kann der Aufrufer die Karten
-        // starr halten und das Detail den GANZEN Rest füllen lassen, statt
-        // umgekehrt — kein Leerraum mehr rechts neben dem Detail.
-        const masterFest = cols * cardWidth + (cols - 1) * gap;
-        setLayout({ masterCols: cols, masterWidth: masterRest, masterFest: masterFest, detailBreite: wunsch, detailFest: true });
+        // Schritt 4: reicht selbst Detail-Min nicht neben Liste-Min → Liste weg.
+        setLayout({ masterCols: 0, masterWidth: 0, listeBreite: 0,
+          kartenBreite: 0, detailBreite: cw, detailFest: true });
+        return;
+      }
+      // NEUES MODELL (Benny v12.29): MASTER hat Vorrang, Detail bekommt seine
+      // FESTE Wunschbreite (detailPx). Die Karten füllen den verbleibenden
+      // Master-Platz, dehnen sich aber NIE über kartenMax. Sie dürfen bis
+      // kartenMin schrumpfen — unterschreitet eine Karte das, fällt eine Spalte
+      // weg. Übrig bleibender Platz landet RECHTS (Karten kleben nicht).
+      if (detailFest && detailPx != null) {
+        // Sicherheits-Clamps gegen kaputte Werte.
+        const kMax = Math.max(160, kartenMax || 340);
+        const kMin = Math.max(120, Math.min(kMax, kartenMin || Math.round(kMax * 0.8)));
+        // Detail will detailPx fest. Bleibt daneben Platz für >=1 Karte (>=kMin)?
+        // Ziel-Spaltenzahl (wunschCols) ist die Obergrenze.
+        const zielCols = (wunschCols != null && wunschCols >= 1) ? wunschCols : maxCols;
+        // Maximale Spalten, die wir überhaupt zulassen.
+        const obergrenze = Math.min(zielCols, maxCols);
+        // Probiere von obergrenze runter bis 1: erste Spaltenzahl, bei der jede
+        // Karte mind. kMin breit sein kann (neben dem festen Detail), gewinnt.
+        let gewaehlt = 0;
+        let gewaehlteKartenBreite = kMin;
+        for (let cols = obergrenze; cols >= 1; cols--) {
+          // Platz für die Karten = Gesamt − Detail − Gap(Master|Detail) − Gaps zwischen Karten.
+          const kartenPlatz = cw - detailPx - gap - (cols - 1) * gap;
+          if (kartenPlatz <= 0) continue;
+          const proKarte = kartenPlatz / cols;
+          if (proKarte >= kMin) {
+            gewaehlt = cols;
+            // Kartenbreite: bis kMax dehnen, Rest bleibt rechts frei.
+            gewaehlteKartenBreite = Math.min(kMax, Math.floor(proKarte));
+            break;
+          }
+        }
+        // Passt nicht mal 1 Karte (>=kMin) neben das feste Detail → Detail bleibt
+        // fix, Liste weicht ganz (Vollbild-Detail). (Bennys Entscheidung.)
+        if (gewaehlt === 0) {
+          setLayout({ masterCols: 0, masterWidth: 0, kartenBreite: kMax, detailBreite: cw, detailFest: true });
+          return;
+        }
+        // masterFest = exakte Rasterbreite für `gewaehlt` Karten der gewählten
+        // (gedehnten, max. kMax) Breite. Detail füllt den GANZEN Rest.
+        const masterFest = gewaehlt * gewaehlteKartenBreite + (gewaehlt - 1) * gap;
+        setLayout({ masterCols: gewaehlt, masterWidth: masterFest, masterFest: masterFest,
+          kartenBreite: gewaehlteKartenBreite, detailBreite: detailPx, detailFest: true });
         return;
       }
       const wunschDetail = Math.round(cardWidth * minDetailFactor);
@@ -137,7 +175,9 @@ function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCo
     }
     window.addEventListener("resize", messen);
     return () => window.removeEventListener("resize", messen);
-  }, [cardWidth, minDetailFactor, gap, maxCols, detailFest, detailPx, maxAnteil, wunschCols]);
+  }, [cardWidth, minDetailFactor, gap, maxCols, detailFest, detailPx, kartenMax, wunschCols, kartenMin,
+      listeOpt && listeOpt.listeMax, listeOpt && listeOpt.listeMin,
+      listeOpt && listeOpt.detailMax, listeOpt && listeOpt.detailMin]);
   return [ref, layout];
 }
 

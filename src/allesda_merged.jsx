@@ -413,13 +413,17 @@ function SektionKachel({ sektion, aktiv, t, onClick, id }) {
 }
 
 function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
-  ves = [], setVes, t, accent, mode, setMode, cardWidth = 340, detailMinBreite = 300, detailMaxAnteil = 0.6 }) {
+  ves = [], setVes, t, accent, mode, setMode, cardWidth = 340, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, festeGridSpec = null }) {
   const [aktSektion, setAktSektion] = useState(null);
   // Sektions-Kacheln folgen dem globalen Liste/Karten-Schalter (Erscheinungsbild).
   const istListe = (settings.listenAnsicht || "karten") === "liste";
   const systemAccent = useKontaktFarbe().system || accent;
   const setKartenSpalten = settings.kartenSpalten != null ? settings.kartenSpalten : 2;
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil, setKartenSpalten);
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, kartenMaxBreite, setKartenSpalten, kartenMin);
+  // TIMELINE-VERHALTEN (Benny v12.33): Wie im Kalender soll das Detail an
+  // GLEICHER x-Position aufgehen — Master fest auf Spalten × Karten-Maxbreite,
+  // Detail füllt den Rest (Position gewinnt, Freiraum bleibt rechts).
+  const setMasterBreite = setKartenSpalten * kartenMaxBreite + (setKartenSpalten - 1) * 10;
   // Sektions-Kacheln neben dem Detail folgen dem Slider „Karten neben dem
   // Detail" (settings.kartenSpalten) — identisch zu Objekte/Kontakte.
   const setKartenCols = Math.max(1, Math.min(setKartenSpalten, mdLayout.masterCols || Math.floor((mdLayout.masterWidth || cardWidth) / 300)));
@@ -567,16 +571,17 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
       {offenSektion && istDesktop && mdLayout.masterCols > 0 && (
         <div ref={mdRef} style={{ display: "flex", gap: 10,
           flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
-          <div data-ad-auslauf="1" style={{ flex: `0 0 ${mdLayout.masterFest || mdLayout.masterWidth}px`, minWidth: 0, overflowY: "auto",
+          <div data-ad-auslauf="1" style={{ flex: `0 0 ${festeGridSpec ? setMasterBreite : (mdLayout.masterFest || mdLayout.masterWidth)}px`, minWidth: 0, overflowY: "auto",
             padding: 2, boxSizing: "border-box",
-            ...(istListe ? { display: "grid", alignContent: "start", gridTemplateColumns: "1fr", gap: 8 } : { ...KACHEL_GRID, alignContent: "start" }) }}>
+            ...(istListe ? { display: "grid", alignContent: "start", gridTemplateColumns: "1fr", gap: 8 }
+              : (festeGridSpec ? { ...KACHEL_GRID, alignContent: "start", gridTemplateColumns: festeGridSpec } : { ...KACHEL_GRID, alignContent: "start" })) }}>
             {sortierteSektionen.map((s, i) => (
               <SektionKachel key={s.id} sektion={s}
                 aktiv={offenSektion && offenSektion.id === s.id} t={t} id={"set-" + s.id}
                 onClick={() => setAktSektion(s.id)}/>
             ))}
           </div>
-          <div data-ad-auslauf="1" style={{ flex: `1 1 ${mdLayout.detailBreite}px`, minWidth: 0, maxWidth: "100%", overflowY: "auto" }}>
+          <div data-ad-auslauf="1" style={{ flex: `0 0 ${mdLayout.detailBreite}px`, minWidth: 0, maxWidth: "100%", overflowY: "auto" }}>
             {renderSektionDetail(offenSektion)}
           </div>
         </div>
@@ -597,7 +602,8 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
       {!offenSektion && (
         <div ref={mdRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-          <div style={istListe ? { display: "grid", gridTemplateColumns: "1fr", gap: 10 } : KACHEL_GRID}>
+          <div style={istListe ? { display: "grid", gridTemplateColumns: "1fr", gap: 10 }
+            : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
             {sortierteSektionen.map((s, i) => (
               <SektionKachel key={s.id} sektion={s} aktiv={false} t={t}
                 id={"set-" + s.id}
@@ -1098,8 +1104,8 @@ function NeuesObjektModal({ t, accent, onClose, onSave, vorhandeneVes = [] }) {
 // ObjekteMasterDetail. NICHT für jeden Screen ein eigenes Grid bauen — diese
 // Komponente verwenden (Kalender, ETV, Aufträge …).
 function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
-  gotoVE, gotoKontakt, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMaxAnteil = 0.6,
-  listenAnsicht = "karten", viewVEId = null, setViewVEId = null,
+  gotoVE, gotoKontakt, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null,
+  listenAnsicht = "karten", viewVEId = null, setViewVEId = null, festeGridSpec = null,
   renderDetail = null, istDesktop = true, emptyText = "Keine Einträge.",
   titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null }) {
   const offenVEObj = (ves || []).find(v => v.id === viewVEId) || null;
@@ -1167,7 +1173,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
           <ObjekteMasterDetail
             listenAnsicht={listenAnsicht}
             cardWidth={cardWidth}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
             kartenSpalten={kartenSpalten}
             gefiltert={ves}
             expandedVEId={viewVEId}
@@ -1196,7 +1202,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
         )}
         <div style={listenAnsicht === "liste"
           ? { display: "flex", flexDirection: "column", gap: 6 }
-          : KACHEL_GRID}>
+          : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
           {(ves || []).map(veObj => listenAnsicht === "liste" ? (
             <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={accent}
               aktiv={false} kbItem id={"objliste-" + veObj.id}
@@ -1506,11 +1512,18 @@ export default function App() {
       // Statistik, Listengenerator, Fotos) hinten anhängen, sonst fehlen sie
       // bei Bestands-Settings nach App-Updates.
       if (Array.isArray(sett.kacheln)) {
-        // Migration: frühere „Tickets"-Kachel heißt jetzt „Aufträge". Alte
-        // gespeicherte id/label umschreiben, sonst entstünde eine Dublette
-        // (alt „tickets" bleibt + neu „auftraege" wird angehängt).
-        sett.kacheln = sett.kacheln.map(k =>
-          (k && k.id === "tickets") ? { ...k, id: "auftraege", label: "Aufträge" } : k);
+        // Migration: frühere „Tickets"- bzw. „Aufträge"-Kachel heißt jetzt
+        // „Vorgänge". Alte gespeicherte id/label umschreiben, sonst entstünde
+        // eine Dublette (alt „tickets" bleibt + neu „auftraege" wird angehängt)
+        // bzw. bliebe das veraltete Label „Aufträge" stehen.
+        sett.kacheln = sett.kacheln.map(k => {
+          if (!k) return k;
+          if (k.id === "tickets") return { ...k, id: "auftraege", label: "Vorgänge" };
+          // Bestands-User mit auftraege-Kachel: nur das veraltete Default-Label
+          // „Aufträge" auf „Vorgänge" heben (eigene Umbenennungen NICHT anfassen).
+          if (k.id === "auftraege" && k.label === "Aufträge") return { ...k, label: "Vorgänge" };
+          return k;
+        });
         // Dedupe nach id: durch die tickets→auftraege-Umbenennung (oder doppelt
         // gespeicherte Settings) können zwei Kacheln dieselbe id tragen. Erste
         // gewinnt (behält die vom User gewählte Farbe/Reihenfolge/Sichtbarkeit).
@@ -1610,11 +1623,45 @@ export default function App() {
   // Mindest-Detailbreite exakt detailMinBreite ist, unabhängig von cardWidth.
   const detailMinBreite = Math.max(400, Math.min(1200,
     settings.detailMinBreite != null ? settings.detailMinBreite : 400));
-  // Anteil der Gesamtbreite, den das Detail höchstens einnehmen darf (40–80 %),
-  // damit die Liste daneben nicht gequetscht wird. Default 60 %.
-  const detailMaxAnteil = Math.max(0.4, Math.min(0.8,
-    settings.detailMaxAnteil != null ? settings.detailMaxAnteil : 0.6));
+  // NEUES MODELL (v12.29): Karten haben eine MAXIMALBREITE (dehnen sich nie
+  // darüber, Freiraum bleibt rechts) und eine prozentuale Schrumpf-Toleranz
+  // (wie weit sie unter Max gedrückt werden dürfen, bevor eine Spalte wegfällt).
+  const kartenMaxBreite = Math.max(240, Math.min(480,
+    settings.kartenMaxBreite != null ? settings.kartenMaxBreite : 340));
+  const kartenSchrumpf = Math.max(0, Math.min(50,
+    settings.kartenSchrumpf != null ? settings.kartenSchrumpf : 20));
+  // Mindest-Kartenbreite = Max × (1 − Toleranz). Untergrenze 160px Sicherheit.
+  const kartenMinBreiteEff = Math.max(160, Math.round(kartenMaxBreite * (1 - kartenSchrumpf / 100)));
   const kartenSpalten = settings.kartenSpalten != null ? settings.kartenSpalten : 2;
+  // ÜBERSICHT FESTE SPALTENZAHL (v12.31, Schalter): Wenn an, zeigt auch die
+  // frische Übersicht (ohne offenes Detail) IMMER genau kartenSpalten Spalten
+  // auf Karten-Maxbreite — die Karten springen beim Öffnen nicht mehr, und das
+  // Detail geht überall an derselben x-Position auf (Master-Breite konstant).
+  // Wenn aus: bisheriges auto-fill (so viele Spalten wie passen).
+  const festeSpalten = settings.festeSpalten !== false;
+  // gridTemplateColumns-Wert für die feste Übersicht (oder null = KACHEL_GRID).
+  const festeGridSpec = festeSpalten
+    ? `repeat(${kartenSpalten}, ${kartenMaxBreite}px)` : null;
+  // LISTE-MODUS (v12.30): eigene, von den Karten getrennte Regler. Liste und
+  // Detail haben je Max-Breite + Schrumpf-% → Min. Schrumpf-Reihenfolge bei
+  // engem Platz: erst Liste, dann Detail, dann Liste ganz weg (Nur-Detail).
+  const istListenModus = (effectiveSettings.listenAnsicht || "karten") === "liste";
+  const listeBreiteMax = Math.max(280, Math.min(720,
+    settings.listeBreite != null ? settings.listeBreite : 400));
+  const listeSchrumpf = Math.max(0, Math.min(50,
+    settings.listeSchrumpf != null ? settings.listeSchrumpf : 25));
+  const listeBreiteMin = Math.max(160, Math.round(listeBreiteMax * (1 - listeSchrumpf / 100)));
+  const detailBreiteListeMax = Math.max(400, Math.min(1200,
+    settings.detailBreiteListe != null ? settings.detailBreiteListe : 540));
+  const detailSchrumpfListe = Math.max(0, Math.min(40,
+    settings.detailSchrumpfListe != null ? settings.detailSchrumpfListe : 20));
+  const detailBreiteListeMin = Math.max(300, Math.round(detailBreiteListeMax * (1 - detailSchrumpfListe / 100)));
+  // listeOpt: kompaktes Objekt, das die Module unverändert an useMasterDetailLayout
+  // durchreichen. null im Karten-Modus → Karten-Zweig greift.
+  const listeOpt = istListenModus ? {
+    listeMax: listeBreiteMax, listeMin: listeBreiteMin,
+    detailMax: detailBreiteListeMax, detailMin: detailBreiteListeMin
+  } : null;
   // Welche VE-Karte ist in der Objekte-Liste aufgeklappt (Inline-Detail).
   const [expandedVEId, setExpandedVEId] = useState(null);
   // Sprungziel im VE-Detail (Tab + Karte), z. B. aus dem Kalender. Mit Nonce,
@@ -1641,6 +1688,10 @@ export default function App() {
   // Master-Detail-Muster wie Kalender: Liste = Objekte, Detail = Override).
   const [etvViewVEId, setEtvViewVEId] = useState(null);
   const [auftragViewVEId, setAuftragViewVEId] = useState(null);
+  // Vorgänge-Pille (Benny v12.36): "objekt" → Vorgänge je Objekt; "firma" →
+  // Vorgänge je Firma (alle Firmen-Kontakte). Eigener Auswahl-State je Achse.
+  const [auftragView, setAuftragView] = useState("objekt"); // "objekt" | "firma"
+  const [auftragFirmaId, setAuftragFirmaId] = useState(null);
   const [beschlussViewVEId, setBeschlussViewVEId] = useState(null);
   const [technikViewVEId, setTechnikViewVEId] = useState(null);
   const [dokumenteViewVEId, setDokumenteViewVEId] = useState(null);
@@ -2066,7 +2117,7 @@ export default function App() {
         <ObjekteMasterDetail
           listenAnsicht={effectiveSettings.listenAnsicht}
           cardWidth={cardWidth}
-          detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil}
+          detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt}
           kartenSpalten={kartenSpalten}
           gefiltert={gefiltert}
           expandedVEId={expandedVEId}
@@ -2236,7 +2287,7 @@ export default function App() {
           externEditMode={kontaktDetailEditMode}
           setExternEditMode={setKontaktDetailEditMode}
           mobileDetailHeaderOhneEditBtn={false}
-          cardWidth={cardWidth} detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} kartenSpalten={kartenSpalten}/>
+          cardWidth={cardWidth} detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} kartenSpalten={kartenSpalten}/>
       </>
     );
   };
@@ -2675,7 +2726,7 @@ export default function App() {
             ves={ves} setVes={setVes}
             t={t} accent={objektAccent}
             mode={mode} setMode={setMode}
-            cardWidth={cardWidth} detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil}/>
+            cardWidth={cardWidth} detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} festeGridSpec={festeGridSpec}/>
         )}
 
         {/* Suchergebnisse — werden über JEDEN aktuellen Screen gerendert
@@ -2699,7 +2750,7 @@ export default function App() {
             kalView={kalView} setKalView={setKalView}
             kalViewVEId={kalViewVEId} setKalViewVEId={setKalViewVEId}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             dockOffen={kalDockAktiv}/>
         )}
 
@@ -2783,7 +2834,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#10B981"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={etvViewVEId} setViewVEId={setEtvViewVEId}
             istDesktop={istDesktop}
             titel="ETV" anzahl={(vesSichtbar || []).length}
@@ -2830,63 +2881,166 @@ export default function App() {
               );
             }}/>
         )}
-        {!suchErg && screen === "auftraege" && (
-          <ObjektListeMitDetail
-            ves={vesSichtbar} kontakte={kontakteSichtbar}
-            setVes={setVes} setKontakte={setKontakte} t={t}
-            accent={(effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444"}
-            gotoVE={gotoVE} gotoKontakt={gotoKontakt}
-            cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
-            viewVEId={auftragViewVEId} setViewVEId={setAuftragViewVEId}
-            istDesktop={istDesktop}
-            titel="Vorgänge" anzahl={(vesSichtbar || []).length}
-            legendeAn={effectiveSettings.legendeObjekte !== false}
-            onGotoStatusEinstellungen={() => {
-              wechselScreen("einstellungen");
-              setTimeout(() => {
-                try {
-                  window.dispatchEvent(new CustomEvent("allesda:zentrale-sektion",
-                    { detail: { id: "statusleiste" } }));
-                } catch (err) {}
-              }, 60);
-              setTimeout(() => {
-                const el = document.getElementById("set-handlungsbedarf");
-                if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
-              }, 450);
-            }}
-            emptyText="Keine Vorgänge für dieses Objekt."
-            renderDetail={(veObj) => {
-              // Fake-Demo-Daten nur zum Layout-Testen (echte Quelle folgt).
-              const aAccent = (effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444";
-              const demo = [
-                { titel: "Heizungswartung Jahresturnus", firma: "Wärme & Technik GmbH", status: "in Arbeit" },
-                { titel: "Treppenhausreinigung Nachbesserung", firma: "CleanPro Service", status: "offen" },
-                { titel: "Aufzug-TÜV-Prüfung", firma: "Lift Süd KG", status: "erledigt" },
-              ];
-              const statusFarbe = { "offen": "#F59E0B", "in Arbeit": aAccent, "erledigt": "#10B981" };
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {demo.map((d, i) => (
-                    <div key={i} style={{ background: t.card, border: `1px solid ${t.border}`,
-                      borderRadius: RAD.lg, padding: "12px 14px", minWidth: 0,
-                      boxSizing: "border-box", width: "100%" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
-                          color: t.text, overflowWrap: "anywhere" }}>{d.titel}</div>
-                        <div style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
-                          color: getContrastColor(statusFarbe[d.status] || aAccent),
-                          background: statusFarbe[d.status] || aAccent,
-                          borderRadius: RAD.sm, padding: "2px 8px" }}>{d.status}</div>
-                      </div>
-                      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4,
-                        overflowWrap: "anywhere" }}>{d.firma}</div>
+        {!suchErg && screen === "auftraege" && (() => {
+          const aAccent = (effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444";
+          const istDesk = istDesktop;
+          const masterBreiteA = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+          const istListeA = effectiveSettings.listenAnsicht === "liste";
+          const firmen = (kontakteSichtbar || []).filter(k => k && k.typ === "firma");
+          // Demo-Vorgänge (echte Quelle folgt). Je nach Achse nach Objekt bzw.
+          // Firma gefiltert — vorerst dieselben Demo-Einträge zur Layout-Prüfung.
+          const demoAlle = [
+            { titel: "Heizungswartung Jahresturnus", firma: "Wärme & Technik GmbH", status: "in Arbeit" },
+            { titel: "Treppenhausreinigung Nachbesserung", firma: "CleanPro Service", status: "offen" },
+            { titel: "Aufzug-TÜV-Prüfung", firma: "Lift Süd KG", status: "erledigt" },
+          ];
+          const statusFarbe = { "offen": "#F59E0B", "in Arbeit": aAccent, "erledigt": "#10B981" };
+          const renderVorgaenge = (vorgaenge) => (
+            vorgaenge.length === 0 ? (
+              <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "8px 2px" }}>
+                Keine Vorgänge.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {vorgaenge.map((d, i) => (
+                  <div key={i} style={{ background: t.card, border: `1px solid ${t.border}`,
+                    borderRadius: RAD.lg, padding: "12px 14px", minWidth: 0,
+                    boxSizing: "border-box", width: "100%" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
+                        color: t.text, overflowWrap: "anywhere" }}>{d.titel}</div>
+                      <div style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
+                        color: getContrastColor(statusFarbe[d.status] || aAccent),
+                        background: statusFarbe[d.status] || aAccent,
+                        borderRadius: RAD.sm, padding: "2px 8px" }}>{d.status}</div>
                     </div>
-                  ))}
+                    <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4,
+                      overflowWrap: "anywhere" }}>{d.firma}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          );
+
+          const hatAuswahl = (auftragView === "objekt" && auftragViewVEId) || (auftragView === "firma" && auftragFirmaId);
+          let detailKopf = null, detailListe = null;
+          if (auftragView === "objekt" && auftragViewVEId) {
+            const vo = (vesSichtbar || []).find(v => v.id === auftragViewVEId);
+            detailKopf = vo ? (vo.nr || "Objekt") + (vo.adresse ? " · " + vo.adresse : "") : "";
+            detailListe = renderVorgaenge(demoAlle); // TODO echte Quelle: Vorgänge dieses Objekts
+          } else if (auftragView === "firma" && auftragFirmaId) {
+            const fk = firmen.find(f => f.id === auftragFirmaId);
+            detailKopf = fk ? (fk.name || "Firma") : "";
+            const gef = demoAlle.filter(d => fk && d.firma === (fk.name || ""));
+            detailListe = renderVorgaenge(gef); // TODO echte Quelle: Vorgänge dieser Firma
+          }
+
+          const auftragPille = (id, label) => (
+            <button onClick={() => setAuftragView(id)}
+              style={{ padding: "6px 14px", borderRadius: RAD.ms, cursor: "pointer",
+                border: `1px solid ${auftragView === id ? aAccent : t.border}`,
+                background: auftragView === id ? aAccent : "transparent",
+                color: auftragView === id ? getContrastColor(aAccent) : t.sub,
+                fontSize: FS.s, fontWeight: FW.bold }}>
+              {label}
+            </button>
+          );
+
+          const masterInhalt = auftragView === "objekt" ? (
+            <div style={istListeA
+              ? { display: "flex", flexDirection: "column", gap: 6 }
+              : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+              {(vesSichtbar || []).map(v => istListeA ? (
+                <VEListenZeile key={v.id} ve={v} t={t} accent={aAccent}
+                  aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
+                  auswahlAccentOverride={aAccent}
+                  onClick={() => setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id)}/>
+              ) : (
+                <VEKachel key={v.id} ve={v} t={t} accent={aAccent}
+                  aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
+                  auswahlAccentOverride={aAccent}
+                  onClick={() => setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id)}/>
+              ))}
+            </div>
+          ) : (
+            <div style={istListeA
+              ? { display: "flex", flexDirection: "column", gap: 6 }
+              : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+              {firmen.length === 0 ? (
+                <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 12 }}>
+                  Keine Firmen-Kontakte vorhanden.
                 </div>
-              );
-            }}/>
-        )}
+              ) : firmen.map(f => (
+                <KontaktKarte key={f.id} k={f} t={t}
+                  aktiv={auftragFirmaId === f.id} kbItem id={"auffirma-" + f.id}
+                  onClick={() => setAuftragFirmaId(auftragFirmaId === f.id ? null : f.id)}/>
+              ))}
+            </div>
+          );
+
+          const detailInhalt = hatAuswahl ? (
+            <div>
+              <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: aAccent, marginBottom: 12,
+                overflowWrap: "anywhere" }}>{detailKopf}</div>
+              {detailListe}
+            </div>
+          ) : (
+            <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "20px 8px" }}>
+              {auftragView === "objekt" ? "Objekt links auswählen, um Vorgänge zu sehen."
+                : "Firma links auswählen, um Vorgänge zu sehen."}
+            </div>
+          );
+
+          const auftragHeader = (
+            <StickySectionHeader t={t} accent={aAccent}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
+                <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Vorgänge</div>
+                <div style={{ display: "flex", gap: 8, marginLeft: 4 }}>
+                  {auftragPille("objekt", "Objekte")}
+                  {auftragPille("firma", "Firmen")}
+                </div>
+              </div>
+            </StickySectionHeader>
+          );
+
+          if (!istDesk) {
+            return (
+              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                {auftragHeader}
+                {hatAuswahl ? (
+                  <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+                    <button onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+                        background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
+                        padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
+                      <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Auswahl
+                    </button>
+                    {detailInhalt}
+                  </div>
+                ) : (
+                  <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+                    {masterInhalt}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return (
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              {auftragHeader}
+              <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
+                minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
+                <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteA}px`, minWidth: 0, overflowY: "auto",
+                  padding: 2, boxSizing: "border-box" }}>
+                  {masterInhalt}
+                </div>
+                <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+                  {detailInhalt}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {!suchErg && screen === "beschluss" && (
           <ObjektListeMitDetail
             ves={vesSichtbar} kontakte={kontakteSichtbar}
@@ -2894,7 +3048,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "beschluss") || {}).farbe || "#F59E0B"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={beschlussViewVEId} setViewVEId={setBeschlussViewVEId}
             istDesktop={istDesktop}
             titel="Beschlusssammlung" anzahl={(vesSichtbar || []).length}
@@ -2950,7 +3104,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={technikViewVEId} setViewVEId={setTechnikViewVEId}
             istDesktop={istDesktop}
             titel="Technik" anzahl={(vesSichtbar || []).length}
@@ -3008,7 +3162,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "dokumente") || {}).farbe || "#64748B"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={dokumenteViewVEId} setViewVEId={setDokumenteViewVEId}
             istDesktop={istDesktop}
             titel="Dokumente" anzahl={(vesSichtbar || []).length}
@@ -3063,7 +3217,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={fotosViewVEId} setViewVEId={setFotosViewVEId}
             istDesktop={istDesktop}
             titel="Fotos" anzahl={(vesSichtbar || []).length}
@@ -3121,7 +3275,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "kommunikation") || {}).farbe || "#0EA5E9"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={kommunikationViewVEId} setViewVEId={setKommunikationViewVEId}
             istDesktop={istDesktop}
             titel="Kommunikation" anzahl={(vesSichtbar || []).length}
@@ -3176,7 +3330,7 @@ export default function App() {
             accent={(effectiveSettings.kacheln.find(k => k.id === "finanzen") || {}).farbe || "#22C55E"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil} listenAnsicht={effectiveSettings.listenAnsicht}
+            detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             viewVEId={finanzenViewVEId} setViewVEId={setFinanzenViewVEId}
             istDesktop={istDesktop}
             titel="Finanzen" anzahl={(vesSichtbar || []).length}
@@ -3226,14 +3380,23 @@ export default function App() {
         )}
         {!suchErg && screen === "listen" && (
           <ListenGeneratorScreen ves={vesSichtbar} kontakte={kontakteSichtbar} t={t} settings={effectiveSettings}
+            listenAnsicht={effectiveSettings.listenAnsicht} kartenSpalten={kartenSpalten}
+            kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
+            detailMinBreite={detailMinBreite} festeGridSpec={festeGridSpec}
             accent={(effectiveSettings.kacheln.find(k => k.id === "listen") || {}).farbe || "#0E7490"}/>
         )}
         {!suchErg && screen === "schnelleingabe" && (
           <SchnelleingabeScreen ves={vesSichtbar} setVes={setVes} kontakte={kontakteSichtbar} t={t}
+            settings={effectiveSettings} listenAnsicht={effectiveSettings.listenAnsicht}
+            kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
+            detailMinBreite={detailMinBreite} festeGridSpec={festeGridSpec}
             accent={(effectiveSettings.kacheln.find(k => k.id === "schnelleingabe") || {}).farbe || "#0080FF"}/>
         )}
         {!suchErg && screen === "statistik" && (
           <StatistikScreen ves={vesSichtbar} kontakte={kontakteSichtbar} t={t}
+            settings={effectiveSettings} listenAnsicht={effectiveSettings.listenAnsicht}
+            kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
+            detailMinBreite={detailMinBreite} festeGridSpec={festeGridSpec}
             accent={(effectiveSettings.kacheln.find(k => k.id === "statistik") || {}).farbe || "#6366F1"}/>
         )}
             </div> {/* /contentRef */}

@@ -4,7 +4,7 @@ import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
   VERWALTUNGSARTEN, aktiveBelegung, aktiverTeil, belegungsTyp, bewohnerRecht,
   eigStatus, extractNachname, flaecheVon, heuteLaufendeBelegung, isStellplatzTyp, neueBelegung,
-  neuesHhMitglied, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
+  neuesHhMitglied, objektInGruppe, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useMasterDetailLayout, useWindowWidth, veKartenFeldWert
@@ -17,7 +17,7 @@ import {
   quoteAnteil, quoteLabel, PersonenTageUebersicht
 } from "./liegenschaft.jsx";
 import { KALENDER_TYPEN, sammleTermine } from "./kalender.jsx";
-import { STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel, VEKachel, alleEinheitenVonVe } from "./objektansicht.jsx";
+import { STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel, VEKachel, VEListenZeile, alleEinheitenVonVe } from "./objektansicht.jsx";
 
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ LISTENGENERATOR — Vorlagen-Katalog + generischer Screen + Druck          ║
@@ -715,9 +715,13 @@ function seBaueZeilen(schema, params) {
   return rows;
 }
 
-function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
+function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = null,
+  listenAnsicht = "karten", kartenSpalten = 2, kartenMaxBreite = 340, kartenMin = 272,
+  detailMinBreite = 540, festeGridSpec = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [objektId, setObjektId] = useState(null); // null = Raster (Objektauswahl)
+  const masterBreiteSE = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+  const istListeSE = listenAnsicht === "liste";
 
   // Welche Spalten sind aktiv — in KLICK-Reihenfolge (links→rechts). Die fixe
   // Spalte „Einheit" steht immer ganz links und ist NICHT in dieser Liste.
@@ -963,61 +967,62 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
     );
   };
 
-  // ── RASTER: Objektauswahl (KACHEL_GRID wie Objekte/ETV) ──
-  if (!ve) {
+  // ── MASTER-DETAIL (Benny v12.35): links Objektauswahl (Karte/Liste, festes
+  //    Schema), rechts die Schnelleingabe-Maske an gleicher x-Position. Mobil:
+  //    Vollbild-Wechsel mit „Zurück". ──
+  const seMasterInhalt = (
+    (ves || []).length === 0 ? (
+      <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 }}>
+        Noch keine Objekte vorhanden.
+      </div>
+    ) : (
+      <div style={istListeSE
+        ? { display: "flex", flexDirection: "column", gap: 6 }
+        : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+        {(ves || []).map(v => istListeSE ? (
+          <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
+            aktiv={objektId === v.id} kbItem id={"se-" + v.id}
+            auswahlAccentOverride={accent}
+            onClick={() => setObjektId(objektId === v.id ? null : v.id)}/>
+        ) : (
+          <VEKachel key={v.id} ve={v} t={t} accent={accent} kbItem
+            aktiv={objektId === v.id} id={"se-" + v.id}
+            auswahlAccentOverride={accent}
+            onClick={() => setObjektId(objektId === v.id ? null : v.id)}/>
+        ))}
+      </div>
+    )
+  );
+
+  const seHeader = (
+    <StickySectionHeader t={t} accent={accent}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
+        <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Schnelleingabe</div>
+      </div>
+    </StickySectionHeader>
+  );
+
+  // MOBIL: kein Objekt → nur Auswahl; Objekt gewählt → Maske (mit Zurück).
+  if (!istDesktop && !ve) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <StickySectionHeader t={t} accent={accent}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10,
-            padding: "2px 0 10px 0" }}>
-            <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Schnelleingabe</div>
-          </div>
-        </StickySectionHeader>
+        {seHeader}
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
           <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
             Objekt wählen, um Einheiten schnell zu bearbeiten.
           </div>
-          {(ves || []).length === 0 ? (
-            <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 }}>
-              Noch keine Objekte vorhanden.
-            </div>
-          ) : (
-            <div style={KACHEL_GRID}>
-              {(ves || []).map(v => (
-                <VEKachel key={v.id} ve={v} t={t} accent={accent} kbItem
-                  id={"se-" + v.id}
-                  onClick={() => setObjektId(v.id)}/>
-              ))}
-            </div>
-          )}
+          {seMasterInhalt}
         </div>
       </div>
     );
   }
 
-  // ── MASKE: Tabellarische Schnellbearbeitung des gewählten Objekts ──
-  return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <StickySectionHeader t={t} accent={accent}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-          padding: "2px 0 10px 0" }}>
-          <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Schnelleingabe</div>
-          <button onClick={() => setObjektId(null)} data-kb-zurueck="1" style={{ marginLeft: "auto",
-            display: "flex", alignItems: "center", gap: 6, background: "none",
-            border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
-            padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
-            fontSize: FS.m, fontWeight: FW.medium }}>
-            Anderes Objekt
-          </button>
-        </div>
-      </StickySectionHeader>
-
-      <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
-        paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-
+  // Maske-Inhalt (Detail) — gemeinsam für Desktop-Detail und Mobil-Vollbild.
+  const seMaske = (
+      <>
         {/* Kopf: um welches Objekt geht es — kanonische Objektkarte (VEKachel
-            kompakt), identisch zu Objekte/Kalender/ETV. Kein erfundener Kopf. */}
+            kompakt), identisch zu Objekte/Kalender/ETV. */}
         <div style={{ marginBottom: 14 }}>
           <VEKachel ve={ve} t={t} accent={accent} kompakt onClick={() => {}}/>
         </div>
@@ -1172,18 +1177,73 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent }) {
             )}
           </div>
         )}
+      </>
+  );
+
+  // MOBIL: Objekt gewählt → Maske im Vollbild mit „Zurück".
+  if (!istDesktop) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <StickySectionHeader t={t} accent={accent}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
+            <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Schnelleingabe</div>
+            <button onClick={() => setObjektId(null)} data-kb-zurueck="1" style={{ marginLeft: "auto",
+              display: "flex", alignItems: "center", gap: 6, background: "none",
+              border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
+              padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
+              fontSize: FS.m, fontWeight: FW.medium }}>
+              Anderes Objekt
+            </button>
+          </div>
+        </StickySectionHeader>
+        <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
+          paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
+          {seMaske}
+        </div>
+      </div>
+    );
+  }
+
+  // DESKTOP: Master-Detail nebeneinander, Detail an fester x-Position.
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {seHeader}
+      <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
+        minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
+        <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteSE}px`, minWidth: 0, overflowY: "auto",
+          padding: 2, boxSizing: "border-box" }}>
+          <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
+            Objekt wählen, um Einheiten schnell zu bearbeiten.
+          </div>
+          {seMasterInhalt}
+        </div>
+        <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+          {ve ? seMaske : (
+            <div style={{ height: "100%", minHeight: 240, display: "flex",
+              alignItems: "center", justifyContent: "center", textAlign: "center",
+              border: `1px dashed ${t.border}`, borderRadius: RAD.lg,
+              color: t.muted, fontSize: FS.m, padding: 24 }}>
+              Links ein Objekt wählen, um Einheiten schnell zu bearbeiten.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
-// ── ListenGeneratorScreen — Vorlage wählen → konfigurieren → Blatt-Vorschau →
 //    Druck. Schriftgröße/Zeilenabstand wirken auf Vorschau UND Druck identisch.
 const LG_FONT = { s: 9.5, m: 11, l: 13 };          // Druck-pt ≈ Vorschau-px
 const LG_PAD  = { kompakt: 2, normal: 4, weit: 8 }; // vertikales Zellen-Padding
-function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
+function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
+  listenAnsicht = "karten", kartenSpalten = 2, kartenMaxBreite = 340, kartenMin = 272,
+  detailMinBreite = 540, festeGridSpec = null }) {
   const [vorlageId, setVorlageId] = useState(null);
-  const [objektId, setObjektId] = useState(ves && ves[0] ? ves[0].id : null);
+  // AUSWAHL-EBENE (Benny v12.35, Statistik-Modell): Pille Objekte/Gruppen.
+  // Objekte → einzelnes Objekt (objektId), Detail zeigt "je Objekt"-Listen.
+  // Gruppen → Alle/Verwaltungsart/eigene Gruppe, Detail zeigt "alle"-Listen.
+  const [lgView, setLgView] = useState("objekte"); // "objekte" | "gruppen"
+  const [objektId, setObjektId] = useState(null);
+  const [aktGruppe, setAktGruppe] = useState(null); // "kind:id" | null
   const [hausId, setHausId] = useState(null);
   const [spaltenAn, setSpaltenAn] = useState({});   // { vorlageId: { spaltenId: bool } }
   const [filterAn, setFilterAn] = useState({});     // { vorlageId: { filterId: bool } }
@@ -1195,13 +1255,37 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
   const [mitHv, setMitHv] = useState(true);
   const [mitLogo, setMitLogo] = useState(true);
 
-  // Master-Detail-Gerüst wie Objekte/Kontakte: links Vorlagen-Kacheln, rechts
-  // der Aufbau-Bereich der gewählten Liste.
+  // Master-Detail-Gerüst wie Statistik: links Objekt-/Gruppenauswahl, rechts
+  // Vorlagenauswahl + Aufbau-Bereich. Detail an gleicher x-Position.
   const istDesktopLG = useWindowWidth() >= DESKTOP_MIN_WIDTH;
-  const [mdRef, mdLayout] = useMasterDetailLayout(340, 1.1, 10, 5, true, 420, 0.62);
+  const masterBreiteLG = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+  const istListeLG = listenAnsicht === "liste";
+
+  // Gruppen-Auswahlliste: Alle Objekte → Verwaltungsarten → eigene Gruppen.
+  const lgGruppen = [];
+  lgGruppen.push({ kind: "alle", id: "alle", label: "Alle Objekte",
+    sub: ves.length + (ves.length === 1 ? " Objekt" : " Objekte"), filter: () => true });
+  VERWALTUNGSARTEN.forEach(a => {
+    const n = (ves || []).filter(v => (v.verwaltungsart || "weg") === a.id).length;
+    if (n > 0) lgGruppen.push({ kind: "art", id: a.id, label: a.label,
+      sub: n + (n === 1 ? " Objekt" : " Objekte"), filter: v => (v.verwaltungsart || "weg") === a.id });
+  });
+  ((settings && settings.objektGruppen) || []).forEach(g => {
+    if (!g) return;
+    const n = (ves || []).filter(v => objektInGruppe(v, g)).length;
+    lgGruppen.push({ kind: "gruppe", id: g.id, label: g.name || g.kurz || "Gruppe",
+      sub: n + (n === 1 ? " Objekt" : " Objekte"), filter: v => objektInGruppe(v, g) });
+  });
+  const lgHatAuswahl = (lgView === "objekte" && objektId) || (lgView === "gruppen" && aktGruppe);
+  // Welche Vorlagen darf das Detail zeigen? Objekte-Pille → nur "objekt"-Listen,
+  // Gruppen-Pille → nur "alle"-Listen.
+  const erlaubterBereich = lgView === "objekte" ? "objekt" : "alle";
+  const sichtbareVorlagen = LISTEN_KATALOG.filter(v => v.bereich === erlaubterBereich);
 
   const vorlage = LISTEN_KATALOG.find(v => v.id === vorlageId) || null;
-  const ve = (ves || []).find(v => v && v.id === objektId) || (ves && ves[0]) || null;
+  // ve = das in der Objekte-Pille gewählte Objekt (kein Fallback mehr aufs erste,
+  // sonst würde bei Gruppen-Auswahl fälschlich ein Objekt mitlaufen).
+  const ve = (ves || []).find(v => v && v.id === objektId) || null;
   const haeuser = (vorlage && vorlage.hausFilter && ve) ? lgHaeuserVon(ve) : [];
   const hausWaehlbar = haeuser.length > 1;
   const effHausId = hausWaehlbar ? hausId : null;
@@ -1407,87 +1491,137 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
     </div>
   );
 
+  const lgPille = (id, label) => (
+    <button onClick={() => { setLgView(id); setVorlageId(null); }}
+      style={{ padding: "6px 14px", borderRadius: RAD.ms, cursor: "pointer",
+        border: `1px solid ${lgView === id ? accent : t.border}`,
+        background: lgView === id ? accent : "transparent",
+        color: lgView === id ? getContrastColor(accent) : t.sub,
+        fontSize: FS.s, fontWeight: FW.bold }}>
+      {label}
+    </button>
+  );
+
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <StickySectionHeader t={t} accent={accent}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
           padding: "2px 0 10px 0" }}>
           <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Listengenerator</div>
-          {vorlage && !istDesktopLG && (
-            <button onClick={() => setVorlageId(null)} data-kb-zurueck="1" style={{ marginLeft: "auto",
-              display: "flex", alignItems: "center", gap: 6, background: "none",
-              border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
-              padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
-              fontSize: FS.m, fontWeight: FW.medium }}>
-              Andere Liste
-            </button>
-          )}
+          <div style={{ display: "flex", gap: 8, marginLeft: 4 }}>
+            {lgPille("objekte", "Objekte")}
+            {lgPille("gruppen", "Gruppen")}
+          </div>
         </div>
       </StickySectionHeader>
 
-      {/* Master-Detail: links Vorlagen-Kacheln (immer sichtbar auf Desktop),
-          rechts der Aufbau-Bereich der gewählten Liste. */}
-      <div ref={mdRef} style={istDesktopLG
+      {/* Master-Detail: links Objekt-/Gruppenauswahl (Statistik-Modell),
+          rechts Vorlagenauswahl + Aufbau-Bereich. */}
+      <div style={istDesktopLG
         ? { display: "flex", gap: 10, flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }
         : { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
 
-        {/* MASTER: Vorlagen-Kacheln. Auf Mobil nur sichtbar, solange keine
-            Vorlage gewählt ist (klassischer Wizard-Schritt 1). */}
-        {(istDesktopLG || !vorlage) && (
+        {/* MASTER: Objekt-/Gruppenauswahl (Statistik-Modell). Auf Mobil nur
+            sichtbar, solange keine Auswahl getroffen ist. */}
+        {(istDesktopLG || !lgHatAuswahl) && (
           <div data-ad-scroll="y" style={istDesktopLG
-            ? { flex: mdLayout.detailFest ? "1 1 0%" : `0 0 ${mdLayout.masterWidth}px`,
-                minWidth: 0, overflowY: "auto", padding: 2, boxSizing: "border-box",
+            ? { flex: `0 0 ${masterBreiteLG}px`, minWidth: 0, overflowY: "auto",
+                padding: 2, boxSizing: "border-box",
                 paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
             : { flex: 1, minHeight: 0, overflowY: "auto",
                 paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-            <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
-              Welche Liste möchtest du erstellen?
-            </div>
-            <div style={KACHEL_GRID}>
-              {LISTEN_KATALOG.map(v => {
-                const aktivK = vorlage && vorlage.id === v.id;
-                return (
-                  <div key={v.id} onClick={() => { setVorlageId(v.id); setHausId(null); }} data-kb-item="1"
-                    style={{ display: "flex", flexDirection: "column", cursor: "pointer",
-                      background: t.card, height: "100%",
-                      border: `1px solid ${aktivK ? accent : t.border}`,
-                      borderRadius: RAD.lg, overflow: "hidden", transition: "all 0.15s" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12,
-                      padding: "12px 14px", flex: 1, minHeight: 0 }}>
-                      <span style={{ fontSize: 22, flexShrink: 0 }}>{v.icon}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{v.label}</div>
-                        <div style={{ fontSize: FS.s, color: t.sub }}>{v.sub}</div>
-                      </div>
-                      <span style={{ fontSize: FS.xxs, padding: "2px 8px", borderRadius: RAD.pill,
-                        background: accent + "15", color: accent, fontWeight: FW.medium, flexShrink: 0 }}>
-                        {v.bereich === "objekt" ? "je Objekt" : "alle Objekte"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {lgView === "objekte" ? (
+              <div style={istListeLG
+                ? { display: "flex", flexDirection: "column", gap: 6 }
+                : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+                {(ves || []).map(v => istListeLG ? (
+                  <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
+                    aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
+                    auswahlAccentOverride={accent}
+                    onClick={() => { setObjektId(objektId === v.id ? null : v.id); setVorlageId(null); setHausId(null); }}/>
+                ) : (
+                  <VEKachel key={v.id} ve={v} t={t} accent={accent}
+                    aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
+                    auswahlAccentOverride={accent}
+                    onClick={() => { setObjektId(objektId === v.id ? null : v.id); setVorlageId(null); setHausId(null); }}/>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {lgGruppen.map(g => {
+                  const key = g.kind + ":" + g.id;
+                  const aktiv = aktGruppe === key;
+                  return (
+                    <button key={key} onClick={() => { setAktGruppe(aktiv ? null : key); setVorlageId(null); }}
+                      style={{ textAlign: "left", padding: "12px 14px", borderRadius: RAD.ms, cursor: "pointer",
+                        border: `1px solid ${aktiv ? accent : t.border}`,
+                        background: aktiv ? accent + "12" : t.card, width: "100%" }}>
+                      <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: aktiv ? accent : t.text }}>{g.label}</div>
+                      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 2 }}>{g.sub}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
-        {/* DETAIL: Aufbau-Bereich der gewählten Liste. Auf Desktop immer sichtbar
-            (mit Platzhalter, solange nichts gewählt); auf Mobil nur bei Auswahl. */}
-        {(istDesktopLG || vorlage) && (
+        {/* DETAIL: Vorlagenauswahl (bereichsgefiltert) + Aufbau-Bereich.
+            Auf Desktop immer sichtbar; auf Mobil nur bei getroffener Auswahl. */}
+        {(istDesktopLG || lgHatAuswahl) && (
         <div data-ad-scroll="y" style={istDesktopLG
-          ? { flex: mdLayout.detailFest ? `0 0 ${mdLayout.detailBreite}px` : "1 1 0%",
+          ? { flex: `0 0 ${detailMinBreite}px`,
               minWidth: 0, overflowY: "auto",
               paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }
           : { flex: 1, minHeight: 0, overflowY: "auto",
               paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
 
-        {/* Platzhalter, solange keine Vorlage gewählt (nur Desktop sichtbar). */}
-        {!vorlage && (
+        {/* Mobil: Zurück zur Auswahl */}
+        {!istDesktopLG && lgHatAuswahl && (
+          <button onClick={() => { setObjektId(null); setAktGruppe(null); setVorlageId(null); }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+              background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
+              padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
+            <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Auswahl
+          </button>
+        )}
+
+        {/* Platzhalter, solange keine Auswahl getroffen (nur Desktop). */}
+        {!lgHatAuswahl && (
           <div style={{ height: "100%", minHeight: 240, display: "flex",
             alignItems: "center", justifyContent: "center", textAlign: "center",
             border: `1px dashed ${t.border}`, borderRadius: RAD.lg,
             color: t.muted, fontSize: FS.m, padding: 24 }}>
-            Links eine Liste wählen, um sie hier aufzubauen.
+            {lgView === "objekte" ? "Links ein Objekt wählen, um Listen dafür zu erstellen."
+              : "Links eine Gruppe wählen, um objektübergreifende Listen zu erstellen."}
+          </div>
+        )}
+
+        {/* Vorlagenauswahl (bereichsgefiltert) — sichtbar bei Auswahl, solange
+            noch keine Vorlage gewählt ist. */}
+        {lgHatAuswahl && !vorlage && (
+          <div>
+            <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 10px" }}>
+              Welche Liste möchtest du erstellen?
+            </div>
+            <div style={KACHEL_GRID}>
+              {sichtbareVorlagen.map(v => (
+                <div key={v.id} onClick={() => { setVorlageId(v.id); setHausId(null); }} data-kb-item="1"
+                  style={{ display: "flex", flexDirection: "column", cursor: "pointer",
+                    background: t.card, height: "100%",
+                    border: `1px solid ${t.border}`,
+                    borderRadius: RAD.lg, overflow: "hidden", transition: "all 0.15s" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12,
+                    padding: "12px 14px", flex: 1, minHeight: 0 }}>
+                    <span style={{ fontSize: 22, flexShrink: 0 }}>{v.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{v.label}</div>
+                      <div style={{ fontSize: FS.s, color: t.sub }}>{v.sub}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1496,43 +1630,39 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 22 }}>{vorlage.icon}</span>
-              <div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>{vorlage.label}</div>
-                <div style={{ fontSize: FS.s, color: t.sub }}>{vorlage.sub}</div>
+                <div style={{ fontSize: FS.s, color: t.sub }}>
+                  {vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " · " + ve.adresse : "") : vorlage.sub}
+                </div>
               </div>
+              <button onClick={() => setVorlageId(null)} data-kb-zurueck="1"
+                style={{ display: "flex", alignItems: "center", gap: 6, background: "none",
+                  border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
+                  padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: FS.s, fontWeight: FW.medium, flexShrink: 0 }}>
+                Andere Liste
+              </button>
             </div>
 
-            {/* Objektwahl + Hauswahl */}
-            {vorlage.bereich === "objekt" && (
+            {/* Hauswahl — das Objekt selbst wird links gewählt; hier nur noch
+                die Haus-Verfeinerung, falls ein Objekt mehrere Häuser hat. */}
+            {vorlage.bereich === "objekt" && hausWaehlbar && (
               <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
                 <div>
-                  <div style={labelStyle}>Objekt</div>
-                  <select value={objektId == null ? "" : String(objektId)}
-                    onChange={e => { setObjektId(e.target.value === "" ? null : Number(e.target.value)); setHausId(null); }}
+                  <div style={labelStyle}>Haus</div>
+                  <select value={hausId == null ? "" : String(hausId)}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === "") { setHausId(null); return; }
+                      const h = haeuser.find(x => String(x.id) === val);
+                      setHausId(h ? h.id : null);
+                    }}
                     style={selectStyle}>
-                    {(ves || []).map(v => (
-                      <option key={v.id} value={String(v.id)}>
-                        {(v.nr || "Objekt") + (v.adresse ? " · " + v.adresse : "")}
-                      </option>
-                    ))}
+                    <option value="">Alle Häuser</option>
+                    {haeuser.map(h => <option key={String(h.id)} value={String(h.id)}>{h.name}</option>)}
                   </select>
                 </div>
-                {hausWaehlbar && (
-                  <div>
-                    <div style={labelStyle}>Haus</div>
-                    <select value={hausId == null ? "" : String(hausId)}
-                      onChange={e => {
-                        const val = e.target.value;
-                        if (val === "") { setHausId(null); return; }
-                        const h = haeuser.find(x => String(x.id) === val);
-                        setHausId(h ? h.id : null);
-                      }}
-                      style={selectStyle}>
-                      <option value="">Alle Häuser</option>
-                      {haeuser.map(h => <option key={String(h.id)} value={String(h.id)}>{h.name}</option>)}
-                    </select>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1649,7 +1779,163 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings }) {
   );
 }
 
-function StatistikScreen({ ves, kontakte, t, accent }) {
+// StatistikScreen: Rahmen wie Kalender — Pille „Objekte / Gruppen" oben, darunter
+// Master-Detail. Objekte-Pille = einzelne Objekte (Karte/Liste → Statistik dieses
+// Objekts). Gruppen-Pille = Alle Objekte / Verwaltungsarten / eigene Gruppen →
+// Statistik über die Objekte der Auswahl. Detail an gleicher x-Position (feste
+// Master-Breite = Spalten × Karten-Maxbreite). (Benny v12.34)
+function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsicht = "karten",
+  kartenSpalten = 2, kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, festeGridSpec = null }) {
+  const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
+  const [statView, setStatView] = useState("objekte"); // "objekte" | "gruppen"
+  const [aktVEId, setAktVEId] = useState(null);
+  const [aktGruppe, setAktGruppe] = useState(null); // {kind,id} | null
+  const masterBreite = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+  const istListe = listenAnsicht === "liste";
+
+  // Gruppen-Auswahlliste: Alle Objekte → Verwaltungsarten → eigene Gruppen.
+  const gruppenOptionen = [];
+  gruppenOptionen.push({ kind: "alle", id: "alle", label: "Alle Objekte",
+    sub: ves.length + (ves.length === 1 ? " Objekt" : " Objekte"), filter: () => true });
+  VERWALTUNGSARTEN.forEach(a => {
+    const n = ves.filter(v => (v.verwaltungsart || "weg") === a.id).length;
+    if (n > 0) gruppenOptionen.push({ kind: "art", id: a.id, label: a.label,
+      sub: n + (n === 1 ? " Objekt" : " Objekte"), filter: v => (v.verwaltungsart || "weg") === a.id });
+  });
+  ((settings && settings.objektGruppen) || []).forEach(g => {
+    if (!g) return;
+    const n = ves.filter(v => objektInGruppe(v, g)).length;
+    gruppenOptionen.push({ kind: "gruppe", id: g.id, label: g.name || g.kurz || "Gruppe",
+      sub: n + (n === 1 ? " Objekt" : " Objekte"), filter: v => objektInGruppe(v, g) });
+  });
+
+  // Aktuelle Auswahl → ves-Teilmenge für StatistikInhalt.
+  let auswahlVes = ves;
+  let auswahlTitel = "";
+  if (statView === "objekte") {
+    const vo = ves.find(v => v.id === aktVEId) || null;
+    auswahlVes = vo ? [vo] : [];
+    auswahlTitel = vo ? (vo.nr || "Objekt") : "";
+  } else {
+    const g = gruppenOptionen.find(x => x.kind + ":" + x.id === aktGruppe) || null;
+    auswahlVes = g ? ves.filter(g.filter) : [];
+    auswahlTitel = g ? g.label : "";
+  }
+  const hatAuswahl = (statView === "objekte" && aktVEId) || (statView === "gruppen" && aktGruppe);
+
+  const pille = (id, label) => (
+    <button onClick={() => setStatView(id)}
+      style={{ padding: "6px 14px", borderRadius: RAD.ms, cursor: "pointer",
+        border: `1px solid ${statView === id ? accent : t.border}`,
+        background: statView === id ? accent : "transparent",
+        color: statView === id ? getContrastColor(accent) : t.sub,
+        fontSize: FS.s, fontWeight: FW.bold }}>
+      {label}
+    </button>
+  );
+
+  // Master-Spalte: Objektauswahl (Karte/Liste) oder Gruppenauswahl (Liste).
+  const masterInhalt = statView === "objekte" ? (
+    <div style={istListe
+      ? { display: "flex", flexDirection: "column", gap: 6 }
+      : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+      {ves.map(ve => istListe ? (
+        <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
+          aktiv={aktVEId === ve.id} kbItem id={"stat-" + ve.id}
+          auswahlAccentOverride={accent}
+          onClick={() => setAktVEId(aktVEId === ve.id ? null : ve.id)}/>
+      ) : (
+        <VEKachel key={ve.id} ve={ve} t={t} accent={accent}
+          aktiv={aktVEId === ve.id} kbItem id={"stat-" + ve.id}
+          auswahlAccentOverride={accent}
+          onClick={() => setAktVEId(aktVEId === ve.id ? null : ve.id)}/>
+      ))}
+    </div>
+  ) : (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {gruppenOptionen.map(g => {
+        const key = g.kind + ":" + g.id;
+        const aktiv = aktGruppe === key;
+        return (
+          <button key={key} onClick={() => setAktGruppe(aktiv ? null : key)}
+            style={{ textAlign: "left", padding: "12px 14px", borderRadius: RAD.ms, cursor: "pointer",
+              border: `1px solid ${aktiv ? accent : t.border}`,
+              background: aktiv ? accent + "12" : t.card, width: "100%" }}>
+            <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: aktiv ? accent : t.text }}>{g.label}</div>
+            <div style={{ fontSize: FS.s, color: t.muted, marginTop: 2 }}>{g.sub}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const detailInhalt = hatAuswahl && auswahlVes.length > 0 ? (
+    <StatistikInhalt ves={auswahlVes} kontakte={kontakte} t={t} accent={accent}/>
+  ) : (
+    <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "20px 8px" }}>
+      {statView === "objekte" ? "Objekt links auswählen, um die Statistik zu sehen."
+        : "Gruppe links auswählen, um die Statistik zu sehen."}
+    </div>
+  );
+
+  const header = (
+    <StickySectionHeader t={t} accent={accent}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
+        <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Statistik</div>
+        <div style={{ display: "flex", gap: 8, marginLeft: 4 }}>
+          {pille("objekte", "Objekte")}
+          {pille("gruppen", "Gruppen")}
+        </div>
+      </div>
+    </StickySectionHeader>
+  );
+
+  // MOBIL: Auswahl ODER Detail (mit Zurück).
+  if (!istDesktop) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {header}
+        {hatAuswahl ? (
+          <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+            <button onClick={() => { setAktVEId(null); setAktGruppe(null); }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+                background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
+                padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
+              <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Auswahl
+            </button>
+            {detailInhalt}
+          </div>
+        ) : (
+          <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+            {masterInhalt}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // DESKTOP: Master-Detail nebeneinander, Detail an fester x-Position.
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {header}
+      <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
+        minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
+        <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, overflowY: "auto",
+          padding: 2, boxSizing: "border-box" }}>
+          {masterInhalt}
+        </div>
+        <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+          {detailInhalt}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// StatistikInhalt: rechnet + rendert die komplette Auswertung für die ÜBERGEBENE
+// ves-Auswahl (ein Objekt, eine Gruppe oder alle). Die Berechnung war früher fix
+// auf das ganze Portfolio — jetzt einfach auf das, was reinkommt. (Benny v12.34)
+function StatistikInhalt({ ves, kontakte, t, accent }) {
   const fmt = (n) => Number(n || 0).toLocaleString("de-DE");
   // ── Einheiten + Flächen ─
   let wohnAnzahl = 0, spAnzahl = 0, flaecheGesamt = 0;
@@ -1761,16 +2047,8 @@ function StatistikScreen({ ves, kontakte, t, accent }) {
   const maxOrt = Math.max(1, ...topOrte.map(x => x[1]));
   const maxRolle = Math.max(1, ...topRollen.map(x => x[1]), 1);
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <StickySectionHeader t={t} accent={accent}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-          padding: "2px 0 10px 0" }}>
-          <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Statistik</div>
-          <span style={{ fontSize: FS.s, color: t.muted }}>Live aus dem Bestand berechnet</span>
-        </div>
-      </StickySectionHeader>
-      <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
-        paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
+    <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
+      paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
         {/* KPI-Kacheln */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
           gap: 10, marginBottom: 12 }}>
@@ -1879,7 +2157,6 @@ function StatistikScreen({ ves, kontakte, t, accent }) {
             </div>
           </div>
         </StatPanel>
-      </div>
     </div>
   );
 }

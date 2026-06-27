@@ -533,32 +533,8 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
         <Toggle value={settings.kartenIconsAn !== false}
           onChange={v => save({ kartenIconsAn: v })} color={accent}/>
       </EinstellZeile>
-      <EinstellZeile label="Detailfenster-Breite" sub="Wie breit das geöffnete Detailfenster rechts ist, wenn du ein Objekt oder einen Kontakt antippst. Liste bzw. Karten nehmen den Rest." t={t}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
-          <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
-            fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
-            {Math.max(400, Math.min(1200, settings.detailMinBreite != null ? settings.detailMinBreite : 400))} px
-          </span>
-          <input type="range" min={400} max={1200} step={20}
-            value={Math.max(400, Math.min(1200, settings.detailMinBreite != null ? settings.detailMinBreite : 400))}
-            onChange={e => save({ detailMinBreite: parseInt(e.target.value, 10) })}
-            style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
-        </div>
-      </EinstellZeile>
-      <EinstellZeile label="Detail-Maximalanteil" sub="Höchster Anteil der Breite, den das Detailfenster einnehmen darf, solange die Liste daneben steht. Reicht der Platz für deine eingestellte Detailbreite nicht, schrumpft das Detail bis zu diesem Anteil mit — erst dann weicht die Liste ganz. So bleibt das Verhältnis auf kleineren Bildschirmen ausgewogen." t={t}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
-          <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
-            fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
-            {Math.round(Math.max(0.4, Math.min(0.8, settings.detailMaxAnteil != null ? settings.detailMaxAnteil : 0.6)) * 100)} %
-          </span>
-          <input type="range" min={40} max={80} step={5}
-            value={Math.round(Math.max(0.4, Math.min(0.8, settings.detailMaxAnteil != null ? settings.detailMaxAnteil : 0.6)) * 100)}
-            onChange={e => save({ detailMaxAnteil: parseInt(e.target.value, 10) / 100 })}
-            style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
-        </div>
-      </EinstellZeile>
       {(settings.listenAnsicht || "karten") === "karten" && (
-        <EinstellZeile label="Karten neben dem Detail" sub="Wie viele Karten-Spalten neben dem geöffneten Detailfenster stehen bleiben (Desktop). Die Kartenbreite ergibt sich aus dem verbleibenden Platz." t={t}>
+        <EinstellZeile label="Karten neben dem Detail" sub="Wie viele Karten-Spalten höchstens neben dem geöffneten Detailfenster stehen (Desktop). Reicht der Platz nicht, werden es automatisch weniger." t={t}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
             <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
               fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
@@ -567,6 +543,111 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
             <input type="range" min={1} max={5} step={1}
               value={settings.kartenSpalten != null ? settings.kartenSpalten : 2}
               onChange={e => save({ kartenSpalten: parseInt(e.target.value, 10) })}
+              style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
+          </div>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "karten" && (
+        <EinstellZeile label="Übersicht: feste Spaltenzahl"
+          sub="An: Die Übersicht zeigt immer genau die eingestellte Spaltenzahl (Karten auf Maximalbreite, Rest bleibt rechts frei) — die Karten springen beim Öffnen eines Details nicht mehr. Aus: Die Übersicht füllt die ganze Breite mit so vielen Spalten wie passen." t={t}>
+          <Toggle value={settings.festeSpalten !== false}
+            onChange={v => save({ festeSpalten: v })} color={accent}/>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "karten" && (
+        <EinstellZeile label="Karten-Maximalbreite" sub="So breit wird eine Karte höchstens. Ist mehr Platz da, bleibt er rechts frei — die Karten werden nicht breitgezogen." t={t}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
+            <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
+              fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
+              {Math.max(240, Math.min(480, settings.kartenMaxBreite != null ? settings.kartenMaxBreite : 340))} px
+            </span>
+            <input type="range" min={240} max={480} step={10}
+              value={Math.max(240, Math.min(480, settings.kartenMaxBreite != null ? settings.kartenMaxBreite : 340))}
+              onChange={e => save({ kartenMaxBreite: parseInt(e.target.value, 10) })}
+              style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
+          </div>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "karten" && (
+        <EinstellZeile label="Schrumpf-Toleranz" sub="Wie weit eine Karte unter ihre Maximalbreite schrumpfen darf, bevor eine Spalte wegfällt. Höher = enger zusammenschieben (mehr Spalten halten), niedriger = früher eine Spalte weniger." t={t}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
+            <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
+              fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
+              {Math.max(0, Math.min(50, settings.kartenSchrumpf != null ? settings.kartenSchrumpf : 20))} %
+            </span>
+            <input type="range" min={0} max={50} step={5}
+              value={Math.max(0, Math.min(50, settings.kartenSchrumpf != null ? settings.kartenSchrumpf : 20))}
+              onChange={e => save({ kartenSchrumpf: parseInt(e.target.value, 10) })}
+              style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
+          </div>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "karten" && (
+        <EinstellZeile label="Detailfenster-Breite" sub="Wie breit das geöffnete Detailfenster ist, wenn du ein Objekt oder einen Kontakt antippst. Die Karten stehen links davor; rechts bleibt frei. Reicht der Platz nicht für die eingestellte Spaltenzahl, werden es automatisch weniger Spalten." t={t}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
+            <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
+              fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
+              {Math.max(400, Math.min(1200, settings.detailMinBreite != null ? settings.detailMinBreite : 400))} px
+            </span>
+            <input type="range" min={400} max={1200} step={20}
+              value={Math.max(400, Math.min(1200, settings.detailMinBreite != null ? settings.detailMinBreite : 400))}
+              onChange={e => save({ detailMinBreite: parseInt(e.target.value, 10) })}
+              style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
+          </div>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "liste" && (
+        <EinstellZeile label="Listenbreite" sub="So breit wird die Listen-Spalte links höchstens. Ist mehr Platz da, bleibt er rechts frei." t={t}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
+            <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
+              fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
+              {Math.max(280, Math.min(720, settings.listeBreite != null ? settings.listeBreite : 400))} px
+            </span>
+            <input type="range" min={280} max={720} step={20}
+              value={Math.max(280, Math.min(720, settings.listeBreite != null ? settings.listeBreite : 400))}
+              onChange={e => save({ listeBreite: parseInt(e.target.value, 10) })}
+              style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
+          </div>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "liste" && (
+        <EinstellZeile label="Listen-Schrumpf" sub="Wie weit die Liste unter ihre Breite schrumpfen darf, bevor sie ganz weicht. Bei knappem Platz schrumpft zuerst die Liste, dann das Detail, dann bleibt nur das Detail." t={t}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
+            <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
+              fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
+              {Math.max(0, Math.min(50, settings.listeSchrumpf != null ? settings.listeSchrumpf : 25))} %
+            </span>
+            <input type="range" min={0} max={50} step={5}
+              value={Math.max(0, Math.min(50, settings.listeSchrumpf != null ? settings.listeSchrumpf : 25))}
+              onChange={e => save({ listeSchrumpf: parseInt(e.target.value, 10) })}
+              style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
+          </div>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "liste" && (
+        <EinstellZeile label="Detailfenster-Breite" sub="Wie breit das Detailfenster neben der Liste ist. Wird der Platz eng, schrumpft erst die Liste, dann das Detail." t={t}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
+            <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
+              fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
+              {Math.max(400, Math.min(1200, settings.detailBreiteListe != null ? settings.detailBreiteListe : 540))} px
+            </span>
+            <input type="range" min={400} max={1200} step={20}
+              value={Math.max(400, Math.min(1200, settings.detailBreiteListe != null ? settings.detailBreiteListe : 540))}
+              onChange={e => save({ detailBreiteListe: parseInt(e.target.value, 10) })}
+              style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
+          </div>
+        </EinstellZeile>
+      )}
+      {(settings.listenAnsicht || "karten") === "liste" && (
+        <EinstellZeile label="Detail-Schrumpf" sub="Wie weit das Detailfenster unter seine Breite schrumpfen darf, nachdem die Liste schon am Minimum ist. Reicht auch das nicht, weicht die Liste ganz." t={t}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
+            <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
+              fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
+              {Math.max(0, Math.min(40, settings.detailSchrumpfListe != null ? settings.detailSchrumpfListe : 20))} %
+            </span>
+            <input type="range" min={0} max={40} step={5}
+              value={Math.max(0, Math.min(40, settings.detailSchrumpfListe != null ? settings.detailSchrumpfListe : 20))}
+              onChange={e => save({ detailSchrumpfListe: parseInt(e.target.value, 10) })}
               style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
           </div>
         </EinstellZeile>

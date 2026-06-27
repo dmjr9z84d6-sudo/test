@@ -2609,7 +2609,7 @@ function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante 
   );
 }
 
-function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes = null, setKontakte = null, plusAccent = null, settings = null, dockOffen = false, freieTermine = [], setFreieTermine = null, pendingTerminKey = null, kalView = "objekte", setKalView = null, kalViewVEId = null, setKalViewVEId = null, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMaxAnteil = 0.6, listenAnsicht = "karten" }) {
+function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes = null, setKontakte = null, plusAccent = null, settings = null, dockOffen = false, freieTermine = [], setFreieTermine = null, pendingTerminKey = null, kalView = "objekte", setKalView = null, kalViewVEId = null, setKalViewVEId = null, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, festeGridSpec = null, listenAnsicht = "karten" }) {
   const [typFilter, setTypFilter] = useState("alle");
   // Orientierungskalender-Panel (Desktop: Inline-Seitenpanel rechts im
   // Kalender-Fenster; Mobil: Overlay von rechts).
@@ -2955,7 +2955,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
               <ObjekteMasterDetail
                 listenAnsicht={listenAnsicht}
                 cardWidth={cardWidth}
-                detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil}
+                detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
                 kartenSpalten={kartenSpalten}
                 gefiltert={ves}
                 expandedVEId={kalViewVEId}
@@ -2984,7 +2984,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
               )}
               <div style={listenAnsicht === "liste"
                 ? { display: "flex", flexDirection: "column", gap: 6 }
-                : KACHEL_GRID}>
+                : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
                 {(ves || []).map(veObj => listenAnsicht === "liste" ? (
                   <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={kalFarbe}
                     aktiv={false} kbItem id={"kal-obj-" + veObj.id}
@@ -3001,97 +3001,155 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           );
         })()
       ) : (
-      <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0, minWidth: 0, width: "100%",
-        overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
-        {kalView === "timeline" && gefiltert.length === 0 && (
-          <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 20 }}>
-            Keine Termine in den nächsten 24 Monaten.
-          </div>
-        )}
-        {kalView === "timeline" && KALENDER_BUCKETS.map(function(b) {
-          if (gruppen[b.id].length === 0) return null;
+      (() => {
+        // ── TIMELINE als MASTER-DETAIL (Benny v12.32) ────────────────────────
+        // Links: Termin-Zeilen wie bisher (gleiches Aussehen), aber Antippen
+        // WÄHLT AUS (kein Inline-Aufklappen mehr). Liste auf Master-Breite
+        // begrenzt — dieselbe Breite wie die Objekt-Karten (kartenSpalten ×
+        // kartenMaxBreite), damit das Detail an GLEICHER x-Position aufgeht.
+        // Rechts: das eine ausgewählte Termin-Detail (aufgeklappte KalenderZeile).
+        // Mobil (kein Desktop): Detail ersetzt die Liste + „Zurück"-Button.
+        const masterBreite = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+        const offenerTermin = (function() {
+          for (let bi = 0; bi < KALENDER_BUCKETS.length; bi++) {
+            const arr = gruppen[KALENDER_BUCKETS[bi].id];
+            for (let i = 0; i < arr.length; i++) {
+              if (terminKey(arr[i]) === offenTerminKey) return arr[i];
+            }
+          }
+          return null;
+        })();
+        // Eine KalenderZeile mit allen Standard-Callbacks (DRY für Liste+Detail).
+        const baueZeile = function(termin, key, idElem, offenState, onToggleFn) {
           return (
-            <div key={b.id} style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: b.id === "ueberfaellig" ? "#EF4444" : t.sub,
-                textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8, marginTop: 4 }}>
-                {b.label} <span style={{ color: t.muted, fontWeight: FW.medium }}>({gruppen[b.id].length})</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {gruppen[b.id].map(function(termin, i) {
-                  var key = terminKey(termin);
-                  return (
-                    <KalenderZeile key={b.id + "-" + i} termin={termin} t={t}
-                      rahmenFarbe={kalFarbe}
-                      kontakte={kontakte} ves={ves} setKontakte={setKontakte}
-                      onKontaktClick={gotoKontakt} onVEClick={(id) => gotoVE(id)}
-                      offen={offenTerminKey === key}
-                      onToggle={() => setOffenTerminKey(offenTerminKey === key ? null : key)}
-                      onLoeschen={
-                        termin.manuellId != null && setVes ? () => {
-                          setVes(prev => prev.map(v => v.id === termin.objektId
-                            ? { ...v, termine: (v.termine || []).filter(x => x.id !== termin.manuellId) } : v));
-                        }
-                        : (termin.freiId != null && setFreieTermine ? () => {
-                          setFreieTermine(prev => (prev || []).filter(x => x.id !== termin.freiId));
-                        } : null)
-                      }
-                      onNotiz={
-                        termin.manuellId != null && setVes ? (text) => {
-                          setVes(prev => prev.map(v => v.id === termin.objektId
-                            ? { ...v, termine: (v.termine || []).map(x => x.id === termin.manuellId ? { ...x, notizen: text } : x) } : v));
-                        }
-                        : (termin.freiId != null && setFreieTermine ? (text) => {
-                          setFreieTermine(prev => (prev || []).map(x => x.id === termin.freiId ? { ...x, notizen: text } : x));
-                        } : null)
-                      }
-                      onBearbeiten={
-                        (termin.manuellId != null || termin.freiId != null) ? () => {
-                          const isoVon = (d) => d ? (d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0")) : "";
-                          setBearbeiteTermin({
-                            quelle: termin.manuellId != null ? "manuell" : "frei",
-                            id: termin.manuellId != null ? termin.manuellId : termin.freiId,
-                            objektId: termin.objektId || "",
-                            start: {
-                              titel: termin.titel || "",
-                              datum: isoVon(termin.datum),
-                              uhrzeit: termin.uhrzeit || "",
-                              dauer: termin.dauer != null ? termin.dauer : null,
-                              objektId: termin.objektId || "",
-                              einheitIds: terminEinheitIds(termin).slice(),
-                              kontaktIds: (termin.kontaktIds || []).slice(),
-                              notizen: termin.notizen || ""
-                            }
-                          });
-                          setOffenTerminKey(null);
-                        } : null
-                      }
-                      onZiel={() => {
-                        if (termin.objektId) gotoVE(termin.objektId, termin.ziel);
-                        else if (termin.kontaktId) gotoKontakt(termin.kontaktId);
-                      }}/>
-                  );
-                })}
-              </div>
-            </div>
+            <KalenderZeile key={key + "-" + idElem} termin={termin} t={t}
+              rahmenFarbe={kalFarbe}
+              kontakte={kontakte} ves={ves} setKontakte={setKontakte}
+              onKontaktClick={gotoKontakt} onVEClick={(id) => gotoVE(id)}
+              offen={offenState}
+              onToggle={onToggleFn}
+              onLoeschen={
+                termin.manuellId != null && setVes ? () => {
+                  setVes(prev => prev.map(v => v.id === termin.objektId
+                    ? { ...v, termine: (v.termine || []).filter(x => x.id !== termin.manuellId) } : v));
+                  setOffenTerminKey(null);
+                }
+                : (termin.freiId != null && setFreieTermine ? () => {
+                  setFreieTermine(prev => (prev || []).filter(x => x.id !== termin.freiId));
+                  setOffenTerminKey(null);
+                } : null)
+              }
+              onNotiz={
+                termin.manuellId != null && setVes ? (text) => {
+                  setVes(prev => prev.map(v => v.id === termin.objektId
+                    ? { ...v, termine: (v.termine || []).map(x => x.id === termin.manuellId ? { ...x, notizen: text } : x) } : v));
+                }
+                : (termin.freiId != null && setFreieTermine ? (text) => {
+                  setFreieTermine(prev => (prev || []).map(x => x.id === termin.freiId ? { ...x, notizen: text } : x));
+                } : null)
+              }
+              onBearbeiten={
+                (termin.manuellId != null || termin.freiId != null) ? () => {
+                  const isoVon = (d) => d ? (d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0")) : "";
+                  setBearbeiteTermin({
+                    quelle: termin.manuellId != null ? "manuell" : "frei",
+                    id: termin.manuellId != null ? termin.manuellId : termin.freiId,
+                    objektId: termin.objektId || "",
+                    start: {
+                      titel: termin.titel || "",
+                      datum: isoVon(termin.datum),
+                      uhrzeit: termin.uhrzeit || "",
+                      dauer: termin.dauer != null ? termin.dauer : null,
+                      objektId: termin.objektId || "",
+                      einheitIds: terminEinheitIds(termin).slice(),
+                      kontaktIds: (termin.kontaktIds || []).slice(),
+                      notizen: termin.notizen || ""
+                    }
+                  });
+                } : null
+              }
+              onZiel={() => {
+                if (termin.objektId) gotoVE(termin.objektId, termin.ziel);
+                else if (termin.kontaktId) gotoKontakt(termin.kontaktId);
+              }}/>
           );
-        })}
-      </div>
+        };
+        // Master: die Buckets mit Termin-Zeilen (Auswahl statt Inline-Aufklappen).
+        const masterListe = (
+          <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0, minWidth: 0,
+            width: "100%", overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
+            {gefiltert.length === 0 && (
+              <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 20 }}>
+                Keine Termine in den nächsten 24 Monaten.
+              </div>
+            )}
+            {KALENDER_BUCKETS.map(function(b) {
+              if (gruppen[b.id].length === 0) return null;
+              return (
+                <div key={b.id} style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: b.id === "ueberfaellig" ? "#EF4444" : t.sub,
+                    textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8, marginTop: 4 }}>
+                    {b.label} <span style={{ color: t.muted, fontWeight: FW.medium }}>({gruppen[b.id].length})</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {gruppen[b.id].map(function(termin, i) {
+                      var key = terminKey(termin);
+                      // Auf Desktop: nie inline aufklappen (offen=false), Antippen
+                      // wählt aus. Auf Mobil: Antippen öffnet das Detail (s.u.).
+                      return baueZeile(termin, key, b.id + "-" + i, false,
+                        () => setOffenTerminKey(offenTerminKey === key ? null : key));
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+        // Detail: das eine ausgewählte Termin-Detail (aufgeklappte Zeile).
+        const detailInhalt = offenerTermin ? (
+          <div style={{ background: kalFarbe + "08", border: `1px solid ${kalFarbe}`,
+            borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box", width: "100%", minWidth: 0 }}>
+            {baueZeile(offenerTermin, terminKey(offenerTermin), "detail", true, () => {})}
+          </div>
+        ) : (
+          <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "20px 8px" }}>
+            Termin links auswählen, um Details zu sehen.
+          </div>
+        );
+        // MOBIL: Detail ersetzt die Liste + „Zurück".
+        if (!kalIstDesktop) {
+          if (offenerTermin) {
+            return (
+              <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0, minWidth: 0,
+                width: "100%", overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
+                <button onClick={() => setOffenTerminKey(null)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+                    background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
+                    padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
+                  <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Timeline
+                </button>
+                {detailInhalt}
+              </div>
+            );
+          }
+          return masterListe;
+        }
+        // DESKTOP: Master-Detail nebeneinander. Master fest auf masterBreite,
+        // Detail füllt den Rest bis detailMinBreite — Position = gleiche x wie
+        // bei den Objekt-Karten.
+        return (
+          <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
+            minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
+            <div style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, display: "flex", flexDirection: "column" }}>
+              {masterListe}
+            </div>
+            <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+              {detailInhalt}
+            </div>
+          </div>
+        );
+      })()
       )}
-      {kalView === "timeline" && kalIstDesktop && !dockAktiv ? (
-        <KalenderPanel variante="inline" offen={panelOffen} onClose={() => setPanelOffen(false)}
-          termine={panelTermine} settings={settings} t={t} accent={kalFarbe}
-          ves={ves} kontakte={kontakte}
-          onGotoVE={(id, ziel) => gotoVE(id, ziel)} onGotoKontakt={gotoKontakt}
-          onGotoTermin={(key) => {
-            setOffenTerminKey(key);
-            setTimeout(() => {
-              if (typeof document === "undefined") return;
-              const sel = (window.CSS && window.CSS.escape) ? window.CSS.escape(key) : key;
-              const el = document.querySelector('[data-termin-key="' + sel + '"]');
-              if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
-            }, 120);
-          }}/>
-      ) : null}
       </div>
     </>
   );

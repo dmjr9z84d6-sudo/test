@@ -3748,11 +3748,11 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
 //   · 2-Spalten-Master + Detail (Standard, wenn genug Platz)
 //   · 1-Spalten-Master + Detail (wenn Detail sonst zu schmal würde)
 //   · nur Detail mit "Zurück"-Button (wenn auch 1-Spalten-Master nicht passt)
-function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAnteil = 0.6, kartenSpalten = 2, listenAnsicht = "karten", renderKartenSpalte, aktivK, t, accent,
+function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, listenAnsicht = "karten", renderKartenSpalte, aktivK, t, accent,
   ves, kontakte, setKontakte, onVEClick, setAktiv, updateKontakt, onDelete }) {
   const istListe = listenAnsicht === "liste";
-  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, detailMaxAnteil, kartenSpalten);
-  const kartenCols = Math.max(1, Math.min(kartenSpalten, mdLayout.masterCols || Math.floor((mdLayout.masterWidth || cardWidth) / 300)));
+  const [mdRef, mdLayout] = useMasterDetailLayout(cardWidth, 1.1, 10, 5, true, detailMinBreite, kartenMaxBreite, kartenSpalten, kartenMin, istListe ? listeOpt : null);
+  const kartenCols = mdLayout.masterCols || 1;
 
   // Fallback: kein Master mehr — Detail full-width + Zurück-Button
   if (mdLayout.masterCols === 0) {
@@ -3776,10 +3776,11 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, detailMaxAntei
       <div data-ad-auslauf="1" style={{
         flex: mdLayout.detailFest ? `0 0 ${mdLayout.masterFest}px` : `0 0 ${mdLayout.masterWidth}px`, minWidth: 0,
         overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
-        {renderKartenSpalte(kartenCols)}
+        {renderKartenSpalte(kartenCols, mdLayout.kartenBreite)}
       </div>
       <div data-ad-auslauf="1" style={{
-        flex: mdLayout.detailFest ? `1 1 ${mdLayout.detailBreite}px` : "1 1 0%", minWidth: 0,
+        flex: !mdLayout.detailFest ? "1 1 0%"
+          : (istListe ? `0 0 ${mdLayout.detailBreite}px` : `1 1 ${mdLayout.detailBreite}px`), minWidth: 0,
         overflowY: "auto" }}>
         <KontaktDetailKarte k={aktivK} t={t} accent={accent} listenModus={true}
           ves={ves} kontakte={kontakte} setKontakte={setKontakte}
@@ -4160,7 +4161,7 @@ function KontaktTrenner({ buchstabe, t, accent }) {
   );
 }
 
-function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle", kontaktart, kontakte, setKontakte, ves, cardWidth = 340, detailMinBreite = 300, detailMaxAnteil = 0.6, legendeAn = true, listenAnsicht = "karten",
+function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle", kontaktart, kontakte, setKontakte, ves, cardWidth = 340, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, legendeAn = true, listenAnsicht = "karten",
   externAktiv, setExternAktiv, externEditMode, setExternEditMode, mobileDetailHeaderOhneEditBtn = false, kartenSpalten = 2 }) {
   const [internAktiv, setInternAktiv] = useState(initialKontaktId || null);
   // Aktiver Kontakt: extern kontrollierbar (Mobile: App-Ebene weiß Bescheid,
@@ -4250,12 +4251,16 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
       id={"kon-" + k.id} onClick={onClick}/>
   );
 
-  const renderKartenSpalte = (cols) => (
+  const renderKartenSpalte = (cols, kartenBreite) => {
+    const gridStyle = kartenBreite
+      ? { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${kartenBreite}px)`, alignContent: "start" }
+      : { ...KACHEL_GRID, alignContent: "start" };
+    return (
     <>
       {zeigePersonen && personenGef.length > 0 && (
         <div style={istListe
           ? { display: "flex", flexDirection: "column", gap: 6 }
-          : { ...KACHEL_GRID, alignContent: "start" }}>
+          : gridStyle}>
           {personenGef.map(k => renderKontaktItem(k, aktiv,
             () => setAktiv(aktiv === k.id ? null : k.id), false))}
         </div>
@@ -4264,14 +4269,15 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
         <div style={istListe
           ? { display: "flex", flexDirection: "column", gap: 6,
               marginTop: (zeigePersonen && personenGef.length > 0) ? 12 : 0 }
-          : { ...KACHEL_GRID, alignContent: "start",
+          : { ...gridStyle,
               marginTop: (zeigePersonen && personenGef.length > 0) ? 12 : 0 }}>
           {firmenGef.map(k => renderKontaktItem(k, aktiv,
             () => setAktiv(aktiv === k.id ? null : k.id), false))}
         </div>
       )}
     </>
-  );
+    );
+  };
 
   // Kontakt löschen: aus der Liste entfernen + Detail schließen.
   // Bestätigungs-Dialog erfolgt schon in KDKHeader.
@@ -4288,7 +4294,7 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
       {kontaktLegendeEl}
       <KontakteMasterDetail
         cardWidth={cardWidth}
-        detailMinBreite={detailMinBreite} detailMaxAnteil={detailMaxAnteil}
+        detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
         kartenSpalten={kartenSpalten}
         listenAnsicht={listenAnsicht}
         renderKartenSpalte={renderKartenSpalte}
