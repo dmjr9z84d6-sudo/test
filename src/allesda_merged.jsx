@@ -283,6 +283,7 @@ import {
   DatumFeld,
   DetailRahmen,
   KopfPille,
+  ScreenKopf,
   DatumKalender,
   EckPille,
   EigentumBlock,
@@ -1830,10 +1831,19 @@ export default function App() {
   // Schnelleingabe). Wird als legendeEl-Prop übergeben — so steht die Legende auf
   // ALLEN Master-Detail-Screens gleich (kein eigener Nachbau je Screen, kein
   // Import-Zyklus listen-tools→kontakte-modul). Ausblendbar via legendeObjekte.
+  // Zentraler Sprung zur Handlungsbedarf-Einstellung (eine Quelle statt je Screen
+  // kopierter dispatchEvent-Block). Nutzt den vorhandenen goto-einstellungen-Handler.
+  const springHandlungsbedarf = () => {
+    try {
+      window.dispatchEvent(new CustomEvent("allesda:goto-einstellungen",
+        { detail: { sektion: "statusleiste", anker: "set-handlungsbedarf" } }));
+    } catch (err) {}
+  };
   const baueObjektLegende = (legAccent) =>
     (settings.legendeObjekte !== false && (vesSichtbar || []).length > 0) ? (
       <ObjektLegende ves={vesSichtbar} t={t} accent={legAccent}
-        listenAnsicht={effectiveSettings.listenAnsicht}/>
+        listenAnsicht={effectiveSettings.listenAnsicht}
+        onGotoHandlungsbedarf={springHandlungsbedarf}/>
     ) : null;
   // Termine für die Kalender-Seitenleiste (Desktop-Dock) — inkl. 12 Monate
   // Rückblick. Memoisiert, da sammleTermine bei jedem App-Render teuer wäre.
@@ -2997,14 +3007,12 @@ export default function App() {
 
           const aufLegende = baueObjektLegende(aAccent);
           const auftragHeader = (
-            <StickySectionHeader t={t} accent={aAccent}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
-                <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Vorgänge</div>
+            <ScreenKopf t={t} accent={aAccent} titel="Vorgänge"
+              mitte={
                 <KopfPille t={t} accent={aAccent}
                   optionen={[{ id: "objekt", label: "Objekte" }, { id: "firma", label: "Firmen" }]}
                   aktiv={auftragView} onWaehle={setAuftragView}/>
-              </div>
-            </StickySectionHeader>
+              }/>
           );
 
           if (!istDesk) {

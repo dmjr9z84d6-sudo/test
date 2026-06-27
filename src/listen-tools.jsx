@@ -7,9 +7,9 @@ import {
   neuesHhMitglied, objektInGruppe, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
 } from "./datenmodell.js";
 import {
-  DESKTOP_MIN_WIDTH, I, StickySectionHeader, useMasterDetailLayout, useWindowWidth, passendeMasterSpalten, useContentWidth, veKartenFeldWert
+  DESKTOP_MIN_WIDTH, I, useMasterDetailLayout, useWindowWidth, passendeMasterSpalten, useContentWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
-import { DatumFeld, DetailRahmen, KopfPille, SegmentControl } from "./components.jsx";
+import { DatumFeld, DetailRahmen, KopfPille, ScreenKopf, SegmentControl } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -997,11 +997,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   );
 
   const seHeader = (
-    <StickySectionHeader t={t} accent={accent}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
-        <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Schnelleingabe</div>
-      </div>
-    </StickySectionHeader>
+    <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"/>
   );
 
   // MOBIL: kein Objekt → nur Auswahl; Objekt gewählt → Maske (mit Zurück).
@@ -1173,18 +1169,16 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   if (!istDesktop) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <StickySectionHeader t={t} accent={accent}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
-            <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Schnelleingabe</div>
-            <button onClick={() => setObjektId(null)} data-kb-zurueck="1" style={{ marginLeft: "auto",
+        <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"
+          rechts={
+            <button onClick={() => setObjektId(null)} data-kb-zurueck="1" style={{
               display: "flex", alignItems: "center", gap: 6, background: "none",
               border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
               padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
               fontSize: FS.m, fontWeight: FW.medium }}>
               Anderes Objekt
             </button>
-          </div>
-        </StickySectionHeader>
+          }/>
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
           {seMaske}
@@ -1481,15 +1475,12 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <StickySectionHeader t={t} accent={accent}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-          padding: "2px 0 10px 0" }}>
-          <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Listengenerator</div>
+      <ScreenKopf t={t} accent={accent} titel="Listengenerator"
+        mitte={
           <KopfPille t={t} accent={accent}
             optionen={[{ id: "objekte", label: "Objekte" }, { id: "gruppen", label: "Gruppen" }]}
             aktiv={lgView} onWaehle={(id) => { setLgView(id); setVorlageId(null); }}/>
-        </div>
-      </StickySectionHeader>
+        }/>
 
       {lgView === "objekte" && legendeEl ? (
         <div style={{ flexShrink: 0, padding: "0 2px" }}>{legendeEl}</div>
@@ -1845,14 +1836,12 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   ) : null;
 
   const header = (
-    <StickySectionHeader t={t} accent={accent}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "2px 0 10px 0" }}>
-        <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text }}>Statistik</div>
+    <ScreenKopf t={t} accent={accent} titel="Statistik"
+      mitte={
         <KopfPille t={t} accent={accent}
           optionen={[{ id: "objekte", label: "Objekte" }, { id: "gruppen", label: "Gruppen" }]}
           aktiv={statView} onWaehle={setStatView}/>
-      </div>
-    </StickySectionHeader>
+      }/>
   );
 
   // MOBIL: Auswahl ODER Detail (mit Zurück).

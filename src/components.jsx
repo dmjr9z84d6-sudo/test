@@ -13,7 +13,7 @@ import {
   eigStatus, findeKontaktKandidaten, verwendungenVon
 } from "./datenmodell.js";
 import {
-  I, formatNameMitCtx, useAvatarIcons, useFirmenRollen, useKategorien,
+  I, StickySectionHeader, formatNameMitCtx, useAvatarIcons, useFirmenRollen, useKategorien,
   useKontaktAnzeige, useKontaktFarbe, useLeistungen, useRollen, useVerwendungen,
   useZeitPicker, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
@@ -3256,6 +3256,48 @@ function KopfPille({ t, accent, optionen, aktiv, onWaehle }) {
   );
 }
 
+// ScreenKopf — KANONISCHER Screen-Kopf (§73). EIN Baustein für ALLE Screen-Köpfe
+// (Objekte, Kontakte, Vorgänge, Statistik, Listengenerator, Schnelleingabe, …),
+// damit Titel-Höhe, Abstände und Button-Position NIE wieder je Screen auseinander-
+// laufen. Wrapper-Schema ist hier FEST verdrahtet — Screens dürfen kein eigenes
+// padding/flexWrap mehr dazusetzen:
+//   • StickySectionHeader liefert die symmetrischen 8/8-Abstände → Titel sitzt
+//     überall gleich hoch.
+//   • innerer Wrapper: flex, alignItems:center, width:100% → marginLeft:auto am
+//     rechts-Slot wirkt garantiert (Button sitzt überall ganz rechts).
+//   • KEIN flexWrap (würde Höhe ändern → Titel „springt").
+// Slots:
+//   titel  — String oder Node (groß, FW.heavy). Optional onTitelClick (z.B. „alle
+//            anzeigen").
+//   mitte  — neben dem Titel: KopfPille / FilterButtons (optional).
+//   rechts — Plus-/Zurück-Button (optional). Bekommt automatisch marginLeft:auto.
+function ScreenKopf({ t, accent, titel, titelAktiv = true, onTitelClick = null,
+  mitte = null, rechts = null }) {
+  return (
+    <StickySectionHeader t={t} accent={accent}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minWidth: 0 }}>
+        {(typeof titel === "string") ? (
+          <div onClick={onTitelClick || undefined}
+            title={onTitelClick ? "Alle anzeigen" : undefined}
+            style={{ fontSize: FS.xxl, fontWeight: FW.heavy, flexShrink: 0,
+              color: titelAktiv ? t.text : t.sub,
+              cursor: onTitelClick ? "pointer" : "default",
+              userSelect: "none", transition: "color 0.15s" }}>
+            {titel}
+          </div>
+        ) : titel}
+        {mitte}
+        {rechts ? (
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center",
+            gap: 8, flexShrink: 0 }}>
+            {rechts}
+          </div>
+        ) : null}
+      </div>
+    </StickySectionHeader>
+  );
+}
+
 // DetailRahmen — KANONISCHER Detail-Rahmen (§73): die gerahmte Box, in der jeder
 // Master-Detail-Screen seinen Detail-Inhalt zeigt. Identisch zum Rahmen in
 // ObjektListeMitDetail (accent+"08"-BG, 1px solid accent, RAD.lg, Padding) plus
@@ -3287,6 +3329,7 @@ function DetailRahmen({ t, accent, titel = null, sub = null, children }) {
 
 export {
   KopfPille,
+  ScreenKopf,
   DetailRahmen,
   Toggle,
   SegmentControl,
