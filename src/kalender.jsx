@@ -11,7 +11,7 @@ import {
 } from "./components.jsx";
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useFirmenRollen, useKontaktFarbe,
-  useRollen, useTerminBezeichnungen, useWindowWidth, useZeitPicker
+  useRollen, useTerminBezeichnungen, useWindowWidth, passendeMasterSpalten, useContentWidth, useZeitPicker
 } from "./utils-icons.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 5b · KALENDER / TERMINE — ausgelagertes Modul                   ║
@@ -2615,6 +2615,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
   // Kalender-Fenster; Mobil: Overlay von rechts).
   const [panelOffen, setPanelOffen] = useState(false);
   const kalIstDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
+  const [tlContentRef, tlContentW] = useContentWidth();
   // Inline-Anlegeformular (über dem Listenbereich) — geöffnet per +-Button.
   const [anlegenOffen, setAnlegenOffen] = useState(false);
   // Termin in Bearbeitung: { quelle:"manuell"|"frei", id, objektId, start:{…} }
@@ -3009,7 +3010,9 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         // kartenMaxBreite), damit das Detail an GLEICHER x-Position aufgeht.
         // Rechts: das eine ausgewählte Termin-Detail (aufgeklappte KalenderZeile).
         // Mobil (kein Desktop): Detail ersetzt die Liste + „Zurück"-Button.
-        const masterBreite = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+        const tlVerf = tlContentW || 1200;
+        const tlLayout = passendeMasterSpalten(tlVerf, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+        const masterBreite = tlLayout.masterBreite;
         const offenerTermin = (function() {
           for (let bi = 0; bi < KALENDER_BUCKETS.length; bi++) {
             const arr = gruppen[KALENDER_BUCKETS[bi].id];
@@ -3138,7 +3141,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         // Detail füllt den Rest bis detailMinBreite — Position = gleiche x wie
         // bei den Objekt-Karten.
         return (
-          <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
+          <div ref={tlContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
             minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
             <div style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, display: "flex", flexDirection: "column" }}>
               {masterListe}

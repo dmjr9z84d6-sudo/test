@@ -7,7 +7,7 @@ import {
   neuesHhMitglied, objektInGruppe, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
 } from "./datenmodell.js";
 import {
-  DESKTOP_MIN_WIDTH, I, StickySectionHeader, useMasterDetailLayout, useWindowWidth, veKartenFeldWert
+  DESKTOP_MIN_WIDTH, I, StickySectionHeader, useMasterDetailLayout, useWindowWidth, passendeMasterSpalten, useContentWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
 import { DatumFeld } from "./components.jsx";
 import {
@@ -720,7 +720,9 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   detailMinBreite = 540, festeGridSpec = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [objektId, setObjektId] = useState(null); // null = Raster (Objektauswahl)
-  const masterBreiteSE = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+  const [seContentRef, seContentW] = useContentWidth();
+  const seLayout = passendeMasterSpalten(seContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+  const masterBreiteSE = seLayout.masterBreite;
   const istListeSE = listenAnsicht === "liste";
 
   // Welche Spalten sind aktiv — in KLICK-Reihenfolge (links→rechts). Die fixe
@@ -978,7 +980,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     ) : (
       <div style={istListeSE
         ? { display: "flex", flexDirection: "column", gap: 6 }
-        : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+        : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, seLayout.cols)}, ${seLayout.kartenBreite}px)` }}>
         {(ves || []).map(v => istListeSE ? (
           <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
             aktiv={objektId === v.id} kbItem id={"se-" + v.id}
@@ -1208,16 +1210,18 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {seHeader}
-      <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
+      <div ref={seContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
-        <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteSE}px`, minWidth: 0, overflowY: "auto",
-          padding: 2, boxSizing: "border-box" }}>
-          <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
-            Objekt wählen, um Einheiten schnell zu bearbeiten.
+        {seLayout.cols > 0 && (
+          <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteSE}px`, minWidth: 0, overflowY: "auto",
+            padding: 2, boxSizing: "border-box" }}>
+            <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 8px" }}>
+              Objekt wählen, um Einheiten schnell zu bearbeiten.
+            </div>
+            {seMasterInhalt}
           </div>
-          {seMasterInhalt}
-        </div>
-        <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+        )}
+        <div data-ad-auslauf="1" style={{ flex: seLayout.cols > 0 ? `0 0 ${detailMinBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto" }}>
           {ve ? seMaske : (
             <div style={{ height: "100%", minHeight: 240, display: "flex",
               alignItems: "center", justifyContent: "center", textAlign: "center",
@@ -1258,7 +1262,9 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   // Master-Detail-Gerüst wie Statistik: links Objekt-/Gruppenauswahl, rechts
   // Vorlagenauswahl + Aufbau-Bereich. Detail an gleicher x-Position.
   const istDesktopLG = useWindowWidth() >= DESKTOP_MIN_WIDTH;
-  const masterBreiteLG = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+  const [lgContentRef, lgContentW] = useContentWidth();
+  const lgLayout = passendeMasterSpalten(lgContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+  const masterBreiteLG = lgLayout.masterBreite;
   const istListeLG = listenAnsicht === "liste";
 
   // Gruppen-Auswahlliste: Alle Objekte → Verwaltungsarten → eigene Gruppen.
@@ -1517,7 +1523,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
 
       {/* Master-Detail: links Objekt-/Gruppenauswahl (Statistik-Modell),
           rechts Vorlagenauswahl + Aufbau-Bereich. */}
-      <div style={istDesktopLG
+      <div ref={lgContentRef} style={istDesktopLG
         ? { display: "flex", gap: 10, flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }
         : { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
 
@@ -1533,7 +1539,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
             {lgView === "objekte" ? (
               <div style={istListeLG
                 ? { display: "flex", flexDirection: "column", gap: 6 }
-                : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+                : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, lgLayout.cols)}, ${lgLayout.kartenBreite}px)` }}>
                 {(ves || []).map(v => istListeLG ? (
                   <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
                     aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
@@ -1790,7 +1796,12 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   const [statView, setStatView] = useState("objekte"); // "objekte" | "gruppen"
   const [aktVEId, setAktVEId] = useState(null);
   const [aktGruppe, setAktGruppe] = useState(null); // {kind,id} | null
-  const masterBreite = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+  const [mdContentRef, mdContentW] = useContentWidth();
+  // Spalten + Master-Breite an die ECHTE verfügbare Breite anpassen (Reduktion
+  // wie useMasterDetailLayout): passt Spalten×Maxbreite+Detail nicht, fallen
+  // Spalten weg statt Überlauf. §73.4.
+  const stLayout = passendeMasterSpalten(mdContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+  const masterBreite = stLayout.masterBreite;
   const istListe = listenAnsicht === "liste";
 
   // Gruppen-Auswahlliste: Alle Objekte → Verwaltungsarten → eigene Gruppen.
@@ -1835,10 +1846,11 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   );
 
   // Master-Spalte: Objektauswahl (Karte/Liste) oder Gruppenauswahl (Liste).
+  const masterGridStyle = istListe
+    ? { display: "flex", flexDirection: "column", gap: 6 }
+    : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, stLayout.cols)}, ${stLayout.kartenBreite}px)` };
   const masterInhalt = statView === "objekte" ? (
-    <div style={istListe
-      ? { display: "flex", flexDirection: "column", gap: 6 }
-      : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+    <div style={masterGridStyle}>
       {ves.map(ve => istListe ? (
         <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
           aktiv={aktVEId === ve.id} kbItem id={"stat-" + ve.id}
@@ -1918,13 +1930,15 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {header}
-      <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
+      <div ref={mdContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
-        <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, overflowY: "auto",
-          padding: 2, boxSizing: "border-box" }}>
-          {masterInhalt}
-        </div>
-        <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+        {stLayout.cols > 0 && (
+          <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreite}px`, minWidth: 0, overflowY: "auto",
+            padding: 2, boxSizing: "border-box" }}>
+            {masterInhalt}
+          </div>
+        )}
+        <div data-ad-auslauf="1" style={{ flex: stLayout.cols > 0 ? `0 0 ${detailMinBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto" }}>
           {detailInhalt}
         </div>
       </div>

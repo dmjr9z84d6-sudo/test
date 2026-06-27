@@ -181,6 +181,53 @@ function useMasterDetailLayout(cardWidth, minDetailFactor = 1.1, gap = 10, maxCo
   return [ref, layout];
 }
 
+// passendeMasterSpalten — REINE Rechnung (kein Hook/Ref) für Pille-Screens, die
+// ihr Master-Detail selbst aufbauen (Statistik, Listengenerator, Schnelleingabe,
+// Kalender-Timeline, Vorgänge, Einstellungen). Dieselbe Spalten-Reduktion wie
+// useMasterDetailLayout: probiert von wunschCols runter bis 1, nimmt die erste
+// Spaltenzahl, bei der jede Karte >= kartenMin breit sein kann (neben dem festen
+// Detail). Verhindert Überlauf, wenn Spalten×Maxbreite+Detail nicht ins Fenster
+// passt. Gibt { cols, kartenBreite, masterBreite } zurück; cols=0 ⇒ Nur-Detail.
+// VERBINDLICH §73.4 — diese Funktion ist die EINE gemeinsame Wahrheit.
+function passendeMasterSpalten(verfuegbar, wunschCols, kartenMax, kartenMin, detailBreite, gap) {
+  const g = gap != null ? gap : 10;
+  const kMax = Math.max(160, kartenMax || 340);
+  const kMin = Math.max(120, Math.min(kMax, kartenMin || Math.round(kMax * 0.8)));
+  const ziel = (wunschCols != null && wunschCols >= 1) ? wunschCols : 5;
+  for (let cols = ziel; cols >= 1; cols--) {
+    const kartenPlatz = verfuegbar - detailBreite - g - (cols - 1) * g;
+    if (kartenPlatz <= 0) continue;
+    const proKarte = kartenPlatz / cols;
+    if (proKarte >= kMin) {
+      const kartenBreite = Math.min(kMax, Math.floor(proKarte));
+      return { cols, kartenBreite, masterBreite: cols * kartenBreite + (cols - 1) * g };
+    }
+  }
+  return { cols: 0, kartenBreite: kMax, masterBreite: 0 };
+}
+
+// useContentWidth — misst die ECHTE verfügbare Breite eines Containers (für die
+// Pille-Screens, die ihr Master-Detail selbst aufbauen und passendeMasterSpalten
+// brauchen). Gibt [ref, breite] zurück; ref auf den Flex-Container setzen.
+function useContentWidth() {
+  const ref = useRef(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const messen = () => { const cw = el.offsetWidth; if (cw > 0) setW(cw); };
+    messen();
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(messen);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener("resize", messen);
+    return () => window.removeEventListener("resize", messen);
+  }, []);
+  return [ref, w];
+}
+
 function StickySectionHeader({ children, t, accent }) {
   const ref = useRef(null);
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
@@ -2033,6 +2080,8 @@ function useEinheitAnzeige() { return useContext(EinheitAnzeigeContext); }
 export {
   useCardWidth,
   useMasterDetailLayout,
+  passendeMasterSpalten,
+  useContentWidth,
   StickySectionHeader,
   SortierPfeile,
   scrollToCard,

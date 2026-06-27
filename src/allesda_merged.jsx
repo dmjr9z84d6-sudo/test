@@ -265,6 +265,8 @@ import {
   useTerminBezeichnungen,
   useVerwendungen,
   useWindowWidth,
+  passendeMasterSpalten,
+  useContentWidth,
   useZeitPicker,
   veKartenFeldWert,
   vePasstHeaderFilter,
@@ -571,10 +573,10 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
       {offenSektion && istDesktop && mdLayout.masterCols > 0 && (
         <div ref={mdRef} style={{ display: "flex", gap: 10,
           flex: 1, minHeight: 0, minWidth: 0, alignItems: "stretch" }}>
-          <div data-ad-auslauf="1" style={{ flex: `0 0 ${festeGridSpec ? setMasterBreite : (mdLayout.masterFest || mdLayout.masterWidth)}px`, minWidth: 0, overflowY: "auto",
+          <div data-ad-auslauf="1" style={{ flex: `0 0 ${mdLayout.masterFest || mdLayout.masterWidth}px`, minWidth: 0, overflowY: "auto",
             padding: 2, boxSizing: "border-box",
             ...(istListe ? { display: "grid", alignContent: "start", gridTemplateColumns: "1fr", gap: 8 }
-              : (festeGridSpec ? { ...KACHEL_GRID, alignContent: "start", gridTemplateColumns: festeGridSpec } : { ...KACHEL_GRID, alignContent: "start" })) }}>
+              : { ...KACHEL_GRID, alignContent: "start", gridTemplateColumns: `repeat(${mdLayout.masterCols}, ${mdLayout.kartenBreite}px)` }) }}>
             {sortierteSektionen.map((s, i) => (
               <SektionKachel key={s.id} sektion={s}
                 aktiv={offenSektion && offenSektion.id === s.id} t={t} id={"set-" + s.id}
@@ -1614,6 +1616,9 @@ export default function App() {
   // verwendet diese im Master-Detail-Modus für die linke Spalte → kein
   // Sprung beim Aufklappen einer Karte.
   const [contentRef, cardWidth] = useCardWidth(settings.kartenMinBreite || 280, 10);
+  // Eigene Messung der verfügbaren Breite für Pille-Screens, die ihr Master-Detail
+  // inline im Haupt-Render aufbauen (Vorgänge). §73.4 — Spalten-Reduktion.
+  const [auftragContentRef, auftragContentW] = useContentWidth();
   // Detailbreite relativ zur Kartenbreite (minDetailFactor): größer = breitere
   // Detailansicht, dafür weniger Master-Spalten. Default 1.1 (= bisheriges Verhalten).
   // Detailfenster-Breite jetzt absolut in px (settings.detailMinBreite).
@@ -2884,7 +2889,8 @@ export default function App() {
         {!suchErg && screen === "auftraege" && (() => {
           const aAccent = (effectiveSettings.kacheln.find(k => k.id === "auftraege") || {}).farbe || "#EF4444";
           const istDesk = istDesktop;
-          const masterBreiteA = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * 10;
+          const aufLayout = passendeMasterSpalten(auftragContentW || 1200, kartenSpalten, kartenMaxBreite, kartenMin, detailMinBreite, 10);
+          const masterBreiteA = aufLayout.masterBreite;
           const istListeA = effectiveSettings.listenAnsicht === "liste";
           const firmen = (kontakteSichtbar || []).filter(k => k && k.typ === "firma");
           // Demo-Vorgänge (echte Quelle folgt). Je nach Achse nach Objekt bzw.
@@ -2949,7 +2955,7 @@ export default function App() {
           const masterInhalt = auftragView === "objekt" ? (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
-              : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+              : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, aufLayout.cols)}, ${aufLayout.kartenBreite}px)` }}>
               {(vesSichtbar || []).map(v => istListeA ? (
                 <VEListenZeile key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
@@ -2965,7 +2971,7 @@ export default function App() {
           ) : (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
-              : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+              : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, aufLayout.cols)}, ${aufLayout.kartenBreite}px)` }}>
               {firmen.length === 0 ? (
                 <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 12 }}>
                   Keine Firmen-Kontakte vorhanden.
@@ -3028,13 +3034,15 @@ export default function App() {
           return (
             <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
               {auftragHeader}
-              <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
+              <div ref={auftragContentRef} style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0,
                 minWidth: 0, width: "100%", boxSizing: "border-box", gap: 10 }}>
-                <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteA}px`, minWidth: 0, overflowY: "auto",
-                  padding: 2, boxSizing: "border-box" }}>
-                  {masterInhalt}
-                </div>
-                <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailMinBreite}px`, minWidth: 0, overflowY: "auto" }}>
+                {aufLayout.cols > 0 && (
+                  <div data-ad-scroll="y" style={{ flex: `0 0 ${masterBreiteA}px`, minWidth: 0, overflowY: "auto",
+                    padding: 2, boxSizing: "border-box" }}>
+                    {masterInhalt}
+                  </div>
+                )}
+                <div data-ad-auslauf="1" style={{ flex: aufLayout.cols > 0 ? `0 0 ${detailMinBreite}px` : "1 1 0%", minWidth: 0, overflowY: "auto" }}>
                   {detailInhalt}
                 </div>
               </div>
