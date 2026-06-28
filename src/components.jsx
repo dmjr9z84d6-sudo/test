@@ -6,7 +6,7 @@ import {
 } from "./constants.js";
 import {
   datumDe, isoHeute, istDatumGueltig, istEmailGueltig, istTelefonGueltig,
-  parseDatumWert, zuIsoDatum
+  listeBreiteAus, parseDatumWert, zuIsoDatum
 } from "./utils-basis.js";
 import {
   ANLEGE_FELDTYPEN, EIG_STATUS, FIELD_TYPES, SUGGESTIONS, aktiverHaushalt,
@@ -3420,11 +3420,17 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
     );
   }
   if (!hatDetail) {
+    // Karten-Modus: volle Breite (auto-fill füllt sie). Liste-Modus: Liste auf
+    // die eingestellte Listenbreite begrenzen — sonst zieht sie über die ganze
+    // Breite. Das gehört in den Baustein, damit ALLE Screens es gleich machen.
+    const maxW = istListe ? listeBreiteAus(listeOpt) : undefined;
     return (
       <div ref={contentRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", overflowY: "auto", padding: 2,
         boxSizing: "border-box" }}>
-        {masterNode}
+        <div style={{ maxWidth: maxW, width: maxW ? "100%" : undefined }}>
+          {masterNode}
+        </div>
       </div>
     );
   }

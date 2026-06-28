@@ -423,6 +423,8 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
   // Meldet der Baustein, dass die Liste ganz weg ist (Mobil/eng) → Zurück-Button
   // im Header zeigen.
   const [nurDetail, setNurDetail] = useState(false);
+  const windowW = useWindowWidth();
+  const istDesktop = windowW >= 900;
   // Sektions-Kacheln folgen dem globalen Liste/Karten-Schalter (Erscheinungsbild).
   const istListe = (settings.listenAnsicht || "karten") === "liste";
   const systemAccent = useKontaktFarbe().system || accent;
@@ -443,12 +445,14 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
     return () => window.removeEventListener("allesda:zentrale-sektion", handler);
   }, []);
 
-  // Auto-Scroll zur aufgeklappten Karte (nicht zum Detail-Block) — Karte bleibt oben
+  // Auto-Scroll zur aufgeklappten Karte NUR auf Mobil (dort ersetzt das Detail
+  // die Liste, man will oben starten). Auf Desktop bleibt die Liste neben dem
+  // Detail stehen — KEIN Scroll, sonst springt die Liste beim Klick (unruhig).
   useEffect(() => {
-    if (aktSektion) {
+    if (aktSektion && !istDesktop) {
       scrollToCard("set-" + aktSektion);
     }
-  }, [aktSektion]);
+  }, [aktSektion, istDesktop]);
 
   // Reihenfolge ist fest und kommt aus SEKTIONEN (Edit-Modus für die
   // Reihenfolge wurde in v4.16 abgeschafft). settings.sektionenReihenfolge
@@ -525,9 +529,6 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
       </div>
     );
   };
-
-  const windowW = useWindowWidth();
-  const istDesktop = windowW >= 900;
 
   // Im echten Master-Detail (Desktop mit ≥1 Master-Spalte) ist immer eine
   // Sektion offen — die Liste bleibt links sichtbar, ein „Zurück" wäre sinnlos.
