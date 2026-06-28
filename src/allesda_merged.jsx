@@ -576,13 +576,13 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
           </div>
           {offenSektion && nurDetail && (
             <button onClick={() => setAktSektion(null)} data-kb-zurueck="1"
-              title="Zur\u00fcck zur Liste" aria-label="Zur\u00fcck zur Liste"
+              title="Zurück zur Liste" aria-label="Zurück zur Liste"
               style={{ marginLeft: "auto", display: "flex", alignItems: "center",
                 background: "none", border: `1px solid ${t.border}`, color: t.text,
                 borderRadius: RAD.ms, padding: "0 12px", height: 36,
                 boxSizing: "border-box", cursor: "pointer", fontFamily: "inherit",
                 fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }}>
-              Zur\u00fcck
+              Zurück
             </button>
           )}
         </div>
@@ -1098,38 +1098,35 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null }) {
   const offenVEObj = (ves || []).find(v => v.id === viewVEId) || null;
   // Im Mobil-Detail (Objekt offen, kein Desktop-Nebeneinander) zeigt der Header
-  // einen „Zurück"-Button — analog zum Objekte-Tab.
+  // einen „Zurück"-Button — analog zum Objekte-Tab. Zusätzlich meldet der
+  // Master-Detail-Baustein (über onNurDetail), wenn auf Desktop das Fenster so
+  // eng wird, dass die Liste ganz weicht (cols===0) — dann braucht der Header
+  // ebenfalls den Zurück-Button.
+  const [nurDetail, setNurDetail] = React.useState(false);
   const istMobileDetail = offenVEObj && !istDesktop;
+  const zeigeZurueck = istMobileDetail || (offenVEObj && nurDetail);
   const header = (
-    <StickySectionHeader t={t} accent={accent}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div onClick={() => setViewVEId && setViewVEId(null)}
-          title="Alle Objekte anzeigen"
-          style={{ fontSize: FS.xxl, fontWeight: FW.heavy, flexShrink: 0,
-            color: t.text, cursor: "pointer", userSelect: "none" }}>
-          {titel}
+    <ScreenKopf t={t} accent={accent} titel={titel}
+      onTitelClick={() => setViewVEId && setViewVEId(null)}
+      mitte={anzahl != null ? (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
+          background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
+          padding: "3px 10px", flexShrink: 0 }}>
+          <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.sub }}>WEG</span>
+          <span style={{ fontSize: FS.s, fontWeight: FW.heavy, color: t.text }}>{anzahl}</span>
         </div>
-        {anzahl != null && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-            background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
-            padding: "3px 10px", flexShrink: 0 }}>
-            <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.sub }}>WEG</span>
-            <span style={{ fontSize: FS.s, fontWeight: FW.heavy, color: t.text }}>{anzahl}</span>
-          </div>
-        )}
-        {istMobileDetail && (
-          <button onClick={() => setViewVEId && setViewVEId(null)} data-kb-zurueck="1"
-            title="Zur\u00fcck zur Liste" aria-label="Zur\u00fcck zur Liste"
-            style={{ marginLeft: "auto", display: "flex", alignItems: "center",
-              background: "none", border: `1px solid ${t.border}`, color: t.text,
-              borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
-              cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-              flexShrink: 0 }}>
-            Zur\u00fcck
-          </button>
-        )}
-      </div>
-    </StickySectionHeader>
+      ) : null}
+      rechts={zeigeZurueck ? (
+        <button onClick={() => setViewVEId && setViewVEId(null)} data-kb-zurueck="1"
+          title="Zurück zur Liste" aria-label="Zurück zur Liste"
+          style={{ display: "flex", alignItems: "center",
+            background: "none", border: `1px solid ${t.border}`, color: t.text,
+            borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+            cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+            flexShrink: 0 }}>
+          Zurück
+        </button>
+      ) : null}/>
   );
   // Detail-Override-Wrapper: einheitliche Detail-Hülle (Objektkopf + Inhalt),
   // identisch zum Kalender-Muster (renderTerminDetail).
@@ -1184,6 +1181,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
             ves={ves} setVes={setVes}
             gotoKontakt={gotoKontakt}
             auswahlAccentOverride={accent}
+            onNurDetail={setNurDetail}
             renderDetailOverride={renderDetailOverride}/>
         </div>
       </>
@@ -2219,13 +2217,13 @@ export default function App() {
           rechts={
             (istMobileDetail || (hatOffen && objektNurDetail)) ? (
               <button onClick={() => setExpandedVEId(null)} data-kb-zurueck="1"
-                title="Zur\u00fcck zur Liste" aria-label="Zur\u00fcck zur Liste"
+                title="Zurück zur Liste" aria-label="Zurück zur Liste"
                 style={{ display: "flex", alignItems: "center",
                   background: "none", border: `1px solid ${t.border}`, color: t.text,
                   borderRadius: RAD.ms, padding: "0 12px", height: 36,
                   boxSizing: "border-box", cursor: "pointer", fontFamily: "inherit",
                   fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }}>
-                Zur\u00fcck
+                Zurück
               </button>
             ) : (
               <button onClick={() => setNeuesObjektOffen(true)}
@@ -2293,13 +2291,13 @@ export default function App() {
           rechts={
             (aktivKontaktId && kontaktNurDetail) ? (
               <button onClick={() => setAktivKontaktId(null)} data-kb-zurueck="1"
-                title="Zur\u00fcck zur Liste" aria-label="Zur\u00fcck zur Liste"
+                title="Zurück zur Liste" aria-label="Zurück zur Liste"
                 style={{ display: "flex", alignItems: "center",
                   background: "none", border: `1px solid ${t.border}`, color: t.text,
                   borderRadius: RAD.ms, padding: "0 12px", height: 36,
                   boxSizing: "border-box", cursor: "pointer", fontFamily: "inherit",
                   fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }}>
-                Zur\u00fcck
+                Zurück
               </button>
             ) : (
               <button onClick={() => setNeuerKontaktOffen(true)}
@@ -3054,7 +3052,8 @@ export default function App() {
                 istDesktop={true}
                 listenAnsicht={effectiveSettings.listenAnsicht} listeOpt={listeOpt}
                 kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
-                kartenMin={kartenMinBreiteEff} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff}/>
+                kartenMin={kartenMinBreiteEff} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff}
+                t={t} onZurueck={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} zurueckLabel="Zurück zur Auswahl"/>
             </div>
           );
         })()}

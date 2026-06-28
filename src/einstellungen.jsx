@@ -2215,7 +2215,7 @@ function RollenTabelle({ settings, setSettings, t, accent, gruppeKey, defaults, 
                 })}
               </div>
               <div style={{ fontSize: FS.xxs, color: t.muted, marginTop: 5, lineHeight: 1.4 }}>
-                Bestimmt, in welcher Kontakt-Gruppe die Rolle erscheint (z.\u00a0B. \u201EGremium\u201C f\u00fcr Verwaltungsbeirat).
+                Bestimmt, in welcher Kontakt-Gruppe die Rolle erscheint (z. B. „Gremium“ für Verwaltungsbeirat).
               </div>
             </div>
           )}

@@ -626,7 +626,7 @@ function ZurueckButton({ onClick, variante = "body", t, label, kbZurueck = false
   const extra = kbZurueck ? { "data-kb-zurueck": "1" } : {};
   return (
     <button onClick={onClick} {...extra}
-      title="Zur\u00fcck zur Liste" aria-label="Zur\u00fcck zur Liste" style={style}>
+      title="Zurück zur Liste" aria-label="Zurück zur Liste" style={style}>
       <I name="chevL" size={12} color={t.text}/>
       {text}
     </button>
