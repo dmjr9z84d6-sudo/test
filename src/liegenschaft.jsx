@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, createContext, useContext, Fragment
 import {
   FS, FW, KONTAKTE_FARBE, RAD, feldInput, feldLabel, getContrastColor
 } from "./constants.js";
-import { datumDe, isoHeute, joinPlzOrt, splitPlzOrt, zuIsoDatum } from "./utils-basis.js";
+import { datumDe, isoHeute, joinPlzOrt, splitPlzOrt, zuIsoDatum,
+  dateiSpeichern, dateiOeffnen, dateiLoeschen } from "./utils-basis.js";
 import {
   BELEGUNG_LABEL, BELEGUNG_VERWENDUNGEN, BEWOHNER_RECHTE, RAUM_ART_OPTIONEN, VS_BASEN,
   ZAEHLER_ARTEN, abgeleiteterBelegungstyp, aktiveBelegung, belegungsPhase, belegungsVerwendungen,
@@ -6984,6 +6985,174 @@ function VerwaltungAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editM
   );
 }
 
+// ── DokumentUploadModal — Anlege-Dialog für einen Dokument-Upload ───────────
+// Folgt EXAKT dem kanonischen Modal-Muster (NeuesObjektModal / TerminAnlegen):
+// fixed-Overlay → Box (RAD.xl, maxHeight 90dvh) → sticky Header mit Icon+Titel+x
+// → Body mit labelStyle/inputStyle-Feldern → sticky Footer mit AktionsButton
+// (abbrechen flex 1 / bestaetigen flex 2). KEIN Eigenbau — gleiche Hülle wie
+// alle anderen Dialoge. Fragt: Dokumenttyp wählen → Datei wählen → speichern.
+// vorhandeneTypen = Set/Map katalogId→Anzahl Dateien (für Ersetzen-Frage).
+function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene }) {
+  const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
+    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
+  const inputStyle = { width: "100%", padding: "8px 10px",
+    background: t.surface, color: t.text, border: `1px solid ${t.border}`,
+    borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
+
+  const [typWahl, setTypWahl] = useState("");
+  const [eigenName, setEigenName] = useState(""); // Freitext bei „Eigener Name …"
+  const [datei, setDatei] = useState(null);     // gewähltes File-Objekt
+  const [modus, setModus] = useState("hinzu");  // "hinzu" | "ersetzen" (nur wenn schon Dateien da)
+  const [fehler, setFehler] = useState("");
+  const [ladend, setLadend] = useState(false);
+
+  const istEigen = typWahl === "__eigen__";
+  const karte = (typWahl && !istEigen) ? vorhandene[typWahl] : null;
+  const vorhandeneDateien = (karte && Array.isArray(karte.dateien)) ? karte.dateien.length : 0;
+  // Gültig: Datei gewählt UND (Katalog-Typ ODER eigener Name mit Text)
+  const valid = !!datei && (istEigen ? eigenName.trim().length > 0 : !!typWahl);
+
+  const dateiWaehlen = () => {
+    setFehler("");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".pdf,image/*,.doc,.docx,.xls,.xlsx,.txt";
+    input.style.display = "none";
+    input.onchange = (e) => {
+      const f = e.target.files && e.target.files[0];
+      try { document.body.removeChild(input); } catch (err) {}
+      if (f) setDatei(f);
+    };
+    document.body.appendChild(input);
+    input.click();
+  };
+
+  const speichern = () => {
+    if (!valid || ladend) return;
+    setLadend(true);
+    const ersetzen = vorhandeneDateien > 0 && modus === "ersetzen";
+    // Bei eigenem Namen: typWahl="__eigen__", Name als 5. Arg; sonst Katalog-id.
+    onSave(typWahl, datei, ersetzen, (ok, msg) => {
+      setLadend(false);
+      if (ok) onClose();
+      else setFehler(msg || "Speichern fehlgeschlagen.");
+    }, istEigen ? eigenName.trim() : null);
+  };
+
+  return (
+    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.7)",
+      zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: t.card, border: `1px solid ${t.border}`,
+        borderRadius: RAD.xl, width: "100%", maxWidth: 480,
+        maxHeight: "90dvh", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+        {/* Header */}
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.border}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          position: "sticky", top: 0, background: t.card, zIndex: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <I name="plus" size={14} color={accent}/>
+            <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>Datei hochladen</span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}
+            title="Schließen" aria-label="Schließen">
+            <I name="x" size={16} color={t.sub}/>
+          </button>
+        </div>
+
+        <div style={{ padding: 16 }}>
+          {/* Dokumenttyp */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={labelStyle}>Welches Dokument ist das?</div>
+            <select value={typWahl} onChange={e => { setTypWahl(e.target.value); setFehler(""); setModus("hinzu"); }}
+              style={inputStyle}>
+              <option value="">— Dokumenttyp wählen —</option>
+              {DOKUMENT_KATALOG.map(d => (
+                <option key={d.id} value={d.id}>{d.label}</option>
+              ))}
+              <option value="__eigen__">Eigener Name …</option>
+            </select>
+          </div>
+
+          {/* Freitext-Name — nur bei „Eigener Name …" */}
+          {istEigen && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={labelStyle}>Name des Dokuments</div>
+              <input value={eigenName} onChange={e => { setEigenName(e.target.value); setFehler(""); }}
+                placeholder="z. B. Pachtvertrag Tiefgarage" style={inputStyle}/>
+            </div>
+          )}
+
+          {/* Datei */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={labelStyle}>Datei</div>
+            <button onClick={dateiWaehlen} style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              background: t.surface, border: `1px solid ${t.border}`,
+              borderRadius: RAD.ms, padding: "10px 12px", cursor: "pointer",
+              fontFamily: "inherit", boxSizing: "border-box", textAlign: "left" }}>
+              <I name="document" size={16} color={datei ? accent : t.sub}/>
+              <span style={{ flex: 1, minWidth: 0, fontSize: FS.l,
+                color: datei ? t.text : t.muted,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {datei ? datei.name : "Datei auswählen …"}
+              </span>
+            </button>
+          </div>
+
+          {/* Ersetzen/Hinzufügen — nur wenn der Typ schon Dateien hat */}
+          {vorhandeneDateien > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={labelStyle}>
+                {vorhandeneDateien === 1 ? "Bereits 1 Datei hinterlegt" : `Bereits ${vorhandeneDateien} Dateien hinterlegt`}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[{ id: "hinzu", label: "Zusätzlich", beschr: "Neue Datei ergänzen" },
+                  { id: "ersetzen", label: "Ersetzen", beschr: "Bestehende entfernen" }].map(o => {
+                  const aktiv = modus === o.id;
+                  return (
+                    <button key={o.id} onClick={() => setModus(o.id)} style={{
+                      display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2,
+                      padding: "10px 12px", minWidth: 0, boxSizing: "border-box",
+                      background: aktiv ? accent + "18" : t.surface,
+                      border: `2px solid ${aktiv ? accent : t.border}`,
+                      borderRadius: RAD.ml, cursor: "pointer", fontFamily: "inherit",
+                      transition: "all 0.15s", textAlign: "left" }}>
+                      <span style={{ fontSize: FS.l, fontWeight: FW.bold,
+                        color: aktiv ? accent : t.text }}>{o.label}</span>
+                      <span style={{ fontSize: FS.xs, color: t.sub, lineHeight: 1.3 }}>{o.beschr}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {fehler && (
+            <div style={{ fontSize: FS.s, color: "#EF4444", padding: "2px 0 6px" }}>{fehler}</div>
+          )}
+
+          <div style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic",
+            padding: "6px 0 0", lineHeight: 1.4 }}>
+            Die Datei wird dem gewählten Dokument zugeordnet und erscheint danach mit Haken in der Liste.
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${t.border}`,
+          display: "flex", gap: 8,
+          position: "sticky", bottom: 0, background: t.card }}>
+          <AktionsButton variante="breit" rolle="abbrechen" onClick={onClose}
+            text="Abbrechen" icon={false} flex={1} t={t} accent={accent}/>
+          <AktionsButton variante="breit" rolle="bestaetigen" onClick={speichern}
+            disabled={!valid || ladend} text={ladend ? "Speichert …" : "Hochladen"}
+            icon={false} flex={2} t={t} accent={accent}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── DokumenteChecklist: erste Karte im Dokumente-Tab. Listet alle WEG-relevanten
 // Unterlagen mit Checkbox. Haken setzen → fügt darunter eine Dokument-Karte
 // hinzu; Haken entfernen → entfernt sie wieder (mit den erfassten Feldern).
@@ -6994,37 +7163,132 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
   (karten || []).forEach(k => { if (k && k.dokumentId) vorhandene[k.dokumentId] = k; });
   const [bestaetigeEntfernen, setBestaetigeEntfernen] = useState(null); // katalogId, der entfernt werden soll
 
+  // ── Upload-Status ──────────────────────────────────────────────────────
+  // uploadOffen: DokumentUploadModal sichtbar?
+  const [uploadOffen, setUploadOffen] = useState(false);
+
+  const dateienVon = (karte) => (karte && Array.isArray(karte.dateien)) ? karte.dateien : [];
+
+  // Hängt eine Datei-Meta an eine Dokument-Karte; legt die Karte an, falls neu.
+  // eigenName gesetzt → eigene (Nicht-Katalog) Karte erzeugen, wie „Eigenes
+  // Dokument hinzufügen": kein dokumentId, frei benannt, immer NEU.
+  const metaAnKarte = (katId, meta, ersetzen, eigenName) => {
+    if (eigenName) {
+      const neu = { id: Date.now() + Math.floor(Math.random() * 1000),
+        name: eigenName, icon: "📄", fixed: false,
+        kategorie: "stammdaten", stamm: dokumentBasisFelder(), einheiten: [],
+        dateien: [meta] };
+      setKarten(v => [...v, neu]);
+      return;
+    }
+    setKarten(v => {
+      const existiert = v.some(k => k && k.dokumentId === katId);
+      if (!existiert) {
+        const neu = neueDokumentKarte(katId);
+        if (!neu) return v;
+        neu.dateien = [meta];
+        return [...v, neu];
+      }
+      return v.map(k => {
+        if (!k || k.dokumentId !== katId) return k;
+        const alt = Array.isArray(k.dateien) ? k.dateien : [];
+        if (ersetzen) {
+          // alte Blobs aus IndexedDB räumen
+          alt.forEach(m => { if (m && m.id) dateiLoeschen(m.id); });
+          return { ...k, dateien: [meta] };
+        }
+        return { ...k, dateien: [...alt, meta] };
+      });
+    });
+  };
+
+  // onSave fürs Modal: Datei in IndexedDB speichern, an Karte hängen, Ergebnis melden.
+  // eigenName (5. Arg) → eigene frei benannte Karte statt Katalog-Typ.
+  const uploadSpeichern = (katId, file, ersetzen, fertig, eigenName) => {
+    dateiSpeichern(file).then(meta => {
+      metaAnKarte(katId, meta, ersetzen, eigenName);
+      fertig(true);
+    }).catch(err => {
+      fertig(false, "Datei konnte nicht gespeichert werden: " + ((err && err.message) || "unbekannt"));
+    });
+  };
+
   const toggle = (katId, an) => {
     if (an) {
-      // hinzufügen — nur wenn noch nicht vorhanden
       if (vorhandene[katId]) return;
       const neu = neueDokumentKarte(katId);
       if (neu) setKarten(v => [...v, neu]);
     } else {
-      // Wenn schon Felder befüllt → Bestätigung verlangen, sonst direkt entfernen.
       const karte = vorhandene[katId];
-      const hatInhalt = karte && Array.isArray(karte.stamm) &&
-        karte.stamm.some(f => (f.value && String(f.value).trim()) || f.kontaktId);
+      const hatInhalt = karte && (
+        (Array.isArray(karte.stamm) && karte.stamm.some(f => (f.value && String(f.value).trim()) || f.kontaktId)) ||
+        dateienVon(karte).length > 0
+      );
       if (hatInhalt) { setBestaetigeEntfernen(katId); return; }
       setKarten(v => v.filter(k => k.dokumentId !== katId));
     }
   };
   const entfernenBestaetigt = (katId) => {
+    const karte = vorhandene[katId];
+    dateienVon(karte).forEach(m => { if (m && m.id) dateiLoeschen(m.id); });
     setKarten(v => v.filter(k => k.dokumentId !== katId));
     setBestaetigeEntfernen(null);
+  };
+
+  // Eine einzelne Datei aus einem Dokument entfernen (Blob + Meta).
+  const dateiEntfernen = (katId, dateiId) => {
+    dateiLoeschen(dateiId);
+    setKarten(v => v.map(k => {
+      if (!k || k.dokumentId !== katId) return k;
+      return { ...k, dateien: dateienVon(k).filter(m => m.id !== dateiId) };
+    }));
+  };
+
+  // Datei aus einer eigenen (frei benannten) Karte entfernen — per Karten-id.
+  // Ist es die letzte Datei, fällt die ganze Karte weg (sie existiert nur wegen
+  // der Datei; ohne Datei wäre sie eine leere Eigen-Karte ohne Sinn hier).
+  const dateiAusEigen = (karteId, dateiId) => {
+    dateiLoeschen(dateiId);
+    setKarten(v => v.reduce((acc, k) => {
+      if (!k || k.id !== karteId) { acc.push(k); return acc; }
+      const rest = dateienVon(k).filter(m => m.id !== dateiId);
+      if (rest.length === 0) return acc; // letzte Datei → Karte entfällt
+      acc.push({ ...k, dateien: rest });
+      return acc;
+    }, []));
   };
 
   return (
     <div style={{ background: t.card, border: `1px solid ${t.border}`,
       borderRadius: RAD.lg, marginBottom: 12, overflow: "hidden" }}>
+      {/* Kopf: Titel links, +Button rechts (marginLeft:auto braucht width:100%) */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px",
-        borderBottom: `1px solid ${t.border}` }}>
+        width: "100%", boxSizing: "border-box", borderBottom: `1px solid ${t.border}` }}>
         {kartenIconsAn ? <span style={{ fontSize: FS.icon }}>🗂</span> : null}
         <div style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>WEG-Unterlagen</div>
+        {editMode && (
+          <button onClick={() => setUploadOffen(true)}
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
+              background: "transparent", color: accent,
+              border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "5px 11px",
+              cursor: "pointer", fontSize: FS.s, fontWeight: FW.medium, fontFamily: "inherit" }}>
+            <I name="plus" size={14} color={accent}/>
+            Datei hochladen
+          </button>
+        )}
       </div>
+
+      {/* Upload-Dialog — kanonisches Modal (wie Neues Objekt / Neuer Termin) */}
+      {editMode && uploadOffen && (
+        <DokumentUploadModal t={t} accent={accent} vorhandene={vorhandene}
+          onClose={() => setUploadOffen(false)} onSave={uploadSpeichern}/>
+      )}
+
       <div style={{ padding: "6px 8px" }}>
         {DOKUMENT_KATALOG.filter(dok => editMode || vorhandene[dok.id]).map(dok => {
-          const an = !!vorhandene[dok.id];
+          const karte = vorhandene[dok.id];
+          const an = !!karte;
+          const dateien = dateienVon(karte);
           const confirm = bestaetigeEntfernen === dok.id;
           return (
             <div key={dok.id}>
@@ -7043,13 +7307,51 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
                 <span style={{ fontSize: FS.l, flexShrink: 0 }}>{dok.icon}</span>
                 <span style={{ flex: 1, fontSize: FS.m, color: an ? t.text : t.sub,
                   fontWeight: an ? FW.medium : FW.regular }}>{dok.label}</span>
-                {an && editMode && <span style={{ fontSize: FS.xs, color: accent }}>angelegt</span>}
+                {/* Datei-Anzahl-Badge */}
+                {dateien.length > 0 && (
+                  <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4,
+                    fontSize: FS.xs, color: accent, fontWeight: FW.medium,
+                    background: `${accent}1A`, borderRadius: RAD.pill, padding: "2px 8px" }}>
+                    <I name="document" size={11} color={accent}/>
+                    {dateien.length}
+                  </span>
+                )}
+                {an && editMode && dateien.length === 0 && (
+                  <span style={{ fontSize: FS.xs, color: accent }}>angelegt</span>
+                )}
               </div>
+              {/* Datei-Zeilen mit Ansehen/Entfernen */}
+              {dateien.length > 0 && (
+                <div style={{ padding: "2px 8px 8px 38px" }}>
+                  {dateien.map(m => (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8,
+                      padding: "5px 0" }}>
+                      <I name="document" size={13} color={t.sub}/>
+                      <span style={{ flex: 1, fontSize: FS.s, color: t.text,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+                      <button onClick={(e) => { e.stopPropagation(); dateiOeffnen(m.id, m.name); }}
+                        style={{ flexShrink: 0, background: "transparent", color: accent,
+                          border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "3px 11px",
+                          cursor: "pointer", fontSize: FS.xs, fontWeight: FW.medium, fontFamily: "inherit" }}>
+                        Ansehen
+                      </button>
+                      {editMode && (
+                        <button onClick={(e) => { e.stopPropagation(); dateiEntfernen(dok.id, m.id); }}
+                          style={{ flexShrink: 0, background: "transparent", color: t.sub,
+                            border: "none", borderRadius: RAD.sm, padding: "3px 6px",
+                            cursor: "pointer", fontSize: FS.xs, fontFamily: "inherit" }}>
+                          <I name="trash" size={13} color={t.sub}/>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               {confirm && (
                 <div style={{ padding: "8px 10px", background: "#EF444415",
                   borderBottom: `1px solid ${t.border}25` }}>
                   <div style={{ fontSize: FS.s, color: t.text, marginBottom: 6 }}>
-                    „{dok.label}" enthält erfasste Angaben. Karte mit allen Feldern wirklich entfernen?
+                    „{dok.label}" enthält erfasste Angaben{dateien.length > 0 ? " und Dateien" : ""}. Karte wirklich entfernen?
                   </div>
                   <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                     <button onClick={() => setBestaetigeEntfernen(null)} style={{
@@ -7066,6 +7368,53 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
             </div>
           );
         })}
+        {/* Eigene (frei benannte) Karten mit Dateien — kein Katalog-dokumentId,
+            aber Datei dran: hier mit gleichem Datei-Zeilen-Baustein anzeigen. */}
+        {(karten || []).filter(k => k && !k.dokumentId && Array.isArray(k.dateien) && k.dateien.length > 0).map(k => (
+          <div key={k.id}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 8px",
+              borderBottom: `1px solid ${t.border}25` }}>
+              {editMode && (
+                <div style={{ width: 20, height: 20, borderRadius: RAD.sm, flexShrink: 0,
+                  border: `1px solid ${accent}`, background: accent,
+                  display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <I name="check" size={13} color="#fff"/>
+                </div>
+              )}
+              <span style={{ fontSize: FS.l, flexShrink: 0 }}>{k.icon || "📄"}</span>
+              <span style={{ flex: 1, fontSize: FS.m, color: t.text, fontWeight: FW.medium }}>{k.name}</span>
+              <span style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 4,
+                fontSize: FS.xs, color: accent, fontWeight: FW.medium,
+                background: `${accent}1A`, borderRadius: RAD.pill, padding: "2px 8px" }}>
+                <I name="document" size={11} color={accent}/>
+                {k.dateien.length}
+              </span>
+            </div>
+            <div style={{ padding: "2px 8px 8px 38px" }}>
+              {k.dateien.map(m => (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
+                  <I name="document" size={13} color={t.sub}/>
+                  <span style={{ flex: 1, fontSize: FS.s, color: t.text,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+                  <button onClick={(e) => { e.stopPropagation(); dateiOeffnen(m.id, m.name); }}
+                    style={{ flexShrink: 0, background: "transparent", color: accent,
+                      border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "3px 11px",
+                      cursor: "pointer", fontSize: FS.xs, fontWeight: FW.medium, fontFamily: "inherit" }}>
+                    Ansehen
+                  </button>
+                  {editMode && (
+                    <button onClick={(e) => { e.stopPropagation(); dateiAusEigen(k.id, m.id); }}
+                      style={{ flexShrink: 0, background: "transparent", color: t.sub,
+                        border: "none", borderRadius: RAD.sm, padding: "3px 6px",
+                        cursor: "pointer", fontSize: FS.xs, fontFamily: "inherit" }}>
+                      <I name="trash" size={13} color={t.sub}/>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
       {!editMode && Object.keys(vorhandene).length === 0 && (
         <div style={{ padding: "12px 16px", fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>
@@ -7810,3 +8159,6 @@ export {
   quoteLabel,
   tagsDiffMS
 };
+
+
+

@@ -358,7 +358,7 @@ import {
 // Liegenschaft-Kern (S5a) — ausgelagert nach liegenschaft.jsx. Der App-Rumpf
 // nutzt nur die Header-/Kachel-Komponenten; kein Rückimport in diese Datei.
 import {
-  HeaderFilterDropdown, KategorieKacheln, SeitenleisteKacheln
+  DokumenteAnsicht, HeaderFilterDropdown, KategorieKacheln, SeitenleisteKacheln
 } from "./liegenschaft.jsx";
 
 // ║ SEKTION 9 · APP  (Default Export)                                       ║
@@ -1193,6 +1193,35 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
 
 // ObjekteMasterDetail wohnt jetzt in objektansicht.jsx (zyklusfrei) und wird
 // von dort importiert. Siehe Import-Block oben.
+
+// ── DokumenteScreenDetail ──────────────────────────────────────────────────
+// Detail-Inhalt des Dokumente-HAUPTSCREENS (linke Navigation → Dokumente).
+// Zeigt rechts die ECHTE DokumenteAnsicht des gewählten Objekts — exakt
+// dieselbe Komponente wie im Objekt-Dokumente-Tab (Baustein-Regel: ein
+// Dokumente-Inhalt, kein Zweitbau). Da der Hauptscreen keinen globalen
+// Bearbeiten-Schalter hat, hält dieser Wrapper einen EIGENEN lokalen editMode
+// + Bearbeiten-Toggle, damit Upload/Bearbeiten direkt hier möglich ist.
+function DokumenteScreenDetail({ ve, setVes, t, accent, kontakte, setKontakte, gotoKontakt, ves }) {
+  const [editMode, setEditMode] = useState(false);
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 10,
+        width: "100%", boxSizing: "border-box" }}>
+        <button onClick={() => setEditMode(e => !e)}
+          style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
+            background: editMode ? accent : "transparent", color: editMode ? "#fff" : accent,
+            border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "6px 12px",
+            cursor: "pointer", fontSize: FS.s, fontWeight: FW.medium, fontFamily: "inherit" }}>
+          <I name={editMode ? "check" : "pencil"} size={14} color={editMode ? "#fff" : accent}/>
+          {editMode ? "Fertig" : "Bearbeiten"}
+        </button>
+      </div>
+      <DokumenteAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
+        kontakte={kontakte} setKontakte={setKontakte} editMode={editMode}
+        onKontaktClick={gotoKontakt} ves={ves}/>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // StatusBand — schmale Zeile unter dem App-Header, zeigt Speicher-Status
@@ -3167,34 +3196,13 @@ export default function App() {
               }, 450);
             }}
             emptyText="Keine Dokumente für dieses Objekt."
-            renderDetail={(veObj) => {
-              // Fake-Demo-Daten nur zum Layout-Testen (echte Quelle folgt).
-              const dAccent = (effectiveSettings.kacheln.find(k => k.id === "dokumente") || {}).farbe || "#64748B";
-              const demo = [
-                { titel: "Teilungserklärung.pdf", info: "Grunddokument · 2,4 MB", art: "PDF" },
-                { titel: "Gemeinschaftsordnung.pdf", info: "Grunddokument · 1,1 MB", art: "PDF" },
-                { titel: "Protokoll ETV 2025.pdf", info: "Protokoll · 680 KB", art: "PDF" },
-              ];
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {demo.map((d, i) => (
-                    <div key={i} style={{ background: t.card, border: `1px solid ${t.border}`,
-                      borderRadius: RAD.lg, padding: "12px 14px", minWidth: 0,
-                      boxSizing: "border-box", width: "100%" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
-                          color: t.text, overflowWrap: "anywhere" }}>{d.titel}</div>
-                        <div style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
-                          color: getContrastColor(dAccent), background: dAccent,
-                          borderRadius: RAD.sm, padding: "2px 8px" }}>{d.art}</div>
-                      </div>
-                      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4,
-                        overflowWrap: "anywhere" }}>{d.info}</div>
-                    </div>
-                  ))}
-                </div>
-              );
-            }}/>
+            renderDetail={(veObj) => (
+              <DokumenteScreenDetail
+                ve={veObj} setVes={setVes} t={t}
+                accent={(effectiveSettings.kacheln.find(k => k.id === "dokumente") || {}).farbe || "#64748B"}
+                kontakte={kontakteSichtbar} setKontakte={setKontakte}
+                gotoKontakt={gotoKontakt} ves={vesSichtbar}/>
+            )}/>
         )}
         {!suchErg && screen === "fotos" && (
           <ObjektListeMitDetail
@@ -3441,4 +3449,5 @@ export default function App() {
 
 // Named exports für zyklischen Import aus components.jsx (S5/S7-Bewohner,
 // die von S4-Bausteinen zur Laufzeit gebraucht werden).
+
 

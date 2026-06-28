@@ -301,3 +301,120 @@ export function zuIsoDatum(wert) {
 export function listeBreiteAus(listeOpt) {
   return (listeOpt && listeOpt.listeMax) || 400;
 }
+
+// ── Datei-Ablage (IndexedDB) ───────────────────────────────────────────────
+// Backend-agnostischer Datei-Speicher für Dokument-Anhänge (PDFs, Bilder …).
+// localStorage scheidet aus (~5 MB-Limit, kein Binär). IndexedDB hat kein
+// praktisches Cap und speichert Blobs nativ. Am Dokument hängt NUR eine
+// dateiRef-ID (String) — der Blob lebt hier. Beim Umstieg auf Supabase Storage
+// (Roadmap Phase 4+) wird NUR dieser Layer getauscht: dateiRef zeigt dann auf
+// einen Storage-Pfad statt eine IndexedDB-id, die Aufrufer bleiben gleich.
+// Jeder Eintrag: { id, blob, name, typ, groesse, angelegt }.
+const DATEI_DB_NAME = "allesda_dateien";
+const DATEI_DB_STORE = "dateien";
+const DATEI_DB_VERSION = 1;
+
+function dateiDbOeffnen() {
+  return new Promise(function (resolve, reject) {
+    if (typeof indexedDB === "undefined" || !indexedDB) {
+      reject(new Error("IndexedDB nicht verfügbar"));
+      return;
+    }
+    const req = indexedDB.open(DATEI_DB_NAME, DATEI_DB_VERSION);
+    req.onupgradeneeded = function () {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(DATEI_DB_STORE)) {
+        db.createObjectStore(DATEI_DB_STORE, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = function () { resolve(req.result); };
+    req.onerror = function () { reject(req.error || new Error("DB-Fehler")); };
+  });
+}
+
+// Erzeugt eine eindeutige Datei-id (String). Kein Krypto nötig — nur kollisionsarm.
+function neueDateiId() {
+  return "f_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+}
+
+// Speichert ein File/Blob. Liefert ein Promise mit dem Metadaten-Objekt
+// { id, name, typ, groesse, angelegt } — id ist die dateiRef für das Dokument.
+export function dateiSpeichern(file) {
+  return new Promise(function (resolve, reject) {
+    if (!file) { reject(new Error("keine Datei")); return; }
+    dateiDbOeffnen().then(function (db) {
+      const eintrag = {
+        id: neueDateiId(),
+        blob: file,
+        name: (file && file.name) || "Datei",
+        typ: (file && file.type) || "",
+        groesse: (file && file.size) || 0,
+        angelegt: Date.now(),
+      };
+      const tx = db.transaction(DATEI_DB_STORE, "readwrite");
+      tx.objectStore(DATEI_DB_STORE).put(eintrag);
+      tx.oncomplete = function () {
+        db.close();
+        resolve({ id: eintrag.id, name: eintrag.name, typ: eintrag.typ,
+          groesse: eintrag.groesse, angelegt: eintrag.angelegt });
+      };
+      tx.onerror = function () { db.close(); reject(tx.error || new Error("Speichern fehlgeschlagen")); };
+    }).catch(reject);
+  });
+}
+
+// Lädt den Blob zu einer dateiRef-id. Promise mit Blob (oder null, wenn weg).
+export function dateiLaden(id) {
+  return new Promise(function (resolve, reject) {
+    if (!id) { resolve(null); return; }
+    dateiDbOeffnen().then(function (db) {
+      const tx = db.transaction(DATEI_DB_STORE, "readonly");
+      const req = tx.objectStore(DATEI_DB_STORE).get(id);
+      req.onsuccess = function () {
+        db.close();
+        resolve(req.result ? req.result.blob : null);
+      };
+      req.onerror = function () { db.close(); reject(req.error || new Error("Laden fehlgeschlagen")); };
+    }).catch(reject);
+  });
+}
+
+// Löscht den Blob zu einer dateiRef-id. Promise<boolean>.
+export function dateiLoeschen(id) {
+  return new Promise(function (resolve) {
+    if (!id) { resolve(false); return; }
+    dateiDbOeffnen().then(function (db) {
+      const tx = db.transaction(DATEI_DB_STORE, "readwrite");
+      tx.objectStore(DATEI_DB_STORE).delete(id);
+      tx.oncomplete = function () { db.close(); resolve(true); };
+      tx.onerror = function () { db.close(); resolve(false); };
+    }).catch(function () { resolve(false); });
+  });
+}
+
+// Öffnet/lädt eine gespeicherte Datei zum Ansehen herunter. Holt den Blob aus
+// IndexedDB und löst einen Download/Öffnen über einen unsichtbaren <a> aus —
+// KEIN window.open (in iOS-Standalone-PWAs blockiert, DESIGN §25.2/§26.3).
+// Nutzt dasselbe Blob→<a>-Muster wie exportiereJSON. dateiname optional.
+export function dateiOeffnen(id, dateiname) {
+  return new Promise(function (resolve) {
+    dateiLaden(id).then(function (blob) {
+      if (!blob) { resolve(false); return; }
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        if (dateiname) a.download = dateiname;
+        a.target = "_blank";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () {
+          try { document.body.removeChild(a); } catch (e) {}
+          URL.revokeObjectURL(url);
+        }, 100);
+        resolve(true);
+      } catch (e) { resolve(false); }
+    }).catch(function () { resolve(false); });
+  });
+}
