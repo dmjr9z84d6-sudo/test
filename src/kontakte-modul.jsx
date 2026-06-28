@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  ACCENT, FS, FW, RAD, KACHEL_GRID, KACHEL_W, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
+  ACCENT, FS, FW, RAD, KACHEL_GRID, KACHEL_W, kachelGridBreite, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
 } from "./constants.js";
 import {
   datumDe, istEmailGueltig, istPlzGueltig, istTelefonGueltig, istUrlGueltig, joinPlzOrt, listeBreiteAus
@@ -3763,7 +3763,7 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreit
   return (
     <MasterDetailRahmen
       master={(layout) => layout.nurMaster
-        ? renderKartenSpalte(Math.max(1, layout.cols), null)
+        ? renderKartenSpalte(Math.max(1, layout.cols), null, layout.kartenMaxBreite)
         : renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite)}
       detail={detailKarte}
       mobilDetail={detailKarte}
@@ -4238,10 +4238,10 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
       id={"kon-" + k.id} onClick={onClick}/>
   );
 
-  const renderKartenSpalte = (cols, kartenBreite) => {
+  const renderKartenSpalte = (cols, kartenBreite, nurMasterBreite) => {
     const gridStyle = kartenBreite
       ? { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${kartenBreite}px)`, alignContent: "start" }
-      : { ...KACHEL_GRID, alignContent: "start" };
+      : { ...kachelGridBreite(nurMasterBreite), alignContent: "start" };
     const alphaTrennerAn = anzeige.alphaTrenner !== false;
     // EINE Gruppe rendern — identisch zur Vollbild-Logik (renderGruppe), nur mit
     // dem Master-Detail-Grid und Toggle-Klick. So gibt es die Buchstaben-Einteilung

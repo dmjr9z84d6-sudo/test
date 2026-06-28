@@ -3359,10 +3359,14 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   const layoutRaw = passendeMasterSpalten(verf, kartenSpalten, kartenMaxBreite,
     kartenMin, detailMinBreite, gap, detailMin, istListe ? listeOpt : null);
   // nurMaster = Übersicht ohne offenes Detail → der Master nutzt die VOLLE Breite
-  // und das Grid füllt per auto-fill (KACHEL_GRID) so viele Spalten wie passen,
+  // und das Grid füllt per auto-fill so viele Spalten wie passen,
   // statt auf die feste Master-neben-Detail-Spaltenzahl begrenzt zu sein. Die
   // master-Funktion liest layout.nurMaster, um das passende Grid zu wählen.
-  const layout = { ...layoutRaw, nurMaster: !hatDetail };
+  // kartenMaxBreite/kartenMin werden mitgegeben, damit das auto-fill-Grid
+  // dieselbe Kartenbreite nutzt wie der Detail-Fall (sonst laufen die Breiten
+  // auseinander: Übersicht 340 vs Detail-Fall die eingestellte Breite).
+  const layout = { ...layoutRaw, nurMaster: !hatDetail,
+    kartenMaxBreite, kartenMin };
   const masterBreite = layout.masterBreite;
   const detailBreite = layout.detailBreite || detailMinBreite;
   // master darf Node ODER Funktion(layout) sein — so kann die Master-Liste im
@@ -3433,7 +3437,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
       minHeight: 0, minWidth: 0, width: "100%", boxSizing: "border-box", gap }}>
       <div data-ad-scroll="y" style={{
         flex: (layout.cols > 0 && masterBreite > 0) ? `0 0 ${masterBreite}px` : "1 1 0%",
-        minWidth: 0, overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
+        minWidth: 0, overflowY: "auto", boxSizing: "border-box" }}>
         {masterNode}
       </div>
       {layout.cols > 0 && (

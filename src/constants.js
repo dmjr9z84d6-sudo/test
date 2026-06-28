@@ -54,6 +54,21 @@ export const KACHEL_GRID = {
   gap: 10,
 };
 
+// kachelGridBreite — wie KACHEL_GRID, aber mit einstellbarer Kartenbreite.
+// Genutzt in der Master-Übersicht (nurMaster), damit die auto-fill-Kacheln
+// dieselbe Breite haben wie die berechneten Karten im Detail-Fall — sonst
+// laufen die Breiten auseinander (Übersicht 340 vs Detail-Fall die eingestellte
+// Breite). Respektiert weiterhin die CSS-Variable --ad-kg (Mobil = 1 Spalte).
+export function kachelGridBreite(kartenBreite) {
+  const w = Math.max(160, kartenBreite || KACHEL_W);
+  return {
+    display: "grid",
+    gridTemplateColumns: `var(--ad-kg, repeat(auto-fill, minmax(min(100%, ${w}px), ${w}px)))`,
+    justifyContent: "start",
+    gap: 10,
+  };
+}
+
 // ── Zentrale Eingabefeld-/Label-Styles ──────────────────────────────────────
 // Vermeidet ~40 byte-gleiche Inline-Style-Objekte in Formularen. Die Varianten
 // unterscheiden sich nur in padding/fontSize/borderRadius — daher parametriert.
@@ -79,7 +94,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "12.61";
+export const APP_VERSION = "12.62";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────

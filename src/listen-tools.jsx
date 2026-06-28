@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FS, FW, RAD, KACHEL_GRID, getContrastColor } from "./constants.js";
+import { FS, FW, RAD, KACHEL_GRID, kachelGridBreite, getContrastColor } from "./constants.js";
 import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
   VERWALTUNGSARTEN, aktiveBelegung, aktiverTeil, belegungsTyp, bewohnerRecht,
@@ -977,7 +977,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     ) : (
       <div style={istListeSE
         ? { display: "flex", flexDirection: "column", gap: 6 }
-        : (layout.nurMaster ? KACHEL_GRID : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+        : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
         {(ves || []).map(v => istListeSE ? (
           <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
             aktiv={objektId === v.id} kbItem id={"se-" + v.id}
@@ -1464,7 +1464,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
     lgView === "objekte" ? (
       <div style={istListeLG
         ? { display: "flex", flexDirection: "column", gap: 6 }
-        : (layout.nurMaster ? KACHEL_GRID : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+        : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
         {(ves || []).map(v => istListeLG ? (
           <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
             aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
@@ -1756,7 +1756,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   const masterInhalt = (layout) => {
     const masterGridStyle = istListe
       ? { display: "flex", flexDirection: "column", gap: 6 }
-      : (layout.nurMaster ? KACHEL_GRID : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` });
+      : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` });
     return statView === "objekte" ? (
     <div style={masterGridStyle}>
       {ves.map(ve => istListe ? (
