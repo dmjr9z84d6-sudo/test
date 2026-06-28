@@ -3778,6 +3778,20 @@ function SektionDokumente({ settings, setSettings, t, accent }) {
             onChange={v => save({ dokumenteKartenAn: v })} color={accent}/>
         </EinstellZeile>
       </EinstellKarte>
+
+      <EinstellKarte title="Datei-Ansicht" t={t} accent={accent}>
+        <EinstellZeile label="Hintergrund hinter Dokument"
+          sub="Angepasst: folgt dem Hell-/Dunkel-Modus · Durchscheinend: abgedunkelt, die App schimmert dahinter durch"
+          t={t}>
+          <SegmentControl t={t} accent={accent}
+            value={settings.dokumentViewerBg || "modus"}
+            onChange={id => save({ dokumentViewerBg: id })}
+            options={[
+              { id: "modus",       label: "Angepasst" },
+              { id: "transparent", label: "Durchscheinend" },
+            ]}/>
+        </EinstellZeile>
+      </EinstellKarte>
     </>
   );
 }

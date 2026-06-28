@@ -193,6 +193,7 @@ import {
   AvatarIconsContext,
   KartenIconsContext,
   DokumenteKartenContext,
+  DokumentViewerBgContext,
   DESKTOP_MIN_WIDTH,
   EinheitAnzeigeContext,
   EinheitOffenContext,
@@ -2394,6 +2395,7 @@ export default function App() {
     }}>
     <KartenIconsContext.Provider value={settings.kartenIconsAn !== false}>
     <DokumenteKartenContext.Provider value={settings.dokumenteKartenAn === true}>
+    <DokumentViewerBgContext.Provider value={settings.dokumentViewerBg || "modus"}>
     <KartenBadgesContext.Provider value={{
       person: settings.kartenBadgesPerson !== false,
       firma:  settings.kartenBadgesFirma  !== false
@@ -3444,6 +3446,7 @@ export default function App() {
     </TerminBezeichnungenContext.Provider>
     </StatusLeisteContext.Provider>
     </KartenBadgesContext.Provider>
+    </DokumentViewerBgContext.Provider>
     </DokumenteKartenContext.Provider>
     </KartenIconsContext.Provider>
     </AvatarIconsContext.Provider>

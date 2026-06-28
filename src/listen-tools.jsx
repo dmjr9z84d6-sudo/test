@@ -1150,7 +1150,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
                 {einheiten.filter(e => !isStellplatzTyp(e.typ)).map(e => (
                   <div key={e.id} style={{ background: t.card, border: `1px solid ${t.border}`,
                     borderRadius: RAD.lg, padding: "4px 12px 8px" }}>
-                    <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: accent,
+                    <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: accent,
                       padding: "8px 2px 0" }}>
                       {e.nr || e.lage || "Einheit"}{e.nr && e.lage ? ` · ${e.lage}` : ""}
                     </div>

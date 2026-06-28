@@ -2013,6 +2013,12 @@ function useKartenIcons() { return useContext(KartenIconsContext); }
 const DokumenteKartenContext = createContext(false);
 function useDokumenteKarten() { return useContext(DokumenteKartenContext); }
 
+// ── DokumentViewerBgContext: Hintergrund hinter dem Dokument im Datei-Viewer.
+// "modus" = folgt dem Hell-/Dunkel-Modus (Default), "transparent" = abgedunkelt
+// durchscheinend (die App schimmert dahinter durch).
+const DokumentViewerBgContext = createContext("modus");
+function useDokumentViewerBg() { return useContext(DokumentViewerBgContext); }
+
 // ── KartenBadgesContext: Rollen-Badges rechts auf der Kontaktkarte schaltbar ─
 const KartenBadgesContext = createContext({ person: true, firma: true });
 function useKartenBadges() { return useContext(KartenBadgesContext); }
@@ -2185,6 +2191,8 @@ export {
   KartenIconsContext,
   DokumenteKartenContext,
   useDokumenteKarten,
+  DokumentViewerBgContext,
+  useDokumentViewerBg,
   useKartenIcons,
   KartenBadgesContext,
   useKartenBadges,

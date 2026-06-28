@@ -18,7 +18,7 @@ import {
   DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
   SortierPfeile, ableiteStatusVonBis, haltePositionUeberUpdate,
   headerFilterIstAktiv, scrollToCard, sidebarModus, useEinheitAnzeige, useEinheitOffen,
-  useKartenIcons, useDokumenteKarten, useKontaktFarbe, useOutsideClick, useRollen, useVerwendungen, useWindowWidth
+  useKartenIcons, useDokumenteKarten, useDokumentViewerBg, useKontaktFarbe, useOutsideClick, useRollen, useVerwendungen, useWindowWidth
 } from "./utils-icons.jsx";
 import {
   Avatar, BelegungswechselVorgang, DatumFeld, EckPille, EigentumBlock, EigentumHistorie,
@@ -1956,18 +1956,21 @@ function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahr
       style={{ display: "flex", alignItems: "center", gap: 8,
         cursor: immerOffen ? "default" : "pointer",
         padding: "10px 2px", userSelect: "none" }}>
-      <span style={{ fontSize: FS.m }}>📊</span>
+      <span style={{ fontSize: FS.l }}>📊</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>
+        <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
           {titel || `Personen-Tage ${jahr}`}
         </div>
         <div style={{ fontSize: FS.xs, color: t.muted }}>
-          Σ {auf.summe} Personen-Tage · {jahrTage} Tage im Jahr
+          {jahrTage} Tage im Jahr · Lücken = Leerstand (0)
         </div>
       </div>
+      <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: accent, flexShrink: 0 }}>
+        {auf.summe}
+      </span>
       {!immerOffen && (
         <span style={{ fontSize: FS.s, color: t.muted, transform: offen ? "rotate(90deg)" : "none",
-          transition: "transform .15s" }}>▸</span>
+          transition: "transform .15s", marginLeft: 4 }}>▸</span>
       )}
     </div>
   );
@@ -2083,20 +2086,6 @@ function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahr
             </div>
           );
         })}
-
-        {/* Gesamtsumme */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "8px 4px 2px", borderTop: `2px solid ${accent}30`, marginTop: 4 }}>
-          <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>
-            Personen-Tage {jahr}
-          </span>
-          <span style={{ fontSize: FS.l, fontWeight: FW.bold, color: accent }}>
-            {auf.summe}
-          </span>
-        </div>
-        <div style={{ fontSize: FS.xxs, color: t.muted, padding: "2px 4px" }}>
-          Anzahl = gemeldete Personen im Abschnitt · Lücken zwischen Abschnitten zählen als Leerstand (0).
-        </div>
       </div>
     </div>
   );
@@ -7053,12 +7042,31 @@ function DateiZeile({ meta, t, accent, onAnsehen, onDownload, onEntfernen }) {
 // Object-URL wird beim Schließen/Unmount via revokeObjectURL freigegeben.
 function DateiViewerModal({ t, accent, datei, onClose }) {
   const [zustand, setZustand] = useState({ url: null, typ: "", name: "", laedt: true, fehler: false });
+  // Hintergrund-Variante aus den Einstellungen.
+  //   "modus"       → folgt dem Hell-/Dunkel-Modus (Overlay + Inhaltsfläche aus t).
+  //   "transparent" → abgedunkeltes, durchscheinendes Overlay; die App schimmert
+  //                   dahinter durch (kein deckender Inhalts-Hintergrund).
+  const viewerBg = useDokumentViewerBg();
+  const transparent = viewerBg === "transparent";
+  // Hell/Dunkel am Theme-Hintergrund ablesen: getContrastColor liefert auf hellem
+  // Grund "#000000", auf dunklem "#FFFFFF".
+  const istDunkel = getContrastColor(t.bg) === "#FFFFFF";
+  // Overlay (hinter der randlosen Box): bei "transparent" deutlich durchlässiger,
+  // bei "modus" ein zum Modus passender, fast deckender Schleier.
+  const overlayBg = transparent
+    ? "rgba(0,0,0,0.55)"
+    : (istDunkel ? "rgba(0,0,0,0.82)" : "rgba(20,22,34,0.55)");
+  // Fläche direkt hinter PDF/Bild: bei "transparent" durchsichtig (Overlay scheint
+  // durch), sonst die modus-eigene Hintergrundfarbe.
+  const inhaltBg = transparent ? "transparent" : t.bg;
   // Zoom-Faktor (1 = 100%). Bild + PDF werden per transform:scale vergrößert.
-  const [zoom, setZoom] = useState(1);
-  const ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_STEP = 0.25;
+  // Start bei 50% — am Handy passt eine PDF-Seite bei 100% nicht in den schmalen
+  // Viewport, darum nach unten bis 50% erlaubt.
+  const [zoom, setZoom] = useState(0.5);
+  const ZOOM_MIN = 0.5, ZOOM_MAX = 4, ZOOM_STEP = 0.25;
   const zoomRein = () => setZoom(z => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100));
   const zoomRaus = () => setZoom(z => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));
-  const zoomReset = () => setZoom(1);
+  const zoomReset = () => setZoom(0.5);
 
   // Pinch-to-Zoom (Touch): Abstand zweier Finger → Zoomfaktor. Reiner Eigenbau,
   // damit es auf iboth iOS-Safari + Android im Bild- UND PDF-Container greift.
@@ -7102,7 +7110,7 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
   }, [datei && datei.id]);
 
   // Bei Dateiwechsel Zoom zurücksetzen.
-  useEffect(function () { setZoom(1); }, [datei && datei.id]);
+  useEffect(function () { setZoom(0.5); }, [datei && datei.id]);
 
   const istBild = (zustand.typ || "").indexOf("image/") === 0 ||
     /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(zustand.name || (datei && datei.name) || "");
@@ -7112,33 +7120,42 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
 
   return (
     <div onClick={onClose}
-      style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.7)",
+      style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: overlayBg,
         zIndex: 210, display: "flex", alignItems: "stretch", justifyContent: "stretch", padding: 0 }}>
       <div onClick={function (e) { e.stopPropagation(); }}
-        style={{ background: t.card, border: "none", borderRadius: 0,
+        style={{ background: transparent ? "transparent" : t.card, border: "none", borderRadius: 0,
           width: "100vw", height: "100dvh", display: "flex", flexDirection: "column",
           overflow: "hidden" }}>
-        {/* Header: Name links, Download + x rechts */}
-        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.border}`,
+        {/* Header: Name links, Download + x rechts.
+            paddingTop berücksichtigt die Safe-Area (Notch/Dynamic Island), sonst
+            liegt der x-Button am iPhone unter der Statusleiste und ist untippbar. */}
+        <div style={{ padding: "12px 16px",
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
+          paddingLeft: "calc(env(safe-area-inset-left, 0px) + 16px)",
+          paddingRight: "calc(env(safe-area-inset-right, 0px) + 16px)",
+          background: transparent ? (istDunkel ? "rgba(13,13,22,0.85)" : "rgba(255,255,255,0.85)") : t.card,
+          borderBottom: `1px solid ${t.border}`,
           display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <I name="document" size={16} color={accent}/>
           <span style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold, color: t.text,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{anzeigeName}</span>
           <button onClick={function () { dateiOeffnen(datei.id, anzeigeName); }}
-            style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6,
-              background: "transparent", color: accent, border: `1px solid ${accent}`,
-              borderRadius: RAD.sm, padding: "5px 11px", cursor: "pointer",
-              fontSize: FS.s, fontWeight: FW.medium, fontFamily: "inherit" }}>
-            <I name="arrow" size={13} color={accent}/>Herunterladen
+            title="Herunterladen" aria-label="Herunterladen"
+            style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              width: 36, height: 36, background: "transparent", color: accent,
+              border: `1px solid ${t.border}`, borderRadius: RAD.sm, cursor: "pointer" }}>
+            <I name="download" size={18} color={t.sub}/>
           </button>
-          <button onClick={onClose} style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer" }}
-            title="Schließen" aria-label="Schließen">
-            <I name="x" size={18} color={t.sub}/>
+          <button onClick={onClose} title="Schließen" aria-label="Schließen"
+            style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              width: 36, height: 36, background: accent, border: "none",
+              borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
+            <I name="x" size={16} color={getContrastColor(accent)}/>
           </button>
         </div>
         {/* Inhalt — Pinch-Zoom-Container (Touch) */}
         <div onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd}
-          style={{ flex: 1, minHeight: 0, background: "#0b0b0b", overflow: "auto",
+          style={{ flex: 1, minHeight: 0, background: inhaltBg, overflow: "auto",
             display: "flex", alignItems: (istBild ? "center" : "flex-start"),
             justifyContent: "center", touchAction: zoom > 1 ? "none" : "auto" }}>
           {zustand.laedt && (
@@ -7174,8 +7191,10 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
 
         {/* Zoom-Leiste — nur wenn anzeigbar (Bild oder PDF) */}
         {!zustand.laedt && !zustand.fehler && zustand.url && (istBild || istPdf) && (
-          <div style={{ flexShrink: 0, borderTop: `1px solid ${t.border}`, background: t.card,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "8px 16px" }}>
+          <div style={{ flexShrink: 0, borderTop: `1px solid ${t.border}`,
+            background: transparent ? (istDunkel ? "rgba(13,13,22,0.85)" : "rgba(255,255,255,0.85)") : t.card,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            padding: "8px 16px", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)" }}>
             <button onClick={zoomRaus} disabled={zoom <= ZOOM_MIN}
               style={{ width: 40, height: 36, borderRadius: RAD.sm, cursor: zoom <= ZOOM_MIN ? "default" : "pointer",
                 background: "transparent", border: `1px solid ${t.border}`,
