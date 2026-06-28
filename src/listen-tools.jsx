@@ -720,6 +720,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   detailMinBreite = 540, detailMin = null, listeOpt = null, festeGridSpec = null, legendeEl = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const [objektId, setObjektId] = useState(null); // null = Raster (Objektauswahl)
+  const [seNurDetail, setSeNurDetail] = useState(false);
   const istListeSE = listenAnsicht === "liste";
 
   // Welche Spalten sind aktiv — in KLICK-Reihenfolge (links→rechts). Die fixe
@@ -994,7 +995,18 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   );
 
   const seHeader = (
-    <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"/>
+    <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"
+      rechts={(ve && seNurDetail) ? (
+        <button onClick={() => setObjektId(null)} data-kb-zurueck="1"
+          title="Anderes Objekt" aria-label="Anderes Objekt"
+          style={{ display: "flex", alignItems: "center",
+            background: "none", border: `1px solid ${t.border}`, color: t.text,
+            borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+            cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+            flexShrink: 0 }}>
+          Anderes Objekt
+        </button>
+      ) : null}/>
   );
 
   // MOBIL: kein Objekt → nur Auswahl; Objekt gewählt → Maske (mit Zurück).
@@ -1198,7 +1210,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         listenAnsicht={listenAnsicht} listeOpt={listeOpt}
         kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
         kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
-        t={t} onZurueck={() => setObjektId(null)} zurueckLabel="Anderes Objekt"/>
+        t={t} onNurDetail={setSeNurDetail}/>
     </div>
   );
 }
@@ -1209,6 +1221,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   listenAnsicht = "karten", kartenSpalten = 2, kartenMaxBreite = 340, kartenMin = 272,
   detailMinBreite = 540, detailMin = null, listeOpt = null, festeGridSpec = null, legendeEl = null }) {
   const [vorlageId, setVorlageId] = useState(null);
+  const [lgNurDetail, setLgNurDetail] = useState(false);
   // AUSWAHL-EBENE (Benny v12.35, Statistik-Modell): Pille Objekte/Gruppen.
   // Objekte → einzelnes Objekt (objektId), Detail zeigt "je Objekt"-Listen.
   // Gruppen → Alle/Verwaltungsart/eigene Gruppe, Detail zeigt "alle"-Listen.
@@ -1693,7 +1706,18 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
           <KopfPille t={t} accent={accent}
             optionen={[{ id: "objekte", label: "Objekte" }, { id: "gruppen", label: "Gruppen" }]}
             aktiv={lgView} onWaehle={(id) => { setLgView(id); setVorlageId(null); }}/>
-        }/>
+        }
+        rechts={(lgHatAuswahl && lgNurDetail) ? (
+          <button onClick={() => setVorlageId(null)} data-kb-zurueck="1"
+            title="Andere Liste" aria-label="Andere Liste"
+            style={{ display: "flex", alignItems: "center",
+              background: "none", border: `1px solid ${t.border}`, color: t.text,
+              borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+              cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+              flexShrink: 0 }}>
+            Andere Liste
+          </button>
+        ) : null}/>
 
       {lgView === "objekte" && legendeEl ? (
         <div style={{ flexShrink: 0, padding: "0 2px" }}>{legendeEl}</div>
@@ -1706,7 +1730,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
         listenAnsicht={listenAnsicht} listeOpt={listeOpt}
         kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
         kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
-        t={t} onZurueck={() => setVorlageId(null)} zurueckLabel="Andere Liste"/>
+        t={t} onNurDetail={setLgNurDetail}/>
     </div>
   );
 }
@@ -1722,6 +1746,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   const [statView, setStatView] = useState("objekte"); // "objekte" | "gruppen"
   const [aktVEId, setAktVEId] = useState(null);
   const [aktGruppe, setAktGruppe] = useState(null); // {kind,id} | null
+  const [statNurDetail, setStatNurDetail] = useState(false);
   const istListe = listenAnsicht === "liste";
 
   // Gruppen-Auswahlliste: Alle Objekte → Verwaltungsarten → eigene Gruppen.
@@ -1804,7 +1829,18 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
         <KopfPille t={t} accent={accent}
           optionen={[{ id: "objekte", label: "Objekte" }, { id: "gruppen", label: "Gruppen" }]}
           aktiv={statView} onWaehle={setStatView}/>
-      }/>
+      }
+      rechts={(hatAuswahl && statNurDetail) ? (
+        <button onClick={() => { setAktVEId(null); setAktGruppe(null); }} data-kb-zurueck="1"
+          title="Zurück zur Liste" aria-label="Zurück zur Liste"
+          style={{ display: "flex", alignItems: "center",
+            background: "none", border: `1px solid ${t.border}`, color: t.text,
+            borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+            cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+            flexShrink: 0 }}>
+          Zurück zur Liste
+        </button>
+      ) : null}/>
   );
 
   // MOBIL: Auswahl ODER Detail (mit Zurück).
@@ -1846,7 +1882,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
         listenAnsicht={listenAnsicht} listeOpt={listeOpt}
         kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
         kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
-        t={t} onZurueck={() => { setAktVEId(null); setAktGruppe(null); }} zurueckLabel="Zurück zur Liste"/>
+        t={t} onNurDetail={setStatNurDetail}/>
     </div>
   );
 }

@@ -2708,7 +2708,17 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           </>
         }
         rechts={
-          (setVes && !dockAktiv) ? (
+          (kalNurDetail) ? (
+            <button onClick={() => { setOffenTerminKey(null); if (setKalViewVEId) setKalViewVEId(null); }} data-kb-zurueck="1"
+              title="Zurück zur Liste" aria-label="Zurück zur Liste"
+              style={{ display: "flex", alignItems: "center",
+                background: "none", border: `1px solid ${t.border}`, color: t.text,
+                borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+                cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+                flexShrink: 0 }}>
+              Zurück zur Liste
+            </button>
+          ) : (setVes && !dockAktiv) ? (
             <button onClick={() => {
                 // Bei offenem Objekt: objektspezifischen Anlege-Modus toggeln.
                 // Sonst: allgemeines Anlege-Formular.
@@ -2960,7 +2970,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
                 <ObjekteMasterDetail
                   listenAnsicht={listenAnsicht}
                   cardWidth={cardWidth}
-                  detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
+                  detailMinBreite={detailMinBreite} detailMin={detailMin} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
                   kartenSpalten={kartenSpalten}
                   gefiltert={ves}
                   expandedVEId={kalViewVEId}
@@ -2971,6 +2981,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
                   ves={ves} setVes={setVes}
                   gotoKontakt={gotoKontakt}
                   auswahlAccentOverride={kalFarbe}
+                  onNurDetail={setKalNurDetail}
                   renderDetailOverride={renderTerminDetail}/>
               </div>
             );
@@ -3128,25 +3139,13 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           return masterListe;
         }
         // DESKTOP: Master-Detail über den kanonischen Baustein (§75).
-        const detailMitZurueck = (
-          <>
-            {kalNurDetail && offenerTermin && (
-              <button onClick={() => setOffenTerminKey(null)} data-kb-zurueck="1"
-                title="Zurück zur Timeline" aria-label="Zurück zur Timeline"
-                style={{ display: "inline-flex", alignItems: "center", marginBottom: 12,
-                  background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.ms,
-                  padding: "0 12px", height: 36, boxSizing: "border-box",
-                  color: t.text, fontSize: FS.m, fontWeight: FW.medium, cursor: "pointer" }}>
-                Zurück zur Timeline
-              </button>
-            )}
-            {detailInhalt}
-          </>
-        );
+        // Zurück sitzt im Header (rechts-Slot, ersetzt den Plus bei nurDetail) —
+        // kein eigener Body-Zurück mehr (Benny-Regel: Plus in Übersicht,
+        // Zurück in Detail, derselbe Platz).
         return (
           <MasterDetailRahmen
             master={masterListe}
-            detail={detailMitZurueck}
+            detail={detailInhalt}
             istDesktop={true}
             listenAnsicht={listenAnsicht} listeOpt={listeOpt}
             kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}

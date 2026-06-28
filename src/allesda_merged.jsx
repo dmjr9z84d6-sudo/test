@@ -1694,6 +1694,7 @@ export default function App() {
   // Vorgänge je Firma (alle Firmen-Kontakte). Eigener Auswahl-State je Achse.
   const [auftragView, setAuftragView] = useState("objekt"); // "objekt" | "firma"
   const [auftragFirmaId, setAuftragFirmaId] = useState(null);
+  const [auftragNurDetail, setAuftragNurDetail] = useState(false);
   const [beschlussViewVEId, setBeschlussViewVEId] = useState(null);
   const [technikViewVEId, setTechnikViewVEId] = useState(null);
   const [dokumenteViewVEId, setDokumenteViewVEId] = useState(null);
@@ -3015,7 +3016,18 @@ export default function App() {
                 <KopfPille t={t} accent={aAccent}
                   optionen={[{ id: "objekt", label: "Objekte" }, { id: "firma", label: "Firmen" }]}
                   aktiv={auftragView} onWaehle={setAuftragView}/>
-              }/>
+              }
+              rechts={(hatAuswahl && auftragNurDetail) ? (
+                <button onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} data-kb-zurueck="1"
+                  title="Zurück zur Auswahl" aria-label="Zurück zur Auswahl"
+                  style={{ display: "flex", alignItems: "center",
+                    background: "none", border: `1px solid ${t.border}`, color: t.text,
+                    borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+                    cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+                    flexShrink: 0 }}>
+                  Zurück zur Auswahl
+                </button>
+              ) : null}/>
           );
 
           if (!istDesk) {
@@ -3053,7 +3065,7 @@ export default function App() {
                 listenAnsicht={effectiveSettings.listenAnsicht} listeOpt={listeOpt}
                 kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
                 kartenMin={kartenMinBreiteEff} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff}
-                t={t} onZurueck={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} zurueckLabel="Zurück zur Auswahl"/>
+                t={t} onNurDetail={setAuftragNurDetail}/>
             </div>
           );
         })()}
