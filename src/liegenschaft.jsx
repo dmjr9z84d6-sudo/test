@@ -7045,6 +7045,40 @@ function DateiZeile({ meta, t, accent, onAnsehen, onEntfernen }) {
 // Object-URL wird beim Schließen/Unmount via revokeObjectURL freigegeben.
 function DateiViewerModal({ t, accent, datei, onClose }) {
   const [zustand, setZustand] = useState({ url: null, typ: "", name: "", laedt: true, fehler: false });
+  // Zoom-Faktor (1 = 100%). Bild + PDF werden per transform:scale vergrößert.
+  const [zoom, setZoom] = useState(1);
+  const ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_STEP = 0.25;
+  const zoomRein = () => setZoom(z => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100));
+  const zoomRaus = () => setZoom(z => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));
+  const zoomReset = () => setZoom(1);
+
+  // Pinch-to-Zoom (Touch): Abstand zweier Finger → Zoomfaktor. Reiner Eigenbau,
+  // damit es auf iboth iOS-Safari + Android im Bild- UND PDF-Container greift.
+  const pinchRef = useRef({ startDist: 0, startZoom: 1, aktiv: false });
+  const touchStart = (e) => {
+    if (e.touches && e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchRef.current = { startDist: Math.sqrt(dx * dx + dy * dy), startZoom: zoom, aktiv: true };
+    }
+  };
+  const touchMove = (e) => {
+    const p = pinchRef.current;
+    if (p.aktiv && e.touches && e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (p.startDist > 0) {
+        const faktor = dist / p.startDist;
+        const neu = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, p.startZoom * faktor));
+        setZoom(Math.round(neu * 100) / 100);
+      }
+      if (e.cancelable) e.preventDefault(); // Browser-eigenes Seiten-Zoom unterdrücken
+    }
+  };
+  const touchEnd = (e) => {
+    if (!e.touches || e.touches.length < 2) pinchRef.current.aktiv = false;
+  };
 
   useEffect(function () {
     let aktuelleUrl = null;
@@ -7058,6 +7092,9 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
     });
     return function () { abgebrochen = true; if (aktuelleUrl) URL.revokeObjectURL(aktuelleUrl); };
   }, [datei && datei.id]);
+
+  // Bei Dateiwechsel Zoom zurücksetzen.
+  useEffect(function () { setZoom(1); }, [datei && datei.id]);
 
   const istBild = (zustand.typ || "").indexOf("image/") === 0 ||
     /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(zustand.name || (datei && datei.name) || "");
@@ -7091,32 +7128,65 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
             <I name="x" size={18} color={t.sub}/>
           </button>
         </div>
-        {/* Inhalt */}
-        <div style={{ flex: 1, minHeight: 0, background: "#0b0b0b", display: "flex",
-          alignItems: "center", justifyContent: "center", overflow: "auto" }}>
+        {/* Inhalt — Pinch-Zoom-Container (Touch) */}
+        <div onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd}
+          style={{ flex: 1, minHeight: 0, background: "#0b0b0b", overflow: "auto",
+            display: "flex", alignItems: (istBild ? "center" : "flex-start"),
+            justifyContent: "center", touchAction: zoom > 1 ? "none" : "auto" }}>
           {zustand.laedt && (
-            <div style={{ fontSize: FS.m, color: t.sub }}>Datei wird geladen …</div>
+            <div style={{ fontSize: FS.m, color: t.sub, margin: "auto" }}>Datei wird geladen …</div>
           )}
           {!zustand.laedt && zustand.fehler && (
-            <div style={{ fontSize: FS.m, color: t.sub, padding: 24, textAlign: "center" }}>
+            <div style={{ fontSize: FS.m, color: t.sub, padding: 24, textAlign: "center", margin: "auto" }}>
               Datei konnte nicht geladen werden.
             </div>
           )}
           {!zustand.laedt && !zustand.fehler && zustand.url && istPdf && (
-            <iframe src={zustand.url} title={anzeigeName}
-              style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}/>
+            // PDF im Browser-Viewer (iframe). Zoom skaliert das iframe grob:
+            // Breite/Höhe × zoom, damit der scrollbare Bereich mitwächst.
+            <div style={{ width: (zoom * 100) + "%", height: (zoom * 100) + "%", flexShrink: 0 }}>
+              <iframe src={zustand.url} title={anzeigeName}
+                style={{ width: "100%", height: "100%", border: "none", background: "#fff",
+                  display: "block" }}/>
+            </div>
           )}
           {!zustand.laedt && !zustand.fehler && zustand.url && istBild && (
             <img src={zustand.url} alt={anzeigeName}
-              style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}/>
+              style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain",
+                transform: `scale(${zoom})`, transformOrigin: "center center",
+                transition: pinchRef.current.aktiv ? "none" : "transform 0.12s" }}/>
           )}
           {!zustand.laedt && !zustand.fehler && zustand.url && !istPdf && !istBild && (
-            <div style={{ fontSize: FS.m, color: t.sub, padding: 24, textAlign: "center", lineHeight: 1.5 }}>
+            <div style={{ fontSize: FS.m, color: t.sub, padding: 24, textAlign: "center", lineHeight: 1.5, margin: "auto" }}>
               Diese Dateiart kann nicht direkt angezeigt werden.<br/>
               Über „Herunterladen" oben öffnest du sie in der passenden App.
             </div>
           )}
         </div>
+
+        {/* Zoom-Leiste — nur wenn anzeigbar (Bild oder PDF) */}
+        {!zustand.laedt && !zustand.fehler && zustand.url && (istBild || istPdf) && (
+          <div style={{ flexShrink: 0, borderTop: `1px solid ${t.border}`, background: t.card,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "8px 16px" }}>
+            <button onClick={zoomRaus} disabled={zoom <= ZOOM_MIN}
+              style={{ width: 40, height: 36, borderRadius: RAD.sm, cursor: zoom <= ZOOM_MIN ? "default" : "pointer",
+                background: "transparent", border: `1px solid ${t.border}`,
+                color: zoom <= ZOOM_MIN ? t.muted : t.text, fontSize: FS.xl, fontFamily: "inherit",
+                display: "flex", alignItems: "center", justifyContent: "center" }}
+              title="Verkleinern" aria-label="Verkleinern">−</button>
+            <button onClick={zoomReset}
+              style={{ minWidth: 64, height: 36, borderRadius: RAD.sm, cursor: "pointer",
+                background: "transparent", border: `1px solid ${t.border}`, color: t.text,
+                fontSize: FS.s, fontWeight: FW.medium, fontFamily: "inherit", padding: "0 10px" }}
+              title="Zoom zurücksetzen">{Math.round(zoom * 100)}%</button>
+            <button onClick={zoomRein} disabled={zoom >= ZOOM_MAX}
+              style={{ width: 40, height: 36, borderRadius: RAD.sm, cursor: zoom >= ZOOM_MAX ? "default" : "pointer",
+                background: "transparent", border: `1px solid ${t.border}`,
+                color: zoom >= ZOOM_MAX ? t.muted : t.text, fontSize: FS.xl, fontFamily: "inherit",
+                display: "flex", alignItems: "center", justifyContent: "center" }}
+              title="Vergrößern" aria-label="Vergrößern">+</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -8272,6 +8342,7 @@ export {
   quoteLabel,
   tagsDiffMS
 };
+
 
 
 
