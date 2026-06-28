@@ -6,7 +6,7 @@ import {
   istAnonymesMitglied, sevStatus, teileVon
 } from "./datenmodell.js";
 import {
-  Avatar, DatumFeld, DatumKalender, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf,
+  Avatar, DatumFeld, DatumKalender, DetailRahmen, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, HeaderPlus,
   Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat
 } from "./components.jsx";
 import {
@@ -2709,17 +2709,10 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         }
         rechts={
           (kalNurDetail) ? (
-            <button onClick={() => { setOffenTerminKey(null); if (setKalViewVEId) setKalViewVEId(null); }} data-kb-zurueck="1"
-              title="Zurück zur Liste" aria-label="Zurück zur Liste"
-              style={{ display: "flex", alignItems: "center",
-                background: "none", border: `1px solid ${t.border}`, color: t.text,
-                borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
-                cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-                flexShrink: 0 }}>
-              Zurück zur Liste
-            </button>
+            <HeaderZurueck onClick={() => { setOffenTerminKey(null); if (setKalViewVEId) setKalViewVEId(null); }} label="Zurück zur Liste" t={t}/>
           ) : (setVes && !dockAktiv) ? (
-            <button onClick={() => {
+            <HeaderPlus
+              onClick={() => {
                 // Bei offenem Objekt: objektspezifischen Anlege-Modus toggeln.
                 // Sonst: allgemeines Anlege-Formular.
                 if (kalView === "objekte" && kalViewVEId) {
@@ -2728,15 +2721,8 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
                   setAnlegenOffen(o => !o);
                 }
               }}
-              data-kb-neu="1" title="Neuer Termin" aria-label="Neuer Termin" style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 36, height: 36, flexShrink: 0,
-                background: kalFarbe, border: "none",
-                borderRadius: RAD.pill, cursor: "pointer",
-                boxShadow: `0 1px 2px ${kalFarbe}40`,
-              }}>
-              <I name={(anlegenOffen || (kalViewVEId && objektAnlegenVE === kalViewVEId)) ? "x" : "plus"} size={16} color={getContrastColor(kalFarbe)}/>
-            </button>
+              accent={kalFarbe} title="Neuer Termin" t={t}
+              icon={(anlegenOffen || (kalViewVEId && objektAnlegenVE === kalViewVEId)) ? "x" : "plus"}/>
           ) : null
         }/>
       {!kalIstDesktop && !dockAktiv ? (
@@ -2870,17 +2856,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
             if (!veObj) return null;
             const objTermine = sammleTermine([veObj], kontakte, KAL_FENSTER_MONATE, 0, freieTermine);
             return (
-              <div style={{ background: kalFarbe + "08", border: `1px solid ${kalFarbe}`,
-                borderRadius: RAD.lg, padding: "14px 16px",
-                boxSizing: "border-box", width: "100%", minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, minWidth: 0 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: kalFarbe,
-                      lineHeight: 1.1, overflowWrap: "anywhere" }}>{veObj.nr}</div>
-                    <div style={{ fontSize: FS.s, color: t.sub, marginTop: 2,
-                      overflowWrap: "anywhere" }}>{veObj.adresse}</div>
-                  </div>
-                </div>
+              <DetailRahmen t={t} accent={kalFarbe} titel={veObj.nr} sub={veObj.adresse}>
                 {objTermine.length === 0 ? (
                   <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "8px 2px" }}>
                     Keine Termine oder Fristen für dieses Objekt.
@@ -2943,7 +2919,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
                     })}
                   </div>
                 )}
-              </div>
+              </DetailRahmen>
             );
           };
           const offenVEObj = (ves || []).find(v => v.id === kalViewVEId) || null;
@@ -3115,10 +3091,9 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         // Detail: das eine ausgewählte Termin-Detail (aufgeklappte Zeile).
         // Ohne Auswahl null — kein Platzhalter, rechts bleibt leer (§75-Regel).
         const detailInhalt = offenerTermin ? (
-          <div style={{ background: kalFarbe + "08", border: `1px solid ${kalFarbe}`,
-            borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box", width: "100%", minWidth: 0 }}>
+          <DetailRahmen t={t} accent={kalFarbe}>
             {baueZeile(offenerTermin, terminKey(offenerTermin), "detail", true, () => {})}
-          </div>
+          </DetailRahmen>
         ) : null;
         // MOBIL: Detail ersetzt die Liste + „Zurück".
         if (!kalIstDesktop) {

@@ -3272,6 +3272,41 @@ function KopfPille({ t, accent, optionen, aktiv, onWaehle }) {
 //            anzeigen").
 //   mitte  — neben dem Titel: KopfPille / FilterButtons (optional).
 //   rechts — Plus-/Zurück-Button (optional). Bekommt automatisch marginLeft:auto.
+// HeaderZurueck — kanonischer „Zurück"-Button für den ScreenKopf-rechts-Slot.
+// EIN Baustein für ALLE Screens (Objekte/Kontakte/Bereichskacheln/Statistik/
+// Listengen/Schnelleingabe/Aufträge/Kalender). Ersetzt die früheren ~12
+// handkopierten Inline-Buttons. Kein Pfeil (DESIGN: kein Chevron an Text-/
+// Zurück-Buttons). data-kb-zurueck=1 für die Tastatur-Navigation.
+// HeaderPlus — kanonischer „+"-Button (Neu-Anlegen) für den ScreenKopf-rechts-
+// Slot. EIN Baustein für Objekte/Kontakte/Kalender. Der Kalender nutzt icon="x"
+// im Toggle-Zustand. Ersetzt die früheren handkopierten 36×36-Kreis-Buttons.
+function HeaderPlus({ onClick, accent, icon = "plus", title = "Neu", t }) {
+  return (
+    <button onClick={onClick} data-kb-neu="1" title={title} aria-label={title}
+      style={{ display: "flex", alignItems: "center", justifyContent: "center",
+        width: 36, height: 36, flexShrink: 0,
+        background: accent, border: "none",
+        borderRadius: RAD.pill, cursor: "pointer",
+        boxShadow: `0 1px 2px ${accent}40` }}>
+      <I name={icon} size={16} color={getContrastColor(accent)}/>
+    </button>
+  );
+}
+
+function HeaderZurueck({ onClick, label = "Zurück", t }) {
+  return (
+    <button onClick={onClick} data-kb-zurueck="1"
+      title={label} aria-label={label}
+      style={{ display: "flex", alignItems: "center",
+        background: "none", border: `1px solid ${t.border}`, color: t.text,
+        borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+        cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+        flexShrink: 0 }}>
+      {label}
+    </button>
+  );
+}
+
 function ScreenKopf({ t, accent, titel, titelAktiv = true, onTitelClick = null,
   mitte = null, rechts = null }) {
   return (
@@ -3351,7 +3386,7 @@ function DetailRahmen({ t, accent, titel = null, sub = null, children }) {
 function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   listenAnsicht = "karten", listeOpt = null, kartenSpalten = 2,
   kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, detailMin = null,
-  gap = 10, mobilDetail = undefined, onNurDetail = null, onZurueck = null, zurueckLabel = "Zurück", t = null }) {
+  gap = 10, mobilDetail = undefined, onNurDetail = null, t = null }) {
   const [contentRef, contentW] = useContentWidth();
   const istListe = listenAnsicht === "liste";
   const hatDetail = detail != null;
@@ -3412,23 +3447,9 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   //                             NICHT auf masterBreite begrenzen, sonst werden die
   //                             Karten abgeschnitten.
   if (layout.cols === 0 && hatDetail) {
-    const tt = t || {};
-    const zurueckBtn = (typeof onZurueck === "function") ? (
-      <button onClick={onZurueck} data-kb-zurueck="1"
-        title={zurueckLabel} aria-label={zurueckLabel}
-        style={{ display: "inline-flex", alignItems: "center", marginBottom: 12,
-          background: tt.card || "transparent",
-          border: `1px solid ${tt.border || "rgba(128,128,128,0.4)"}`,
-          color: tt.text || "inherit", borderRadius: RAD.ms,
-          padding: "0 12px", height: 36, boxSizing: "border-box",
-          cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium }}>
-        {zurueckLabel}
-      </button>
-    ) : null;
     return (
       <div ref={contentRef} data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 0", boxSizing: "border-box" }}>
-        {zurueckBtn}
         {detail}
       </div>
     );
@@ -3471,6 +3492,8 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
 export {
   KopfPille,
   ScreenKopf,
+  HeaderZurueck,
+  HeaderPlus,
   DetailRahmen,
   MasterDetailRahmen,
   Toggle,

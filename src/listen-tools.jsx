@@ -9,7 +9,7 @@ import {
 import {
   DESKTOP_MIN_WIDTH, I, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
-import { DatumFeld, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, SegmentControl } from "./components.jsx";
+import { DatumFeld, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, SegmentControl } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -997,15 +997,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   const seHeader = (
     <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"
       rechts={(ve && seNurDetail) ? (
-        <button onClick={() => setObjektId(null)} data-kb-zurueck="1"
-          title="Anderes Objekt" aria-label="Anderes Objekt"
-          style={{ display: "flex", alignItems: "center",
-            background: "none", border: `1px solid ${t.border}`, color: t.text,
-            borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
-            cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-            flexShrink: 0 }}>
-          Anderes Objekt
-        </button>
+        <HeaderZurueck onClick={() => setObjektId(null)} label="Anderes Objekt" t={t}/>
       ) : null}/>
   );
 
@@ -1180,13 +1172,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"
           rechts={
-            <button onClick={() => setObjektId(null)} data-kb-zurueck="1" style={{
-              display: "flex", alignItems: "center", gap: 6, background: "none",
-              border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
-              padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
-              fontSize: FS.m, fontWeight: FW.medium }}>
-              Anderes Objekt
-            </button>
+            <HeaderZurueck onClick={() => setObjektId(null)} label="Anderes Objekt" t={t}/>
           }/>
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
@@ -1560,13 +1546,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
                 {vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " · " + ve.adresse : "") : vorlage.sub}
               </div>
             </div>
-            <button onClick={() => setVorlageId(null)} data-kb-zurueck="1"
-              style={{ display: "flex", alignItems: "center", gap: 6, background: "none",
-                border: `1px solid ${t.border}`, color: t.text, borderRadius: RAD.ms,
-                padding: "6px 12px", cursor: "pointer", fontFamily: "inherit",
-                fontSize: FS.s, fontWeight: FW.medium, flexShrink: 0 }}>
-              Andere Liste
-            </button>
+            <HeaderZurueck onClick={() => setVorlageId(null)} label="Andere Liste" t={t}/>
           </div>
 
           {vorlage.bereich === "objekt" && hausWaehlbar && (
@@ -1690,13 +1670,11 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
       )}
     </>
   ) : null;
-  // Detail-Hülle: bei Auswahl mit Akzent-Rahmen (wie DetailRahmen), sonst null.
+  // Detail-Hülle: bei Auswahl mit Akzent-Rahmen (DetailRahmen), sonst null.
   const lgDetailInhalt = lgHatAuswahl ? (
-    <div style={{ background: accent + "08", border: `1px solid ${accent}`,
-      borderRadius: RAD.lg, padding: "14px 16px", boxSizing: "border-box",
-      width: "100%", minWidth: 0 }}>
+    <DetailRahmen t={t} accent={accent}>
       {lgDetailKern}
-    </div>
+    </DetailRahmen>
   ) : null;
 
   return (
@@ -1708,15 +1686,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
             aktiv={lgView} onWaehle={(id) => { setLgView(id); setVorlageId(null); }}/>
         }
         rechts={(lgHatAuswahl && lgNurDetail) ? (
-          <button onClick={() => setVorlageId(null)} data-kb-zurueck="1"
-            title="Andere Liste" aria-label="Andere Liste"
-            style={{ display: "flex", alignItems: "center",
-              background: "none", border: `1px solid ${t.border}`, color: t.text,
-              borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
-              cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-              flexShrink: 0 }}>
-            Andere Liste
-          </button>
+          <HeaderZurueck onClick={() => setVorlageId(null)} label="Andere Liste" t={t}/>
         ) : null}/>
 
       {lgView === "objekte" && legendeEl ? (
@@ -1831,15 +1801,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
           aktiv={statView} onWaehle={setStatView}/>
       }
       rechts={(hatAuswahl && statNurDetail) ? (
-        <button onClick={() => { setAktVEId(null); setAktGruppe(null); }} data-kb-zurueck="1"
-          title="Zurück zur Liste" aria-label="Zurück zur Liste"
-          style={{ display: "flex", alignItems: "center",
-            background: "none", border: `1px solid ${t.border}`, color: t.text,
-            borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
-            cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-            flexShrink: 0 }}>
-          Zurück zur Liste
-        </button>
+        <HeaderZurueck onClick={() => { setAktVEId(null); setAktGruppe(null); }} label="Zurück zur Liste" t={t}/>
       ) : null}/>
   );
 

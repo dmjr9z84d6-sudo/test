@@ -10,7 +10,7 @@ import {
 } from "./utils-icons.jsx";
 import {
   Avatar, DATUM_MONATE_KURZ, DatumFeld, FeldKontaktKarte, LEGIONELLEN_BEFUNDE,
-  LEGIONELLEN_STATUS_FARBE, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
+  LEGIONELLEN_STATUS_FARBE, DetailRahmen, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
@@ -1558,18 +1558,14 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = nul
   // renderDetailOverride: erlaubt fremden Detail-Inhalt (z. B. Kalender-Termine
   // eines Objekts) bei gleichem Master-Detail-Gerüst.
   const renderDetail = () => renderDetailOverride ? renderDetailOverride(offenVE) : (
-    <div style={{
-      background: auswahlAccent + "08",
-      border: `1px solid ${auswahlAccent}`,
-      borderRadius: RAD.lg, padding: "14px 16px",
-      minWidth: 0, boxSizing: "border-box", overflowWrap: "anywhere" }}>
+    <DetailRahmen t={t} accent={auswahlAccent}>
       <VEDetail ve={offenVE} t={t} accent={accent}
         kontakte={kontakte} setKontakte={setKontakte} ves={ves} setVes={setVes}
         cardId={"obj-" + offenVE.id}
         sprungZiel={sprungZiel}
         onKontaktClick={(id) => { setExpandedVEId(null); gotoKontakt(id); }}
         onBack={() => setExpandedVEId(null)}/>
-    </div>
+    </DetailRahmen>
   );
 
   // Master-Liste (Karten/Zeilen). Funktion(layout) → Karten-Spalten aus dem

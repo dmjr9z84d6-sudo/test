@@ -284,6 +284,8 @@ import {
   KopfPille,
   MasterDetailRahmen,
   ScreenKopf,
+  HeaderZurueck,
+  HeaderPlus,
   DatumKalender,
   EckPille,
   EigentumBlock,
@@ -575,15 +577,9 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
             Einstellungen
           </div>
           {offenSektion && nurDetail && (
-            <button onClick={() => setAktSektion(null)} data-kb-zurueck="1"
-              title="Zurück zur Liste" aria-label="Zurück zur Liste"
-              style={{ marginLeft: "auto", display: "flex", alignItems: "center",
-                background: "none", border: `1px solid ${t.border}`, color: t.text,
-                borderRadius: RAD.ms, padding: "0 12px", height: 36,
-                boxSizing: "border-box", cursor: "pointer", fontFamily: "inherit",
-                fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }}>
-              Zurück
-            </button>
+            <div style={{ marginLeft: "auto" }}>
+              <HeaderZurueck onClick={() => setAktSektion(null)} label="Zurück" t={t}/>
+            </div>
           )}
         </div>
       </StickySectionHeader>
@@ -1117,15 +1113,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
         </div>
       ) : null}
       rechts={zeigeZurueck ? (
-        <button onClick={() => setViewVEId && setViewVEId(null)} data-kb-zurueck="1"
-          title="Zurück zur Liste" aria-label="Zurück zur Liste"
-          style={{ display: "flex", alignItems: "center",
-            background: "none", border: `1px solid ${t.border}`, color: t.text,
-            borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
-            cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-            flexShrink: 0 }}>
-          Zurück
-        </button>
+        <HeaderZurueck onClick={() => setViewVEId && setViewVEId(null)} label="Zurück" t={t}/>
       ) : null}/>
   );
   // Detail-Override-Wrapper: einheitliche Detail-Hülle (Objektkopf + Inhalt),
@@ -1133,23 +1121,13 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   const renderDetailOverride = (veObj) => {
     if (!veObj) return null;
     return (
-      <div style={{ background: accent + "08", border: `1px solid ${accent}`,
-        borderRadius: RAD.lg, padding: "14px 16px",
-        boxSizing: "border-box", width: "100%", minWidth: 0, overflowWrap: "anywhere" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, minWidth: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
-              lineHeight: 1.1, overflowWrap: "anywhere" }}>{veObj.nr}</div>
-            <div style={{ fontSize: FS.s, color: t.sub, marginTop: 2,
-              overflowWrap: "anywhere" }}>{veObj.adresse}</div>
-          </div>
-        </div>
+      <DetailRahmen t={t} accent={accent} titel={veObj.nr} sub={veObj.adresse}>
         {renderDetail ? renderDetail(veObj) : (
           <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "8px 2px" }}>
             {emptyText}
           </div>
         )}
-      </div>
+      </DetailRahmen>
     );
   };
   // Mit offenem Objekt: dasselbe Master-Detail-Gerüst wie Objekte/Kontakte/
@@ -2217,26 +2195,9 @@ export default function App() {
           }
           rechts={
             (istMobileDetail || (hatOffen && objektNurDetail)) ? (
-              <button onClick={() => setExpandedVEId(null)} data-kb-zurueck="1"
-                title="Zurück zur Liste" aria-label="Zurück zur Liste"
-                style={{ display: "flex", alignItems: "center",
-                  background: "none", border: `1px solid ${t.border}`, color: t.text,
-                  borderRadius: RAD.ms, padding: "0 12px", height: 36,
-                  boxSizing: "border-box", cursor: "pointer", fontFamily: "inherit",
-                  fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }}>
-                Zurück
-              </button>
+              <HeaderZurueck onClick={() => setExpandedVEId(null)} label="Zurück" t={t}/>
             ) : (
-              <button onClick={() => setNeuesObjektOffen(true)}
-                data-kb-neu="1" title="Neues Objekt" aria-label="Neues Objekt" style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0,
-                  background: objektAccent, border: "none",
-                  borderRadius: RAD.pill, cursor: "pointer",
-                  boxShadow: `0 1px 2px ${objektAccent}40`,
-                }}>
-                <I name="plus" size={16} color={getContrastColor(objektAccent)}/>
-              </button>
+              <HeaderPlus onClick={() => setNeuesObjektOffen(true)} accent={objektAccent} title="Neues Objekt" t={t}/>
             )
           }/>
         {objektLegendeEl}
@@ -2291,26 +2252,9 @@ export default function App() {
           }
           rechts={
             (aktivKontaktId && kontaktNurDetail) ? (
-              <button onClick={() => setAktivKontaktId(null)} data-kb-zurueck="1"
-                title="Zurück zur Liste" aria-label="Zurück zur Liste"
-                style={{ display: "flex", alignItems: "center",
-                  background: "none", border: `1px solid ${t.border}`, color: t.text,
-                  borderRadius: RAD.ms, padding: "0 12px", height: 36,
-                  boxSizing: "border-box", cursor: "pointer", fontFamily: "inherit",
-                  fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }}>
-                Zurück
-              </button>
+              <HeaderZurueck onClick={() => setAktivKontaktId(null)} label="Zurück" t={t}/>
             ) : (
-              <button onClick={() => setNeuerKontaktOffen(true)}
-                data-kb-neu="1" title="Neuer Kontakt" aria-label="Neuer Kontakt" style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0,
-                  background: kontaktAccent, border: "none",
-                  borderRadius: RAD.pill, cursor: "pointer",
-                  boxShadow: `0 1px 2px ${kontaktAccent}40`,
-                }}>
-                <I name="plus" size={16} color={getContrastColor(kontaktAccent)}/>
-              </button>
+              <HeaderPlus onClick={() => setNeuerKontaktOffen(true)} accent={kontaktAccent} title="Neuer Kontakt" t={t}/>
             )
           }/>
         <KontakteScreen t={t} accent={kontaktAccent}
@@ -3018,15 +2962,7 @@ export default function App() {
                   aktiv={auftragView} onWaehle={setAuftragView}/>
               }
               rechts={(hatAuswahl && auftragNurDetail) ? (
-                <button onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} data-kb-zurueck="1"
-                  title="Zurück zur Auswahl" aria-label="Zurück zur Auswahl"
-                  style={{ display: "flex", alignItems: "center",
-                    background: "none", border: `1px solid ${t.border}`, color: t.text,
-                    borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
-                    cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-                    flexShrink: 0 }}>
-                  Zurück zur Auswahl
-                </button>
+                <HeaderZurueck onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} label="Zurück zur Auswahl" t={t}/>
               ) : null}/>
           );
 
