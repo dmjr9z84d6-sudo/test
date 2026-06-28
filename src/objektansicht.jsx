@@ -1600,7 +1600,7 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = nul
   // rechts liefert der aufrufende Sticky-Header.
   const mobilDetail = (
     <DetailMobilScrollTop offenId={offenVE && offenVE.id} t={t}
-      headerSelector="[data-app-fixed-header]">
+      headerSelector="[data-app-fixed-header]" zumAnfang={true}>
       {renderDetail()}
     </DetailMobilScrollTop>
   );

@@ -2159,7 +2159,7 @@ export default function App() {
     } else if (hatOffen && !istDesktop) {
       detailInhalt = (
         <DetailMobilScrollTop offenId={offenVE.id} t={t}
-          headerSelector="[data-app-fixed-header]">
+          headerSelector="[data-app-fixed-header]" zumAnfang={true}>
           <div style={{
               background: auswahlObjekt + "08",
               border: `1px solid ${auswahlObjekt}`,

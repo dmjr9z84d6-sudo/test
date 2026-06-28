@@ -4089,7 +4089,7 @@ function KbZurueckHook({ onClick }) {
 // (Sprung-/Auslauf-Zusammenspiel, §33). Body-Scroll auf Mobile: window.scrollTo;
 // falls doch ein interner Scroller existiert, diesen. Zwei rAF: nach Layout der
 // frisch gemounteten Detail-Ansicht.
-function DetailMobilScrollTop({ offenId, t, headerSelector, children }) {
+function DetailMobilScrollTop({ offenId, t, headerSelector, children, zumAnfang = false }) {
   const wrapRef = useRef(null);
   useEffect(() => {
     if (offenId == null) return;
@@ -4097,6 +4097,21 @@ function DetailMobilScrollTop({ offenId, t, headerSelector, children }) {
       const el = wrapRef.current;
       if (!el) return;
       const scroller = findScrollParent(el);
+      // zumAnfang: NICHT den Detail-Kopf unter den Header ziehen (das schiebt den
+      // sticky ScreenKopf — Titel/Pillen/Zurück — aus dem Bild), sondern an den
+      // ANFANG des scrollbaren Bereichs scrollen. Der sticky ScreenKopf klebt
+      // dann oben sichtbar, das Detail beginnt direkt darunter (Benny-Wunsch:
+      // „Header nicht verschwunden").
+      if (zumAnfang) {
+        if (scroller) {
+          try { scroller.scrollTo({ top: 0, behavior: "auto" }); }
+          catch (e) { scroller.scrollTop = 0; }
+        } else if (typeof window !== "undefined") {
+          try { window.scrollTo({ top: 0, behavior: "auto" }); }
+          catch (e) { window.scrollTo(0, 0); }
+        }
+        return;
+      }
       if (scroller) {
         const sRect = scroller.getBoundingClientRect();
         const delta = el.getBoundingClientRect().top - sRect.top - 8;
@@ -4320,7 +4335,7 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   if (hatOffen && !istDesktop) {
     return (
       <DetailMobilScrollTop offenId={aktivK.id} t={t}
-        headerSelector="[data-app-fixed-header]">
+        headerSelector="[data-app-fixed-header]" zumAnfang={true}>
         <KbZurueckHook onClick={() => setAktiv(null)}/>
         {/* Zurück-Button sitzt jetzt oben rechts im Sticky-Header (wie in den
             Einstellungen/Objekten); der Bearbeiten-Button im KDK-Header neben
