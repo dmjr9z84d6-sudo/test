@@ -1546,6 +1546,19 @@ export default function App() {
         const fehlende = DEFAULT_VERWENDUNGEN.filter(v => vorhandeneNamen.indexOf(v.name) < 0);
         if (fehlende.length > 0) sett.verwendungen = [...sett.verwendungen, ...fehlende];
       }
+      // Legende: zwei alte Schalter (legendeKontakte/legendeObjekte) → EIN Schalter
+      // legendeAn (v12.82). Nur migrieren, wenn der neue Key noch fehlt: an, wenn
+      // BEIDE alten an waren (Default an).
+      if (sett.legendeAn == null && (sett.legendeKontakte != null || sett.legendeObjekte != null)) {
+        sett.legendeAn = (sett.legendeKontakte !== false) && (sett.legendeObjekte !== false);
+      }
+      // Schrumpf: zwei alte Werte (listeSchrumpf/detailSchrumpfListe) → EIN Wert
+      // schrumpfProzent (v12.82), gleicher % für Liste UND Detail. Nur wenn neuer
+      // Key fehlt: alten Listen-Wert übernehmen (sonst Detail-Wert, sonst Default).
+      if (sett.schrumpfProzent == null && (sett.listeSchrumpf != null || sett.detailSchrumpfListe != null)) {
+        sett.schrumpfProzent = sett.listeSchrumpf != null ? sett.listeSchrumpf
+          : (sett.detailSchrumpfListe != null ? sett.detailSchrumpfListe : 25);
+      }
       // Mit Defaults mergen, damit neue Settings nicht fehlen
       setSettings(s => ({ ...s, ...sett }));
       if (sett.mode === "dark" || sett.mode === "light") setMode(sett.mode);
@@ -1627,14 +1640,15 @@ export default function App() {
   const istListenModus = (effectiveSettings.listenAnsicht || "karten") === "liste";
   const listeBreiteMax = Math.max(280, Math.min(720,
     settings.listeBreite != null ? settings.listeBreite : 400));
-  const listeSchrumpf = Math.max(0, Math.min(50,
-    settings.listeSchrumpf != null ? settings.listeSchrumpf : 25));
-  const listeBreiteMin = Math.max(160, Math.round(listeBreiteMax * (1 - listeSchrumpf / 100)));
+  // Schrumpf (v12.82): EIN Wert schrumpfProzent für Liste UND Detail. Fallback
+  // auf die alten getrennten Keys, solange noch nicht migriert.
+  const schrumpfProz = Math.max(0, Math.min(50,
+    settings.schrumpfProzent != null ? settings.schrumpfProzent
+      : (settings.listeSchrumpf != null ? settings.listeSchrumpf : 25)));
+  const listeBreiteMin = Math.max(160, Math.round(listeBreiteMax * (1 - schrumpfProz / 100)));
   const detailBreiteListeMax = Math.max(400, Math.min(1200,
     settings.detailBreiteListe != null ? settings.detailBreiteListe : 540));
-  const detailSchrumpfListe = Math.max(0, Math.min(40,
-    settings.detailSchrumpfListe != null ? settings.detailSchrumpfListe : 20));
-  const detailBreiteListeMin = Math.max(300, Math.round(detailBreiteListeMax * (1 - detailSchrumpfListe / 100)));
+  const detailBreiteListeMin = Math.max(300, Math.round(detailBreiteListeMax * (1 - schrumpfProz / 100)));
   // listeOpt: kompaktes Objekt, das die Module unverändert an useMasterDetailLayout
   // durchreichen. null im Karten-Modus → Karten-Zweig greift.
   const listeOpt = istListenModus ? {
@@ -1811,7 +1825,7 @@ export default function App() {
     } catch (err) {}
   };
   const baueObjektLegende = (legAccent) =>
-    (settings.legendeObjekte !== false && (vesSichtbar || []).length > 0) ? (
+    (legendeSichtbar(settings) && (vesSichtbar || []).length > 0) ? (
       <ObjektLegende ves={vesSichtbar} t={t} accent={legAccent}
         listenAnsicht={effectiveSettings.listenAnsicht}
         onGotoHandlungsbedarf={springHandlungsbedarf}/>
@@ -1825,12 +1839,19 @@ export default function App() {
     [vesKalender, kontakteKalender, kalDockAktiv, istDesktop, kalPanelMobilOffen, freieTermine]);
 
   const tBase = mode === "light" ? LIGHT : DARK;
-  // Höherer Kontrast: sub-Texte werden noch heller bzw. dunkler – wirkt überall, wo t.sub/t.muted benutzt wird
-  const t = settings.hoherKontrast
-    ? { ...tBase,
-        sub:   mode === "light" ? "#2A2E40" : "#D0D0E8",
-        muted: mode === "light" ? "#454A60" : "#A8A8C5" }
-    : tBase;
+  // Hoher Kontrast ist seit v12.82 generell aktiv (kein Schalter mehr): sub-Texte
+  // immer heller bzw. dunkler – wirkt überall, wo t.sub/t.muted benutzt wird.
+  const t = { ...tBase,
+    sub:   mode === "light" ? "#2A2E40" : "#D0D0E8",
+    muted: mode === "light" ? "#454A60" : "#A8A8C5" };
+
+  // Legende-Sichtbarkeit (v12.82): EIN Schalter legendeAn für alle Kacheln.
+  // Fallback für noch nicht migrierte Settings: alte Keys (beide an → an).
+  const legendeSichtbar = (s) => {
+    if (!s) return true;
+    if (s.legendeAn != null) return s.legendeAn !== false;
+    return (s.legendeKontakte !== false) && (s.legendeObjekte !== false);
+  };
 
   // Icon-Farbe der Header-Buttons (Mond/Kalender/Profil) im Ruhezustand:
   // systemAccent, aber gegen den Header-Hintergrund kontrast-gesichert. Helle
@@ -2095,7 +2116,7 @@ export default function App() {
     const hatOffen = !!offenVE;
     // Objekt-Legende: steht in ALLEN Zuständen (auch bei offener Karte), damit
     // man jederzeit nachschlagen kann. Ausblendbar via settings.legendeObjekte.
-    const objektLegendeEl = (settings.legendeObjekte !== false && gefiltert.length > 0) ? (
+    const objektLegendeEl = (legendeSichtbar(settings) && gefiltert.length > 0) ? (
       <ObjektLegende ves={gefiltert} t={t} accent={objektAccent}
         listenAnsicht={effectiveSettings.listenAnsicht}
         onGotoHandlungsbedarf={() => {
@@ -2259,7 +2280,7 @@ export default function App() {
         <KontakteScreen t={t} accent={kontaktAccent}
           listenAnsicht={effectiveSettings.listenAnsicht}
           kontaktart={filterKontaktart}
-          legendeAn={settings.legendeKontakte !== false}
+          legendeAn={legendeSichtbar(settings)}
           kontakte={kontakteFuerListe} setKontakte={setKontakte} ves={ves}
           initialKontaktId={kontaktId} onVEClick={gotoVE}
           externAktiv={aktivKontaktId} setExternAktiv={setAktivKontaktId}
@@ -2818,7 +2839,7 @@ export default function App() {
             viewVEId={etvViewVEId} setViewVEId={setEtvViewVEId}
             istDesktop={istDesktop}
             titel="ETV" anzahl={(vesSichtbar || []).length}
-            legendeAn={effectiveSettings.legendeObjekte !== false}
+            legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
               setTimeout(() => {
@@ -3012,7 +3033,7 @@ export default function App() {
             viewVEId={beschlussViewVEId} setViewVEId={setBeschlussViewVEId}
             istDesktop={istDesktop}
             titel="Beschlusssammlung" anzahl={(vesSichtbar || []).length}
-            legendeAn={effectiveSettings.legendeObjekte !== false}
+            legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
               setTimeout(() => {
@@ -3068,7 +3089,7 @@ export default function App() {
             viewVEId={technikViewVEId} setViewVEId={setTechnikViewVEId}
             istDesktop={istDesktop}
             titel="Technik" anzahl={(vesSichtbar || []).length}
-            legendeAn={effectiveSettings.legendeObjekte !== false}
+            legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
               setTimeout(() => {
@@ -3126,7 +3147,7 @@ export default function App() {
             viewVEId={dokumenteViewVEId} setViewVEId={setDokumenteViewVEId}
             istDesktop={istDesktop}
             titel="Dokumente" anzahl={(vesSichtbar || []).length}
-            legendeAn={effectiveSettings.legendeObjekte !== false}
+            legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
               setTimeout(() => {
@@ -3181,7 +3202,7 @@ export default function App() {
             viewVEId={fotosViewVEId} setViewVEId={setFotosViewVEId}
             istDesktop={istDesktop}
             titel="Fotos" anzahl={(vesSichtbar || []).length}
-            legendeAn={effectiveSettings.legendeObjekte !== false}
+            legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
               setTimeout(() => {
@@ -3239,7 +3260,7 @@ export default function App() {
             viewVEId={kommunikationViewVEId} setViewVEId={setKommunikationViewVEId}
             istDesktop={istDesktop}
             titel="Kommunikation" anzahl={(vesSichtbar || []).length}
-            legendeAn={effectiveSettings.legendeObjekte !== false}
+            legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
               setTimeout(() => {
@@ -3294,7 +3315,7 @@ export default function App() {
             viewVEId={finanzenViewVEId} setViewVEId={setFinanzenViewVEId}
             istDesktop={istDesktop}
             titel="Finanzen" anzahl={(vesSichtbar || []).length}
-            legendeAn={effectiveSettings.legendeObjekte !== false}
+            legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
               setTimeout(() => {

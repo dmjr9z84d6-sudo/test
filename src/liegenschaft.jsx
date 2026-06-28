@@ -17,7 +17,7 @@ import {
   DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, HV_ADRESSE, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
   SortierPfeile, ableiteStatusVonBis, genRechnungsadresse, haltePositionUeberUpdate,
   headerFilterIstAktiv, scrollToCard, sidebarModus, useEinheitAnzeige, useEinheitOffen,
-  useKartenIcons, useKontaktFarbe, useOutsideClick, useRechnungsadresseAn, useVerwendungen, useWindowWidth
+  useKartenIcons, useKontaktFarbe, useOutsideClick, useRechnungsadresseAn, useRollen, useVerwendungen, useWindowWidth
 } from "./utils-icons.jsx";
 import {
   Avatar, BelegungswechselVorgang, CopyBtn, DatumFeld, EckPille, EigentumBlock, EigentumHistorie,
@@ -3360,6 +3360,12 @@ function EinheitZeile({ einheit, t, accent, editMode, isActive, onToggle,
     belegungEdit = false, onToggleBelegung = null,
     onBelegungBestaetigen = null, onBelegungAbbrechen = null, gesperrt = false }) {
   const anzeige = useEinheitAnzeige();
+  const rollen = useRollen();
+  // Eigentümer-Farbe = Farbe der Personen-Rolle „Eigentümer" (wie im Avatar-Badge),
+  // analog zur Mieter-Farbe aus bewohnerRecht. Fallback auf t.sub, falls die Rolle
+  // (z. B. umbenannt) nicht gefunden wird.
+  const eigRolle = (rollen || []).find(r => r.name === "Eigentümer");
+  const eigFarbe = (eigRolle && eigRolle.color) || t.sub;
   const aktiverEig = (einheit.eigentuemer || []).find(e => !e.bis);
   // Mieter ergibt sich jetzt aus dem Haushalt der laufenden Belegung (Typ Vermietung):
   // erstes benanntes Haushaltsmitglied mit Kontakt. Fallback auf das Legacy-Feld
@@ -3399,7 +3405,7 @@ function EinheitZeile({ einheit, t, accent, editMode, isActive, onToggle,
           <div style={{ fontSize: FS.xs, color: t.sub, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
             {anzeige.flaeche && flaecheText && <span>{flaecheText}</span>}
             {anzeige.mea && einheit.mea && <span>· MEA {einheit.mea}</span>}
-            {anzeige.eigentuemer && aktiverEig && <span> · ET {extractNachname(aktiverEig.name)}</span>}
+            {anzeige.eigentuemer && aktiverEig && <span style={{ color: eigFarbe }}> · ET {extractNachname(aktiverEig.name)}</span>}
             {anzeige.mieter && aktiverMieter && <span style={{ color: bewohnerRecht("mieter").farbe }}> · MT {extractNachname(aktiverMieter.name)}</span>}
           </div>
         </div>
@@ -7801,6 +7807,7 @@ function HeaderFilterDropdown({ sektionen, value, onChange, t, anzahlGesamt = 0,
 export {
   ANDERE_OPTION,
   DokumenteAnsicht,
+  EinheitZeile,
   HeaderFilterDropdown,
   KARTEN_ICONS,
   KategorieKacheln,

@@ -23,6 +23,7 @@ import {
   HANDLUNGSBEDARF_QUELLEN, VEKachel, hbQuelleAktiv, hbVorlauf
 } from "./objektansicht.jsx";
 import { druckeHtml } from "./listen-tools.jsx";
+import { EinheitZeile } from "./liegenschaft.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 8 · EINSTELLUNGEN — ausgelagertes Modul                         ║
 // ║ EinstellKarte · EinstellZeile · FarbPicker · SEKTIONEN                   ║
@@ -41,6 +42,33 @@ function EinstellKarte({ title, children, t, accent }) {
         <span style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>{title}</span>
       </div>
       <div style={{ padding: "14px" }}>{children}</div>
+    </div>
+  );
+}
+
+// KlappGruppe — einklappbarer Block mit Label + Anzahl im Kopf (§76.5 lokaler Fall).
+// Klapp-Toggle über den GANZEN Kopf (div onClick), KEIN dekorativer Chevron
+// (DESIGN-Regel). Akkordeon-Steuerung liegt beim Aufrufer (offen + onToggle).
+function KlappGruppe({ label, anzahl, offen, onToggle, t, accent, children }) {
+  return (
+    <div style={{ border: `1px solid ${offen ? accent : t.border}`,
+      borderRadius: RAD.ms, overflow: "hidden", marginBottom: 8,
+      background: offen ? accent + "06" : "transparent" }}>
+      <div onClick={onToggle}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 12px",
+          cursor: "pointer", background: accent + "08" }}>
+        <span style={{ flex: 1, fontSize: FS.s, fontWeight: FW.bold,
+          color: offen ? accent : t.muted, textTransform: "uppercase",
+          letterSpacing: "0.06em" }}>{label}</span>
+        {anzahl != null && (
+          <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0 }}>{anzahl}</span>
+        )}
+      </div>
+      {offen && (
+        <div style={{ padding: "4px 12px 10px", borderTop: `1px solid ${t.border}33` }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -500,6 +528,8 @@ function HandlungsbedarfTabelle({ settings, save, t, accent }) {
 
 function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent, mode, setMode }) {
   const save = (partial) => setSettings(s => ({ ...s, ...partial }));
+  // Akkordeon der Farb-Gruppen: nur EINE Gruppe gleichzeitig offen, alle starten zu.
+  const [offeneFarbGruppe, setOffeneFarbGruppe] = useState(null);
   // Farb-Intensität-Wert für den Slider (rohe Settings, damit der echte Wert
   // angezeigt wird). Vor dem return als const,
   // KEINE IIFE in JSX (Safari/iOS-Regel).
@@ -611,15 +641,15 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
         </EinstellZeile>
       )}
       {(settings.listenAnsicht || "karten") === "liste" && (
-        <EinstellZeile label="Listen-Schrumpf" sub="Wie weit die Liste unter ihre Breite schrumpfen darf, bevor sie ganz weicht. Bei knappem Platz schrumpft zuerst die Liste, dann das Detail, dann bleibt nur das Detail." t={t}>
+        <EinstellZeile label="Schrumpf" sub="Wie weit Liste und Detailfenster bei knappem Platz unter ihre Breite schrumpfen dürfen. Zuerst schrumpft die Liste, dann das Detail; reicht das nicht, weicht die Liste ganz." t={t}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
             <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
               fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
-              {Math.max(0, Math.min(50, settings.listeSchrumpf != null ? settings.listeSchrumpf : 25))} %
+              {Math.max(0, Math.min(50, settings.schrumpfProzent != null ? settings.schrumpfProzent : 25))} %
             </span>
             <input type="range" min={0} max={50} step={5}
-              value={Math.max(0, Math.min(50, settings.listeSchrumpf != null ? settings.listeSchrumpf : 25))}
-              onChange={e => save({ listeSchrumpf: parseInt(e.target.value, 10) })}
+              value={Math.max(0, Math.min(50, settings.schrumpfProzent != null ? settings.schrumpfProzent : 25))}
+              onChange={e => save({ schrumpfProzent: parseInt(e.target.value, 10) })}
               style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
           </div>
         </EinstellZeile>
@@ -634,20 +664,6 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
             <input type="range" min={400} max={1200} step={20}
               value={Math.max(400, Math.min(1200, settings.detailBreiteListe != null ? settings.detailBreiteListe : 540))}
               onChange={e => save({ detailBreiteListe: parseInt(e.target.value, 10) })}
-              style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
-          </div>
-        </EinstellZeile>
-      )}
-      {(settings.listenAnsicht || "karten") === "liste" && (
-        <EinstellZeile label="Detail-Schrumpf" sub="Wie weit das Detailfenster unter seine Breite schrumpfen darf, nachdem die Liste schon am Minimum ist. Reicht auch das nicht, weicht die Liste ganz." t={t}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
-            <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
-              fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
-              {Math.max(0, Math.min(40, settings.detailSchrumpfListe != null ? settings.detailSchrumpfListe : 20))} %
-            </span>
-            <input type="range" min={0} max={40} step={5}
-              value={Math.max(0, Math.min(40, settings.detailSchrumpfListe != null ? settings.detailSchrumpfListe : 20))}
-              onChange={e => save({ detailSchrumpfListe: parseInt(e.target.value, 10) })}
               style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
           </div>
         </EinstellZeile>
@@ -668,20 +684,14 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
             style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
         </div>
       </EinstellZeile>
-      <EinstellZeile label="Dunkelmodus" sub="Helles oder dunkles Design" t={t}>
-        <Toggle value={mode === "dark"} onChange={v => setMode(v ? "dark" : "light")} color={accent}/>
-      </EinstellZeile>
-      <EinstellZeile label="Höherer Kontrast" sub="Sekundäre Texte deutlich heller bzw. dunkler – bessere Lesbarkeit" t={t}>
-        <Toggle value={!!settings.hoherKontrast}
-          onChange={v => save({ hoherKontrast: v })} color={accent}/>
-      </EinstellZeile>
-      <EinstellZeile label="Legende bei Kontakten" sub="Aufklappbare Symbol-Erklärung über der Kontaktliste anzeigen" t={t}>
-        <Toggle value={settings.legendeKontakte !== false}
-          onChange={v => save({ legendeKontakte: v })} color={accent}/>
-      </EinstellZeile>
-      <EinstellZeile label="Legende bei Objekten" sub="Aufklappbare Symbol-Erklärung über der Objektliste anzeigen" t={t}>
-        <Toggle value={settings.legendeObjekte !== false}
-          onChange={v => save({ legendeObjekte: v })} color={accent}/>
+      {settings.headerZeigeDunkelmodus === false && (
+        <EinstellZeile label="Dunkelmodus" sub="Helles oder dunkles Design" t={t}>
+          <Toggle value={mode === "dark"} onChange={v => setMode(v ? "dark" : "light")} color={accent}/>
+        </EinstellZeile>
+      )}
+      <EinstellZeile label="Legende anzeigen" sub="Aufklappbare Symbol-Erklärung über Objekt- und Kontaktlisten anzeigen" t={t}>
+        <Toggle value={settings.legendeAn != null ? settings.legendeAn !== false : (settings.legendeKontakte !== false && settings.legendeObjekte !== false)}
+          onChange={v => save({ legendeAn: v })} color={accent}/>
       </EinstellZeile>
       {/* Master-Schalter für beide Statusleisten (Objekte + Kontakte). An =
           mindestens eine an; Umlegen setzt beide gemeinsam. Die getrennten
@@ -749,61 +759,55 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
         ? (rawSettings || settings).farbIntensitaet : 100) > 0 && (
     <EinstellKarte title="Farben" t={t} accent={accent}>
 
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.muted,
-          textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
-          Dashboard-Kacheln
-        </div>
-        {[...((rawSettings || settings).kacheln || [])].sort((a, b) => a.reihenfolge - b.reihenfolge).map(k => (
-          <div key={k.id} style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "7px 0", borderBottom: "1px solid " + t.border + "20",
-          }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: RAD.ms, background: k.farbe + "25",
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-            }}>
-              <I name={k.icon || "grid"} size={14} color={k.farbe}/>
-            </div>
-            <span style={{ flex: 1, fontSize: FS.l, color: t.text }}>{k.label}</span>
-            <FarbPicker value={k.farbe}
-              onChange={c => save({ kacheln: (rawSettings || settings).kacheln.map(x => x.id === k.id ? { ...x, farbe: c } : x) })}
-              t={t} verwendeteFarben={sammleVerwendeteFarben(rawSettings || settings)}/>
-          </div>
-        ))}
-      </div>
-
       {[
-        { label: "Personen-Rollen", data: (rawSettings || settings).rollen || DEFAULT_ROLLEN, key: "rollen" },
-        { label: "Gewerke (Firmen-Fachgebiet)", data: (rawSettings || settings).firmenRollen || DEFAULT_GEWERKE_LISTE, key: "firmenRollen" },
-        { label: "Leistungen / Zuständigkeiten (am Objekt)", data: (rawSettings || settings).leistungen || DEFAULT_LEISTUNGEN, key: "leistungen" },
-        { label: "Verwendungen",    data: (rawSettings || settings).verwendungen || DEFAULT_VERWENDUNGEN, key: "verwendungen" },
+        { label: "Dashboard-Kacheln", key: "kacheln", art: "kachel",
+          data: [...((rawSettings || settings).kacheln || [])].sort((a, b) => a.reihenfolge - b.reihenfolge) },
+        { label: "Personen-Rollen", key: "rollen", art: "rolle",
+          data: [...((rawSettings || settings).rollen || DEFAULT_ROLLEN)].sort((a, b) => a.name.localeCompare(b.name, "de")) },
+        { label: "Gewerke (Firmen-Fachgebiet)", key: "firmenRollen", art: "rolle",
+          data: [...((rawSettings || settings).firmenRollen || DEFAULT_GEWERKE_LISTE)].sort((a, b) => a.name.localeCompare(b.name, "de")) },
+        { label: "Leistungen / Zuständigkeiten (am Objekt)", key: "leistungen", art: "rolle",
+          data: [...((rawSettings || settings).leistungen || DEFAULT_LEISTUNGEN)].sort((a, b) => a.name.localeCompare(b.name, "de")) },
+        { label: "Verwendungen", key: "verwendungen", art: "rolle",
+          data: [...((rawSettings || settings).verwendungen || DEFAULT_VERWENDUNGEN)].sort((a, b) => a.name.localeCompare(b.name, "de")) },
       ].map(gruppe => (
-        <div key={gruppe.key} style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.muted,
-            textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
-            {gruppe.label}
-          </div>
-          {[...gruppe.data].sort((a, b) => a.name.localeCompare(b.name, "de")).map(r => (
-            <div key={r.name} style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "7px 0", borderBottom: "1px solid " + t.border + "20",
-              opacity: r.aktiv === false ? 0.4 : 1 }}>
-              <div style={{ width: 28, height: 28, borderRadius: RAD.full,
-                background: r.color + "25", border: "1.5px solid " + r.color + "60",
-                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <span style={{ fontSize: FS.xxs, fontWeight: FW.heavy, color: r.color }}>{r.kuerzel}</span>
-              </div>
-              <span style={{ flex: 1, fontSize: FS.l, color: t.text }}>{r.name}</span>
-              <FarbPicker value={r.color}
-                onChange={c => {
-                  const realData = (rawSettings || settings)[gruppe.key] || gruppe.data;
-                  save({ [gruppe.key]: realData.map(x => x.name === r.name ? { ...x, color: c } : x) });
-                }}
-                t={t} verwendeteFarben={sammleVerwendeteFarben(rawSettings || settings)}/>
-            </div>
-          ))}
-        </div>
+        <KlappGruppe key={gruppe.key} label={gruppe.label} anzahl={gruppe.data.length}
+          offen={offeneFarbGruppe === gruppe.key}
+          onToggle={() => setOffeneFarbGruppe(offeneFarbGruppe === gruppe.key ? null : gruppe.key)}
+          t={t} accent={accent}>
+          {gruppe.art === "kachel"
+            ? gruppe.data.map(k => (
+                <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 10,
+                  padding: "7px 0", borderBottom: "1px solid " + t.border + "20" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: RAD.ms, background: k.farbe + "25",
+                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <I name={k.icon || "grid"} size={14} color={k.farbe}/>
+                  </div>
+                  <span style={{ flex: 1, fontSize: FS.l, color: t.text }}>{k.label}</span>
+                  <FarbPicker value={k.farbe}
+                    onChange={c => save({ kacheln: (rawSettings || settings).kacheln.map(x => x.id === k.id ? { ...x, farbe: c } : x) })}
+                    t={t} verwendeteFarben={sammleVerwendeteFarben(rawSettings || settings)}/>
+                </div>
+              ))
+            : gruppe.data.map(r => (
+                <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 10,
+                  padding: "7px 0", borderBottom: "1px solid " + t.border + "20",
+                  opacity: r.aktiv === false ? 0.4 : 1 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: RAD.full,
+                    background: r.color + "25", border: "1.5px solid " + r.color + "60",
+                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <span style={{ fontSize: FS.xxs, fontWeight: FW.heavy, color: r.color }}>{r.kuerzel}</span>
+                  </div>
+                  <span style={{ flex: 1, fontSize: FS.l, color: t.text }}>{r.name}</span>
+                  <FarbPicker value={r.color}
+                    onChange={c => {
+                      const realData = (rawSettings || settings)[gruppe.key] || gruppe.data;
+                      save({ [gruppe.key]: realData.map(x => x.name === r.name ? { ...x, color: c } : x) });
+                    }}
+                    t={t} verwendeteFarben={sammleVerwendeteFarben(rawSettings || settings)}/>
+                </div>
+              ))}
+        </KlappGruppe>
       ))}
 
     </EinstellKarte>
@@ -1190,6 +1194,24 @@ function SektionObjekte({ settings, setSettings, t, accent, ves = [] }) {
           bestimmen und ab wann Gelb greift (DESIGN §36). Anker-id für den
           Sprung aus der Objekt-Legende. */}
       <EinstellKarte title="Einheit-Übersicht im Liegenschaft-Tab" t={t} accent={accent}>
+        {/* Live-Vorschau: echte EinheitZeile mit Beispieldaten. Reagiert sofort auf
+            die vier Toggles darunter (useEinheitAnzeige liest dieselben Settings),
+            damit man die Wirkung sieht — gleicher Baustein wie im Liegenschaft-Tab. */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+            textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            Vorschau
+          </div>
+          <EinheitZeile
+            einheit={{
+              id: "vorschau", nr: "WE 3", lage: "1. OG links",
+              flaeche: "84.3", mea: "122/1000",
+              eigentuemer: [{ kontaktId: -1, name: "Aalbers" }],
+              mieter: [{ kontaktId: -2, name: "Wieczorek" }],
+            }}
+            t={t} accent={accent} editMode={false} isActive={false}
+            onToggle={() => {}}/>
+        </div>
         <EinstellZeile label="Fläche anzeigen"
           sub={'z. B. „128 m²“ in der Einheit-Zeile'} t={t}>
           <Toggle value={settings.einheitAnzeigeFlaeche !== false}

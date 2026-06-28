@@ -2925,7 +2925,10 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           const offenVEObj = (ves || []).find(v => v.id === kalViewVEId) || null;
           // Legende — wie bei Vorgängen/Statistik: vor dem Master-Detail, sichtbar
           // in BEIDEN Zuständen (Übersicht UND offenes Objekt).
-          const kalLegende = (settings && settings.legendeObjekte !== false && (ves || []).length > 0) ? (
+          const kalLegendeAn = settings ? (settings.legendeAn != null
+            ? settings.legendeAn !== false
+            : (settings.legendeKontakte !== false) && (settings.legendeObjekte !== false)) : true;
+          const kalLegende = (kalLegendeAn && (ves || []).length > 0) ? (
             <ObjektLegende ves={ves} t={t} accent={kalFarbe}
               listenAnsicht={listenAnsicht}
               onGotoHandlungsbedarf={() => {
