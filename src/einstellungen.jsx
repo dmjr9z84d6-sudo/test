@@ -3745,12 +3745,42 @@ const SEKTIONEN = [
   { id: "statusleiste",  icon: "bell",     farbe: "#F97316", title: "Statusleiste",      sub: "Objekt- & Kontakt-Hinweise, Jahrestage" },
   { id: "filter",        icon: "search",   farbe: "#F59E0B", title: "Filter-Optionen",   sub: "Großer Filter im Header" },
   { id: "kalender",      icon: "calendar", farbe: "#F59E0B", title: "Kalender",          sub: "Wochenstart, KW, Termin-Bezeichnungen" },
+  { id: "dokumente",     icon: "document", farbe: "#0E7490", title: "Dokumente",         sub: "Dokument-Karten, Anzeige" },
   { id: "dashboard",     icon: "building", farbe: "#0080FF", title: "Dashboard",         sub: "Kacheln, Reihenfolge, Farben" },
   { id: "suche",         icon: "search",   farbe: "#EC4899", title: "Suche",             sub: "Welche Bereiche durchsucht werden" },
   { id: "tastatur",      icon: "settings", farbe: "#10B981", title: "Tastatur",          sub: "Kürzel anpassen und drucken" },
   { id: "hv",            icon: "building", farbe: "#64748B", title: "Hausverwaltung",    sub: "Name und Stammdaten" },
   { id: "daten",         icon: "document", farbe: "#0EA5C9", title: "Daten",             sub: "Import, Export, Backup" },
 ];
+
+
+// ── Sektion: Dokumente ──────────────────────────────────────────────────────
+// Einstellungen rund um den Dokumente-Tab. Aktuell: Schalter für die
+// Dokument-Detailkarten (unter der Checkliste). Diese Karten sind als Träger
+// für ZUSÄTZLICHE Infos gedacht (z. B. aus KI-Dokumentanalyse), ergeben aber
+// vor dem KI-Einlesen noch keinen Sinn — daher standardmäßig AUS. Schalter
+// blendet sie wieder ein, sobald die Funktion gebraucht wird.
+function SektionDokumente({ settings, setSettings, t, accent }) {
+  const save = (partial) => setSettings(s => ({ ...s, ...partial }));
+  return (
+    <>
+      <EinstellKarte title="Dokument-Karten" t={t} accent={accent}>
+        <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 8, lineHeight: 1.4 }}>
+          Unter der WEG-Unterlagen-Checkliste können je Dokument zusätzliche
+          Detailkarten erscheinen. Sie sind als Platz für weitere Angaben gedacht
+          (z. B. automatisch aus den Dokumenten ausgelesen) — das wird erst mit
+          der KI-Dokumentanalyse nutzbar. Bis dahin bleiben sie ausgeblendet.
+        </div>
+        <EinstellZeile label="Detailkarten anzeigen"
+          sub="An: Unter der Checkliste werden je Dokument zusätzliche Karten gezeigt · Aus: Nur die Checkliste mit den Dateien (empfohlen, bis KI-Einlesen verfügbar ist)"
+          t={t}>
+          <Toggle value={settings.dokumenteKartenAn === true}
+            onChange={v => save({ dokumenteKartenAn: v })} color={accent}/>
+        </EinstellZeile>
+      </EinstellKarte>
+    </>
+  );
+}
 
 
 export {
@@ -3760,6 +3790,7 @@ export {
   SEKTIONEN,
   SektionDashboard,
   SektionDaten,
+  SektionDokumente,
   SektionErscheinungsbild,
   SektionFilterOpt,
   SektionHV,

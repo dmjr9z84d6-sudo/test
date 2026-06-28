@@ -18,7 +18,7 @@ import {
   DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
   SortierPfeile, ableiteStatusVonBis, haltePositionUeberUpdate,
   headerFilterIstAktiv, scrollToCard, sidebarModus, useEinheitAnzeige, useEinheitOffen,
-  useKartenIcons, useKontaktFarbe, useOutsideClick, useRollen, useVerwendungen, useWindowWidth
+  useKartenIcons, useDokumenteKarten, useKontaktFarbe, useOutsideClick, useRollen, useVerwendungen, useWindowWidth
 } from "./utils-icons.jsx";
 import {
   Avatar, BelegungswechselVorgang, DatumFeld, EckPille, EigentumBlock, EigentumHistorie,
@@ -7026,8 +7026,8 @@ function DateiZeile({ meta, t, accent, onAnsehen, onDownload, onEntfernen }) {
       <span style={{ flex: 1, fontSize: FS.s, color: t.text,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.name}</span>
       <button onClick={(e) => { e.stopPropagation(); onAnsehen(meta); }}
-        title="Ansehen" aria-label="Ansehen" style={iconBtn({ borderColor: accent })}>
-        <I name="eye" size={15} color={accent}/>
+        title="Ansehen" aria-label="Ansehen" style={iconBtn({})}>
+        <I name="eye" size={15} color={t.sub}/>
       </button>
       {onDownload && (
         <button onClick={(e) => { e.stopPropagation(); onDownload(meta); }}
@@ -7113,11 +7113,11 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
   return (
     <div onClick={onClose}
       style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.7)",
-        zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        zIndex: 210, display: "flex", alignItems: "stretch", justifyContent: "stretch", padding: 0 }}>
       <div onClick={function (e) { e.stopPropagation(); }}
-        style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.xl,
-          width: "100%", maxWidth: 900, height: "90dvh", display: "flex", flexDirection: "column",
-          overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+        style={{ background: t.card, border: "none", borderRadius: 0,
+          width: "100vw", height: "100dvh", display: "flex", flexDirection: "column",
+          overflow: "hidden" }}>
         {/* Header: Name links, Download + x rechts */}
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.border}`,
           display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
@@ -7616,6 +7616,10 @@ function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMo
   const karten = (ve && Array.isArray(ve.dokumenteKarten)) ? ve.dokumenteKarten : [];
   // EIN Viewer-State für den ganzen Dokumente-Tab (Checkliste + Karten teilen ihn)
   const [viewerDatei, setViewerDatei] = useState(null);
+  // Detailkarten unter der Checkliste nur zeigen, wenn in Einstellungen aktiviert
+  // (Default aus — sinnvoll erst mit KI-Dokumentanalyse). Im Bearbeiten-Modus
+  // bleiben sie sichtbar, damit man eigene Karten weiter verwalten kann.
+  const dokumenteKartenAn = useDokumenteKarten();
 
   const setKarten = (updater, scrollZielId) => {
     if (!setVes) return;
@@ -7653,11 +7657,14 @@ function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMo
       <DokumenteChecklist karten={karten} setKarten={setKarten} t={t} accent={accent}
         editMode={editMode} onDateiAnsehen={setViewerDatei}/>
 
-      {/* Dokument-Karten (aus der Checkliste + eigene) */}
-      <KartenList karten={karten} setKarten={setKarten} t={t} accent={accent} editMode={editMode}
-        kontakte={kontakte} setKontakte={setKontakte} ve={ve} onKontaktClick={onKontaktClick} ves={ves}
-        sprungKarte={sprungKarte} onDateiAnsehen={setViewerDatei}
-        ohneEinheiten/>
+      {/* Dokument-Karten (aus der Checkliste + eigene) — nur wenn aktiviert
+          oder im Bearbeiten-Modus (zum Verwalten eigener Karten). */}
+      {(dokumenteKartenAn || editMode) && (
+        <KartenList karten={karten} setKarten={setKarten} t={t} accent={accent} editMode={editMode}
+          kontakte={kontakte} setKontakte={setKontakte} ve={ve} onKontaktClick={onKontaktClick} ves={ves}
+          sprungKarte={sprungKarte} onDateiAnsehen={setViewerDatei}
+          ohneEinheiten/>
+      )}
 
       {/* Datei-Viewer — EIN Overlay für den ganzen Dokumente-Tab */}
       {viewerDatei && (
@@ -8352,6 +8359,7 @@ export {
   quoteLabel,
   tagsDiffMS
 };
+
 
 
 

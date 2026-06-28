@@ -2007,6 +2007,12 @@ function useAvatarIcons() { return useContext(AvatarIconsContext); }
 const KartenIconsContext = createContext(true);
 function useKartenIcons() { return useContext(KartenIconsContext); }
 
+// ── DokumenteKartenContext: zeigt die Dokument-Detailkarten unter der
+// WEG-Unterlagen-Checkliste an. false = aus (Default, nur Checkliste), true =
+// Karten einblenden. Gedacht als Platz für KI-ausgelesene Zusatzinfos (später).
+const DokumenteKartenContext = createContext(false);
+function useDokumenteKarten() { return useContext(DokumenteKartenContext); }
+
 // ── KartenBadgesContext: Rollen-Badges rechts auf der Kontaktkarte schaltbar ─
 const KartenBadgesContext = createContext({ person: true, firma: true });
 function useKartenBadges() { return useContext(KartenBadgesContext); }
@@ -2177,6 +2183,8 @@ export {
   AvatarIconsContext,
   useAvatarIcons,
   KartenIconsContext,
+  DokumenteKartenContext,
+  useDokumenteKarten,
   useKartenIcons,
   KartenBadgesContext,
   useKartenBadges,

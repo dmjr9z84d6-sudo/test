@@ -192,6 +192,7 @@ import {
 import {
   AvatarIconsContext,
   KartenIconsContext,
+  DokumenteKartenContext,
   DESKTOP_MIN_WIDTH,
   EinheitAnzeigeContext,
   EinheitOffenContext,
@@ -350,7 +351,7 @@ import {
 // Einstellungen-Modul (S8) — ausgelagert nach einstellungen.jsx. Kein Rück-
 // import aus dieser Datei nötig (EinstellungenZentrale bleibt im App-Rumpf).
 import {
-  SEKTIONEN, SektionDashboard, SektionDaten, SektionErscheinungsbild, SektionFilterOpt,
+  SEKTIONEN, SektionDashboard, SektionDaten, SektionDokumente, SektionErscheinungsbild, SektionFilterOpt,
   SektionHV, SektionKalenderPanel, SektionKontakte, SektionObjekte, SektionProfil,
   SektionStatusleiste, SektionSuche, SektionTastatur, TASTATUR_AKTIONEN,
   dateiZuFotoDataUrl, tastaturBelegungVon, useStorageStatus
@@ -516,6 +517,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
         {s.id === "statusleiste" && <SektionStatusleiste settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "filter"      && <SektionFilterOpt settings={settings} setSettings={setSettings} t={t} accent={s.farbe} ves={ves} kontakte={kontakte}/>}
         {s.id === "kalender"    && <SektionKalenderPanel settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
+        {s.id === "dokumente"   && <SektionDokumente settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "dashboard"   && <SektionDashboard settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "suche"       && <SektionSuche settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "tastatur"    && <SektionTastatur settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
@@ -2410,6 +2412,7 @@ export default function App() {
       firma:  settings.avatarIconsFirma  !== false
     }}>
     <KartenIconsContext.Provider value={settings.kartenIconsAn !== false}>
+    <DokumenteKartenContext.Provider value={settings.dokumenteKartenAn === true}>
     <KartenBadgesContext.Provider value={{
       person: settings.kartenBadgesPerson !== false,
       firma:  settings.kartenBadgesFirma  !== false
@@ -3439,6 +3442,7 @@ export default function App() {
     </TerminBezeichnungenContext.Provider>
     </StatusLeisteContext.Provider>
     </KartenBadgesContext.Provider>
+    </DokumenteKartenContext.Provider>
     </KartenIconsContext.Provider>
     </AvatarIconsContext.Provider>
     </KategorienContext.Provider>
