@@ -561,29 +561,27 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
     <div style={istDesktop
       ? { flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }
       : { display: "flex", flexDirection: "column" }}>
-      {/* Section-Header — auf Mobile mit Zurück-Button rechts vom Titel
-          (wenn eine Sektion offen ist). Auf Desktop bleibt nur der Titel. */}
+      {/* Section-Header — nur der Titel. Der „Zurück zur Liste"-Button kommt
+          einheitlich aus dem Baustein (rechtsbündig), sobald die Liste weicht. */}
       <StickySectionHeader t={t} accent={accent}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: t.text,
             userSelect: "none" }}>
             Einstellungen
           </div>
-          {offenSektion && !istDesktop && (
-            <ZurueckButton onClick={() => setAktSektion(null)} variante="header"
-              t={t} kbZurueck={true}/>
-          )}
         </div>
       </StickySectionHeader>
 
       {/* Master-Detail über den kanonischen Baustein (§75). Master = Sektions-
           Kacheln; Detail nur bei offener Sektion. Ohne Auswahl steht die Über-
-          sicht allein (kein reservierter Detail-Slot). Mobil: Detail ersetzt
-          die Liste (Zurück sitzt im Header). */}
+          sicht allein. Weicht die Liste (Mobil/eng), liefert der Baustein den
+          rechtsbündigen Zurück-Button via onZurueck. */}
       <MasterDetailRahmen
         master={(layout) => sektionsGrid(layout, !!offenSektion)}
         detail={offenSektion ? renderSektionDetail(offenSektion) : null}
         mobilDetail={offenSektion ? renderSektionDetail(offenSektion) : null}
+        onZurueck={offenSektion ? () => setAktSektion(null) : null}
+        t={t}
         istDesktop={istDesktop}
         listenAnsicht={settings.listenAnsicht || "karten"} listeOpt={listeOpt}
         kartenSpalten={setWunschCols} kartenMaxBreite={kartenMaxBreite}

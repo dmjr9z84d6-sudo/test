@@ -13,7 +13,7 @@ import {
   eigStatus, findeKontaktKandidaten, verwendungenVon
 } from "./datenmodell.js";
 import {
-  I, StickySectionHeader, formatNameMitCtx, passendeMasterSpalten, useAvatarIcons,
+  I, StickySectionHeader, ZurueckButton, formatNameMitCtx, passendeMasterSpalten, useAvatarIcons,
   useContentWidth, useFirmenRollen, useKategorien,
   useKontaktAnzeige, useKontaktFarbe, useLeistungen, useRollen, useVerwendungen,
   useZeitPicker, zuweisungenFuerAvatar
@@ -3351,7 +3351,7 @@ function DetailRahmen({ t, accent, titel = null, sub = null, children }) {
 function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   listenAnsicht = "karten", listeOpt = null, kartenSpalten = 2,
   kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, detailMin = null,
-  gap = 10, mobilDetail = undefined }) {
+  gap = 10, mobilDetail = undefined, onZurueck = null, t = null }) {
   const [contentRef, contentW] = useContentWidth();
   const istListe = listenAnsicht === "liste";
   const hatDetail = detail != null;
@@ -3370,6 +3370,17 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   // layout.kartenBreite), ohne dass der Screen selbst rechnet.
   const masterNode = (typeof master === "function") ? master(layout) : master;
 
+  // Rechtsbündige „Zurück zur Liste"-Leiste — erscheint, wenn die Liste ganz
+  // weicht (Mobil + Desktop-Nur-Detail) UND der Screen onZurueck + t liefert.
+  // Sitzt rechts (marginLeft:auto), damit er überall an derselben Stelle steht.
+  const zurueckLeiste = (onZurueck && t) ? (
+    <div style={{ display: "flex", width: "100%", marginBottom: 8 }}>
+      <div style={{ marginLeft: "auto" }}>
+        <ZurueckButton onClick={onZurueck} variante="header" t={t} kbZurueck={true}/>
+      </div>
+    </div>
+  ) : null;
+
   // MOBIL: Detail ersetzt die Liste (Detail offen → nur Detail, sonst nur Liste).
   if (!istDesktop) {
     const md = mobilDetail !== undefined ? mobilDetail : detail;
@@ -3378,6 +3389,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
         <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
           minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 2px",
           boxSizing: "border-box" }}>
+          {zurueckLeiste}
           {md}
         </div>
       );
@@ -3400,8 +3412,9 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   //                             Karten abgeschnitten.
   if (layout.cols === 0 && hatDetail) {
     return (
-      <div ref={contentRef} data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
+      <div ref={contentRef} data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", overflowY: "auto", boxSizing: "border-box" }}>
+        {zurueckLeiste}
         {detail}
       </div>
     );

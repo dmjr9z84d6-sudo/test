@@ -11,7 +11,7 @@ import {
   belegungVerwendungEinerEinheit, istSelbstnutzerInEinheit, karteIstSelbstnutzend
 } from "./datenmodell.js";
 import {
-  DESKTOP_MIN_WIDTH, I, ZurueckButton, ableiteStatusVonBis, belegungsRollenFuerKontakt,
+  DESKTOP_MIN_WIDTH, I, ableiteStatusVonBis, belegungsRollenFuerKontakt,
   eingehendeVertretungen, feldWertGueltig, findScrollParent, flacheZuweisungen,
   formatNameMitCtx, kontaktAllesGueltig, useAlleKontakte, useAlleVes, useFirmenRollen, useKartenBadges,
   useKontaktAnzeige, useKontaktFarbe, useLeistungen, useLoeschenErlaubt,
@@ -3760,22 +3760,15 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreit
       onVEClick={onVEClick} onKontaktClick={(id) => setAktiv(id)}
       onUpdate={updateKontakt} onDelete={onDelete}/>
   );
-  // Mobil-Detail: voller Detail + Zurück-Button (wie bisher).
-  const mobilDetail = (
-    <>
-      <ZurueckButton onClick={() => setAktiv(null)} variante="body" t={t}/>
-      <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto" }}>
-        {detailKarte}
-      </div>
-    </>
-  );
   return (
     <MasterDetailRahmen
       master={(layout) => layout.nurMaster
         ? renderKartenSpalte(Math.max(1, layout.cols), null)
         : renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite)}
       detail={detailKarte}
-      mobilDetail={mobilDetail}
+      mobilDetail={detailKarte}
+      onZurueck={aktivK ? () => setAktiv(null) : null}
+      t={t}
       istDesktop={istDesktop}
       listenAnsicht={listenAnsicht} listeOpt={listeOpt}
       kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
