@@ -2936,7 +2936,7 @@ export default function App() {
           const masterInhalt = (layout) => auftragView === "objekt" ? (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
-              : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }}>
+              : (layout.nurMaster ? KACHEL_GRID : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
               {(vesSichtbar || []).map(v => istListeA ? (
                 <VEListenZeile key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
@@ -2952,7 +2952,7 @@ export default function App() {
           ) : (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
-              : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }}>
+              : (layout.nurMaster ? KACHEL_GRID : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
               {firmen.length === 0 ? (
                 <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 12 }}>
                   Keine Firmen-Kontakte vorhanden.

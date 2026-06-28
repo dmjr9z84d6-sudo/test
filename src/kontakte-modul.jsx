@@ -3771,7 +3771,9 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreit
   );
   return (
     <MasterDetailRahmen
-      master={(layout) => renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite)}
+      master={(layout) => layout.nurMaster
+        ? renderKartenSpalte(Math.max(1, layout.cols), null)
+        : renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite)}
       detail={detailKarte}
       mobilDetail={mobilDetail}
       istDesktop={istDesktop}

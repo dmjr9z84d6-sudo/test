@@ -3351,13 +3351,18 @@ function DetailRahmen({ t, accent, titel = null, sub = null, children }) {
 function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   listenAnsicht = "karten", listeOpt = null, kartenSpalten = 2,
   kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, detailMin = null,
-  gap = 20, mobilDetail = undefined }) {
+  gap = 10, mobilDetail = undefined }) {
   const [contentRef, contentW] = useContentWidth();
   const istListe = listenAnsicht === "liste";
   const hatDetail = detail != null;
   const verf = contentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80);
-  const layout = passendeMasterSpalten(verf, kartenSpalten, kartenMaxBreite,
+  const layoutRaw = passendeMasterSpalten(verf, kartenSpalten, kartenMaxBreite,
     kartenMin, detailMinBreite, gap, detailMin, istListe ? listeOpt : null);
+  // nurMaster = Übersicht ohne offenes Detail → der Master nutzt die VOLLE Breite
+  // und das Grid füllt per auto-fill (KACHEL_GRID) so viele Spalten wie passen,
+  // statt auf die feste Master-neben-Detail-Spaltenzahl begrenzt zu sein. Die
+  // master-Funktion liest layout.nurMaster, um das passende Grid zu wählen.
+  const layout = { ...layoutRaw, nurMaster: !hatDetail };
   const masterBreite = layout.masterBreite;
   const detailBreite = layout.detailBreite || detailMinBreite;
   // master darf Node ODER Funktion(layout) sein — so kann die Master-Liste im
@@ -3386,8 +3391,30 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   }
 
   // DESKTOP: Master links (feste Breite), Detail NUR bei Auswahl rechts.
-  // Ohne Auswahl: Master steht allein, KEIN reservierter Detail-Slot, KEIN
-  // "1 1 0%"-Dehnen → Liste behält ihre feste Master-Breite, Rest bleibt leer.
+  // DESKTOP: Vier Fälle —
+  //   A) Detail offen, cols>0:  Master (feste Breite masterBreite) links, Detail rechts.
+  //   B) Detail offen, cols=0:  Nur-Detail (Master weicht ganz) — sehr enges Fenster.
+  //   C) kein Detail:           Master über VOLLE Breite (Übersicht). Das Grid
+  //                             füllt per auto-fill so viele Spalten wie passen —
+  //                             NICHT auf masterBreite begrenzen, sonst werden die
+  //                             Karten abgeschnitten.
+  if (layout.cols === 0 && hatDetail) {
+    return (
+      <div ref={contentRef} data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
+        minWidth: 0, width: "100%", overflowY: "auto", boxSizing: "border-box" }}>
+        {detail}
+      </div>
+    );
+  }
+  if (!hatDetail) {
+    return (
+      <div ref={contentRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0,
+        minWidth: 0, width: "100%", overflowY: "auto", padding: 2,
+        boxSizing: "border-box" }}>
+        {masterNode}
+      </div>
+    );
+  }
   return (
     <div ref={contentRef} style={{ display: "flex", flexDirection: "row", flex: 1,
       minHeight: 0, minWidth: 0, width: "100%", boxSizing: "border-box", gap }}>
@@ -3396,7 +3423,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
         minWidth: 0, overflowY: "auto", padding: 2, boxSizing: "border-box" }}>
         {masterNode}
       </div>
-      {hatDetail && layout.cols > 0 && (
+      {layout.cols > 0 && (
         <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailBreite}px`,
           minWidth: 0, overflowY: "auto" }}>
           {detail}

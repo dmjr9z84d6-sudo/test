@@ -1577,7 +1577,9 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = nul
   const masterListe = (layout) => (
     <div style={listenAnsicht === "liste"
       ? { display: "flex", flexDirection: "column", gap: 6 }
-      : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }}>
+      : (layout.nurMaster
+          ? KACHEL_GRID
+          : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
       {gefiltert.map(ve => listenAnsicht === "liste" ? (
         <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
           aktiv={expandedVEId === ve.id} kbItem id={"obj-" + ve.id}
