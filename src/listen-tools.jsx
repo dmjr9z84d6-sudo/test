@@ -1478,7 +1478,9 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
         ))}
       </div>
     ) : (
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6,
+        maxWidth: layout.nurMaster ? (layout.kartenMaxBreite || kartenMaxBreite) : "100%",
+        width: "100%" }}>
         {lgGruppen.map(g => {
           const key = g.kind + ":" + g.id;
           const aktiv = aktGruppe === key;
@@ -1766,7 +1768,9 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
       ))}
     </div>
   ) : (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6,
+      maxWidth: layout.nurMaster ? (layout.kartenMaxBreite || kartenMaxBreite) : "100%",
+      width: "100%" }}>
       {gruppenOptionen.map(g => {
         const key = g.kind + ":" + g.id;
         const aktiv = aktGruppe === key;
@@ -2074,3 +2078,4 @@ function StatistikInhalt({ ves, kontakte, t, accent }) {
 
 
 export { druckeHtml, SchnelleingabeScreen, ListenGeneratorScreen, StatistikScreen };
+

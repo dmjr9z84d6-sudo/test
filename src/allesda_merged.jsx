@@ -1088,6 +1088,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   gotoVE, gotoKontakt, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null,
   listenAnsicht = "karten", viewVEId = null, setViewVEId = null, festeGridSpec = null,
   renderDetail = null, istDesktop = true, emptyText = "Keine Einträge.",
+  detailAktion = null,
   titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null }) {
   const offenVEObj = (ves || []).find(v => v.id === viewVEId) || null;
   // Im Mobil-Detail (Objekt offen, kein Desktop-Nebeneinander) zeigt der Header
@@ -1118,7 +1119,8 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   const renderDetailOverride = (veObj) => {
     if (!veObj) return null;
     return (
-      <DetailRahmen t={t} accent={accent} titel={veObj.nr} sub={veObj.adresse}>
+      <DetailRahmen t={t} accent={accent} titel={veObj.nr} sub={veObj.adresse}
+        aktion={detailAktion ? detailAktion(veObj) : null}>
         {renderDetail ? renderDetail(veObj) : (
           <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "8px 2px" }}>
             {emptyText}
@@ -1203,36 +1205,11 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
 // Dokumente-Inhalt, kein Zweitbau). Da der Hauptscreen keinen globalen
 // Bearbeiten-Schalter hat, hält dieser Wrapper einen EIGENEN lokalen editMode
 // + Bearbeiten-Toggle, damit Upload/Bearbeiten direkt hier möglich ist.
-function DokumenteScreenDetail({ ve, setVes, t, accent, kontakte, setKontakte, gotoKontakt, ves }) {
-  const [editMode, setEditMode] = useState(false);
+function DokumenteScreenDetail({ ve, setVes, t, accent, kontakte, setKontakte, gotoKontakt, ves, editMode = false }) {
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 10,
-        width: "100%", boxSizing: "border-box" }}>
-        <div style={{ marginLeft: "auto" }}>
-          {editMode ? (
-            <button onClick={() => setEditMode(false)}
-              title="Fertig" aria-label="Fertig"
-              style={{ display: "flex", alignItems: "center", justifyContent: "center",
-                width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
-                borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
-              <I name="check" size={14} color="#FFFFFF"/>
-            </button>
-          ) : (
-            <button onClick={() => setEditMode(true)}
-              title="Bearbeiten" aria-label="Bearbeiten"
-              style={{ display: "flex", alignItems: "center", justifyContent: "center",
-                width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
-                borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
-              <I name="pencil" size={14} color={getContrastColor(accent)}/>
-            </button>
-          )}
-        </div>
-      </div>
-      <DokumenteAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
-        kontakte={kontakte} setKontakte={setKontakte} editMode={editMode}
-        onKontaktClick={gotoKontakt} ves={ves}/>
-    </div>
+    <DokumenteAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
+      kontakte={kontakte} setKontakte={setKontakte} editMode={editMode}
+      onKontaktClick={gotoKontakt} ves={ves}/>
   );
 }
 
@@ -1736,6 +1713,10 @@ export default function App() {
   const [beschlussViewVEId, setBeschlussViewVEId] = useState(null);
   const [technikViewVEId, setTechnikViewVEId] = useState(null);
   const [dokumenteViewVEId, setDokumenteViewVEId] = useState(null);
+  // Bearbeiten-Modus des Dokumente-Hauptscreens — liegt hier (nicht im
+  // DokumenteScreenDetail), damit der Stift-Button im DetailRahmen-Header
+  // (aktion-Slot) sitzt, wie bei allen anderen Detail-Screens.
+  const [dokumenteEditMode, setDokumenteEditMode] = useState(false);
   const [fotosViewVEId, setFotosViewVEId] = useState(null);
   const [kommunikationViewVEId, setKommunikationViewVEId] = useState(null);
   const [finanzenViewVEId, setFinanzenViewVEId] = useState(null);
@@ -3192,7 +3173,7 @@ export default function App() {
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
             detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
-            viewVEId={dokumenteViewVEId} setViewVEId={setDokumenteViewVEId}
+            viewVEId={dokumenteViewVEId} setViewVEId={(id) => { setDokumenteViewVEId(id); setDokumenteEditMode(false); }}
             istDesktop={istDesktop}
             titel="Dokumente" anzahl={(vesSichtbar || []).length}
             legendeAn={legendeSichtbar(effectiveSettings)}
@@ -3210,11 +3191,32 @@ export default function App() {
               }, 450);
             }}
             emptyText="Keine Dokumente für dieses Objekt."
+            detailAktion={() => {
+              const dAccent = (effectiveSettings.kacheln.find(k => k.id === "dokumente") || {}).farbe || "#64748B";
+              return dokumenteEditMode ? (
+                <button onClick={() => setDokumenteEditMode(false)}
+                  title="Fertig" aria-label="Fertig"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 36, height: 36, flexShrink: 0, background: dAccent, border: "none",
+                    borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${dAccent}40` }}>
+                  <I name="check" size={14} color="#FFFFFF"/>
+                </button>
+              ) : (
+                <button onClick={() => setDokumenteEditMode(true)}
+                  title="Bearbeiten" aria-label="Bearbeiten"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 36, height: 36, flexShrink: 0, background: dAccent, border: "none",
+                    borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${dAccent}40` }}>
+                  <I name="pencil" size={14} color={getContrastColor(dAccent)}/>
+                </button>
+              );
+            }}
             renderDetail={(veObj) => (
               <DokumenteScreenDetail
                 ve={veObj} setVes={setVes} t={t}
                 accent={(effectiveSettings.kacheln.find(k => k.id === "dokumente") || {}).farbe || "#64748B"}
                 kontakte={kontakteSichtbar} setKontakte={setKontakte}
+                editMode={dokumenteEditMode}
                 gotoKontakt={gotoKontakt} ves={vesSichtbar}/>
             )}/>
         )}
@@ -3464,6 +3466,7 @@ export default function App() {
 
 // Named exports für zyklischen Import aus components.jsx (S5/S7-Bewohner,
 // die von S4-Bausteinen zur Laufzeit gebraucht werden).
+
 
 
 
