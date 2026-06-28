@@ -3767,8 +3767,6 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreit
         : renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite)}
       detail={detailKarte}
       mobilDetail={detailKarte}
-      onZurueck={aktivK ? () => setAktiv(null) : null}
-      t={t}
       istDesktop={istDesktop}
       listenAnsicht={listenAnsicht} listeOpt={listeOpt}
       kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
