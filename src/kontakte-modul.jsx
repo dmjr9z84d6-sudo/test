@@ -4145,7 +4145,7 @@ function KontaktTrenner({ buchstabe, t, accent }) {
 }
 
 function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle", kontaktart, kontakte, setKontakte, ves, cardWidth = 340, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, legendeAn = true, listenAnsicht = "karten",
-  externAktiv, setExternAktiv, externEditMode, setExternEditMode, mobileDetailHeaderOhneEditBtn = false, kartenSpalten = 2, festeGridSpec = null }) {
+  externAktiv, setExternAktiv, externEditMode, setExternEditMode, mobileDetailHeaderOhneEditBtn = false, kartenSpalten = 2, festeGridSpec = null, onNurDetail = null }) {
   const [internAktiv, setInternAktiv] = useState(initialKontaktId || null);
   // Aktiver Kontakt: extern kontrollierbar (Mobile: App-Ebene weiß Bescheid,
   // um Plus → Stift im Sticky-Header zu wechseln), sonst lokaler State.
@@ -4227,6 +4227,17 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   const istDesktop = windowW >= 900;
   const hatOffen = aktiv != null && aktivK != null;
 
+  // nurDetail an die App-Ebene melden (Header tauscht +Button ↔ Zurück).
+  // Mobil + Detail → immer nurDetail. Kein Detail → nie. Desktop + Detail
+  // übernimmt der Baustein (KontakteMasterDetail.onNurDetail), daher hier
+  // ausgespart, sonst überschreiben sich beide.
+  useEffect(() => {
+    if (typeof onNurDetail !== "function") return;
+    if (!hatOffen) { onNurDetail(false); return; }
+    if (!istDesktop) { onNurDetail(true); return; }
+    // Desktop + Detail: Baustein meldet den echten (breitenabhängigen) Zustand.
+  }, [hatOffen, istDesktop, onNurDetail]);
+
   const istListe = listenAnsicht === "liste";
   const renderKontaktItem = (k, aktivId, onClick, kb) => istListe ? (
     <KontaktListenZeile key={k.id} k={k} t={t} accent={accent}
@@ -4298,6 +4309,7 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
         aktivK={aktivK} t={t} accent={accent}
         ves={ves} kontakte={kontakte} setKontakte={setKontakte}
         onVEClick={onVEClick} setAktiv={setAktiv}
+        onNurDetail={onNurDetail}
         updateKontakt={updateKontakt}
         onDelete={deleteKontakt}/>
       </div>

@@ -1713,6 +1713,9 @@ export default function App() {
   // Selbe Logik für Kontakte: offener Kontakt auf App-Ebene, damit der
   // Plus-Button im Kontakte-Sticky-Header zum Bearbeiten-Stift wechselt.
   const [aktivKontaktId, setAktivKontaktId] = useState(null);
+  // Meldet der Baustein, dass die Liste ganz weg ist (Mobil/eng) → im Header
+  // den +Button gegen einen pfeillosen Zurück-Button tauschen.
+  const [kontaktNurDetail, setKontaktNurDetail] = useState(false);
   const [kontaktDetailEditMode, setKontaktDetailEditMode] = useState(false);
   useEffect(() => { setKontaktDetailEditMode(false); }, [aktivKontaktId]);
   // Counter zum Triggern des Reset im SucheFeld (per useEffect dort)
@@ -2272,9 +2275,16 @@ export default function App() {
             </>
           }
           rechts={
-            (aktivKontaktId && !istDesktop) ? (
-              <ZurueckButton onClick={() => setAktivKontaktId(null)}
-                variante="header" t={t} kbZurueck={true}/>
+            (aktivKontaktId && kontaktNurDetail) ? (
+              <button onClick={() => setAktivKontaktId(null)} data-kb-zurueck="1"
+                title="Zur\u00fcck zur Liste" aria-label="Zur\u00fcck zur Liste"
+                style={{ display: "flex", alignItems: "center",
+                  background: "none", border: `1px solid ${t.border}`, color: t.text,
+                  borderRadius: RAD.ms, padding: "0 12px", height: 36,
+                  boxSizing: "border-box", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }}>
+                Zur\u00fcck
+              </button>
             ) : (
               <button onClick={() => setNeuerKontaktOffen(true)}
                 data-kb-neu="1" title="Neuer Kontakt" aria-label="Neuer Kontakt" style={{
@@ -2298,6 +2308,7 @@ export default function App() {
           externEditMode={kontaktDetailEditMode}
           setExternEditMode={setKontaktDetailEditMode}
           mobileDetailHeaderOhneEditBtn={false}
+          onNurDetail={setKontaktNurDetail}
           cardWidth={cardWidth} detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} kartenSpalten={kartenSpalten} festeGridSpec={festeGridSpec}/>
       </>
     );
