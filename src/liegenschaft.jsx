@@ -6000,6 +6000,7 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
               {karte.dateien.map(m => (
                 <DateiZeile key={m.id} meta={m} t={t} accent={accent}
                   onAnsehen={onDateiAnsehen || (() => {})}
+                  onDownload={(mm) => dateiOeffnen(mm.id, mm.name)}
                   onEntfernen={effEdit ? (() => {
                     dateiLoeschen(m.id);
                     if (onUpdateKarte) onUpdateKarte({ ...karte,
@@ -7013,24 +7014,31 @@ function VerwaltungAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editM
 // „Ansehen"/Entfernen gelistet wird (Checkliste Katalog + eigene Karten +
 // aufgeklappte Dokument-Karte). onAnsehen(meta) öffnet den Viewer; onEntfernen
 // (optional, nur editMode) löscht. So existiert die Datei-Zeile genau EINMAL.
-function DateiZeile({ meta, t, accent, onAnsehen, onEntfernen }) {
+function DateiZeile({ meta, t, accent, onAnsehen, onDownload, onEntfernen }) {
+  // Kleiner quadratischer Icon-Button (Ansehen/Download/Entfernen) — ein Stil.
+  const iconBtn = (extra) => ({ flexShrink: 0, display: "flex", alignItems: "center",
+    justifyContent: "center", width: 30, height: 30, background: "transparent",
+    border: `1px solid ${t.border}`, borderRadius: RAD.sm, cursor: "pointer",
+    fontFamily: "inherit", ...extra });
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
       <I name="document" size={13} color={t.sub}/>
       <span style={{ flex: 1, fontSize: FS.s, color: t.text,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.name}</span>
       <button onClick={(e) => { e.stopPropagation(); onAnsehen(meta); }}
-        style={{ flexShrink: 0, background: "transparent", color: accent,
-          border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "3px 11px",
-          cursor: "pointer", fontSize: FS.xs, fontWeight: FW.medium, fontFamily: "inherit" }}>
-        Ansehen
+        title="Ansehen" aria-label="Ansehen" style={iconBtn({ borderColor: accent })}>
+        <I name="eye" size={15} color={accent}/>
       </button>
+      {onDownload && (
+        <button onClick={(e) => { e.stopPropagation(); onDownload(meta); }}
+          title="Herunterladen" aria-label="Herunterladen" style={iconBtn({})}>
+          <I name="download" size={15} color={t.sub}/>
+        </button>
+      )}
       {onEntfernen && (
         <button onClick={(e) => { e.stopPropagation(); onEntfernen(meta); }}
-          style={{ flexShrink: 0, background: "transparent", color: t.sub,
-            border: "none", borderRadius: RAD.sm, padding: "3px 6px",
-            cursor: "pointer", fontSize: FS.xs, fontFamily: "inherit" }}>
-          <I name="trash" size={13} color={t.sub}/>
+          title="Entfernen" aria-label="Entfernen" style={iconBtn({})}>
+          <I name="trash" size={14} color={t.sub}/>
         </button>
       )}
     </div>
@@ -7533,6 +7541,7 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAns
                   {dateien.map(m => (
                     <DateiZeile key={m.id} meta={m} t={t} accent={accent}
                       onAnsehen={onDateiAnsehen}
+                      onDownload={(mm) => dateiOeffnen(mm.id, mm.name)}
                       onEntfernen={editMode ? (() => dateiEntfernen(dok.id, m.id)) : null}/>
                   ))}
                 </div>
@@ -7584,6 +7593,7 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAns
               {k.dateien.map(m => (
                 <DateiZeile key={m.id} meta={m} t={t} accent={accent}
                   onAnsehen={onDateiAnsehen}
+                  onDownload={(mm) => dateiOeffnen(mm.id, mm.name)}
                   onEntfernen={editMode ? (() => dateiAusEigen(k.id, m.id)) : null}/>
               ))}
             </div>
@@ -8342,6 +8352,7 @@ export {
   quoteLabel,
   tagsDiffMS
 };
+
 
 
 

@@ -1207,14 +1207,25 @@ function DokumenteScreenDetail({ ve, setVes, t, accent, kontakte, setKontakte, g
     <div>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10,
         width: "100%", boxSizing: "border-box" }}>
-        <button onClick={() => setEditMode(e => !e)}
-          style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
-            background: editMode ? accent : "transparent", color: editMode ? "#fff" : accent,
-            border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "6px 12px",
-            cursor: "pointer", fontSize: FS.s, fontWeight: FW.medium, fontFamily: "inherit" }}>
-          <I name={editMode ? "check" : "pencil"} size={14} color={editMode ? "#fff" : accent}/>
-          {editMode ? "Fertig" : "Bearbeiten"}
-        </button>
+        <div style={{ marginLeft: "auto" }}>
+          {editMode ? (
+            <button onClick={() => setEditMode(false)}
+              title="Fertig" aria-label="Fertig"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
+                borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
+              <I name="check" size={14} color="#FFFFFF"/>
+            </button>
+          ) : (
+            <button onClick={() => setEditMode(true)}
+              title="Bearbeiten" aria-label="Bearbeiten"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
+                borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
+              <I name="pencil" size={14} color={getContrastColor(accent)}/>
+            </button>
+          )}
+        </div>
       </div>
       <DokumenteAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
         kontakte={kontakte} setKontakte={setKontakte} editMode={editMode}
@@ -3449,5 +3460,6 @@ export default function App() {
 
 // Named exports für zyklischen Import aus components.jsx (S5/S7-Bewohner,
 // die von S4-Bausteinen zur Laufzeit gebraucht werden).
+
 
 
