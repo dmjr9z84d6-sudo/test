@@ -2707,8 +2707,16 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           </>
         }
         rechts={
-          (setVes && !dockAktiv && !(kalView === "objekte" && kalViewVEId)) ? (
-            <button onClick={() => setAnlegenOffen(o => !o)}
+          (setVes && !dockAktiv) ? (
+            <button onClick={() => {
+                // Bei offenem Objekt: objektspezifischen Anlege-Modus toggeln.
+                // Sonst: allgemeines Anlege-Formular.
+                if (kalView === "objekte" && kalViewVEId) {
+                  setObjektAnlegenVE(o => o === kalViewVEId ? null : kalViewVEId);
+                } else {
+                  setAnlegenOffen(o => !o);
+                }
+              }}
               data-kb-neu="1" title="Neuer Termin" aria-label="Neuer Termin" style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
                 width: 36, height: 36, flexShrink: 0,
@@ -2716,7 +2724,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
                 borderRadius: RAD.pill, cursor: "pointer",
                 boxShadow: `0 1px 2px ${kalFarbe}40`,
               }}>
-              <I name={anlegenOffen ? "x" : "plus"} size={16} color={getContrastColor(kalFarbe)}/>
+              <I name={(anlegenOffen || (kalViewVEId && objektAnlegenVE === kalViewVEId)) ? "x" : "plus"} size={16} color={getContrastColor(kalFarbe)}/>
             </button>
           ) : null
         }/>
@@ -2861,15 +2869,6 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
                     <div style={{ fontSize: FS.s, color: t.sub, marginTop: 2,
                       overflowWrap: "anywhere" }}>{veObj.adresse}</div>
                   </div>
-                  {setVes && (
-                    <button onClick={() => setObjektAnlegenVE(objektAnlegenVE === veObj.id ? null : veObj.id)}
-                      title="Termin für dieses Objekt anlegen" aria-label="Neuer Termin"
-                      style={{ display: "flex", alignItems: "center", justifyContent: "center",
-                        width: 36, height: 36, flexShrink: 0, background: kalFarbe, border: "none",
-                        borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${kalFarbe}40` }}>
-                      <I name={objektAnlegenVE === veObj.id ? "x" : "plus"} size={16} color={getContrastColor(kalFarbe)}/>
-                    </button>
-                  )}
                 </div>
                 {objTermine.length === 0 ? (
                   <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "8px 2px" }}>
@@ -2937,42 +2936,48 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
             );
           };
           const offenVEObj = (ves || []).find(v => v.id === kalViewVEId) || null;
+          // Legende — wie bei Vorgängen/Statistik: vor dem Master-Detail, sichtbar
+          // in BEIDEN Zuständen (Übersicht UND offenes Objekt).
+          const kalLegende = (settings && settings.legendeObjekte !== false && (ves || []).length > 0) ? (
+            <ObjektLegende ves={ves} t={t} accent={kalFarbe}
+              listenAnsicht={listenAnsicht}
+              onGotoHandlungsbedarf={() => {
+                try {
+                  window.dispatchEvent(new CustomEvent("allesda:goto-einstellungen",
+                    { detail: { sektion: "kalender" } }));
+                } catch (err) {}
+              }}/>
+          ) : null;
           // Mit offenem Objekt: dasselbe Master-Detail-Gerüst wie bei Objekten/
           // Kontakten. Auf Mobil liefert ObjekteMasterDetail automatisch den
           // Fallback (Detail voll + „Zurück zur Liste"-Button); auf Desktop die
           // 2-Spalten-Ansicht. Kein eigener Mobil-Pfad mehr.
           if (offenVEObj) {
             return (
-              <ObjekteMasterDetail
-                listenAnsicht={listenAnsicht}
-                cardWidth={cardWidth}
-                detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
-                kartenSpalten={kartenSpalten}
-                gefiltert={ves}
-                expandedVEId={kalViewVEId}
-                setExpandedVEId={(id) => setKalViewVEId && setKalViewVEId(id)}
-                offenVE={offenVEObj}
-                t={t} accent={kalFarbe}
-                kontakte={kontakte} setKontakte={setKontakte}
-                ves={ves} setVes={setVes}
-                gotoKontakt={gotoKontakt}
-                auswahlAccentOverride={kalFarbe}
-                renderDetailOverride={renderTerminDetail}/>
+              <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                {kalLegende ? <div style={{ flexShrink: 0, padding: "0 2px" }}>{kalLegende}</div> : null}
+                <ObjekteMasterDetail
+                  listenAnsicht={listenAnsicht}
+                  cardWidth={cardWidth}
+                  detailMinBreite={detailMinBreite} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMin} listeOpt={listeOpt}
+                  kartenSpalten={kartenSpalten}
+                  gefiltert={ves}
+                  expandedVEId={kalViewVEId}
+                  setExpandedVEId={(id) => setKalViewVEId && setKalViewVEId(id)}
+                  offenVE={offenVEObj}
+                  t={t} accent={kalFarbe}
+                  kontakte={kontakte} setKontakte={setKontakte}
+                  ves={ves} setVes={setVes}
+                  gotoKontakt={gotoKontakt}
+                  auswahlAccentOverride={kalFarbe}
+                  renderDetailOverride={renderTerminDetail}/>
+              </div>
             );
           }
           return (
             <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0, minWidth: 0,
               width: "100%", boxSizing: "border-box", overflowY: "auto", padding: 2 }}>
-              {settings && settings.legendeObjekte !== false && (ves || []).length > 0 && (
-                <ObjektLegende ves={ves} t={t} accent={kalFarbe}
-                  listenAnsicht={listenAnsicht}
-                  onGotoHandlungsbedarf={() => {
-                    try {
-                      window.dispatchEvent(new CustomEvent("allesda:goto-einstellungen",
-                        { detail: { sektion: "kalender" } }));
-                    } catch (err) {}
-                  }}/>
-              )}
+              {kalLegende}
               <div style={listenAnsicht === "liste"
                 ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" }
                 : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>

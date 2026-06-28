@@ -3719,7 +3719,7 @@ function SektionKalenderPanel({ settings, setSettings, t, accent }) {
         Der Orientierungskalender öffnet sich über den runden Kalender-Button
         im Header (zwischen Dunkelmodus und Profil). Auf breiten Bildschirmen
         heftet er sich als feste Leiste rechts an — wie das Dashboard links;
-        ein erneuter Klick oder das × im Kalender-Kopf blendet ihn wieder aus.
+        ein erneuter Klick auf den Kalender-Button blendet ihn wieder aus.
         Auf schmalen Geräten erscheint er kurz als Overlay.
       </div>
     </div>

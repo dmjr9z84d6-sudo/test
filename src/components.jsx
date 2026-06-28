@@ -3414,7 +3414,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   if (layout.cols === 0 && hatDetail) {
     return (
       <div ref={contentRef} data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
-        minWidth: 0, width: "100%", overflowY: "auto", boxSizing: "border-box" }}>
+        minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 0", boxSizing: "border-box" }}>
         {detail}
       </div>
     );
@@ -3426,7 +3426,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
     const maxW = istListe ? listeBreiteAus(listeOpt) : undefined;
     return (
       <div ref={contentRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0,
-        minWidth: 0, width: "100%", overflowY: "auto", padding: 2,
+        minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 0",
         boxSizing: "border-box" }}>
         <div style={{ maxWidth: maxW, width: maxW ? "100%" : undefined }}>
           {masterNode}
@@ -3439,7 +3439,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
       minHeight: 0, minWidth: 0, width: "100%", boxSizing: "border-box", gap }}>
       <div data-ad-scroll="y" style={{
         flex: (layout.cols > 0 && masterBreite > 0) ? `0 0 ${masterBreite}px` : "1 1 0%",
-        minWidth: 0, overflowY: "auto", boxSizing: "border-box" }}>
+        minWidth: 0, overflowY: "auto", padding: "8px 0", boxSizing: "border-box" }}>
         {masterNode}
       </div>
       {layout.cols > 0 && (
