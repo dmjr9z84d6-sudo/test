@@ -1024,10 +1024,26 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
           <VEKachel ve={ve} t={t} accent={accent} kompakt onClick={() => {}}/>
         </div>
 
-        {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73). */}
-        <div style={{ marginBottom: 14 }}>
+        {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73).
+            Im Personen-Tage-Modus steht das Wirtschaftsjahr rechts in derselben Zeile. */}
+        <div style={{ marginBottom: 14, display: "flex", alignItems: "center",
+          gap: 12, flexWrap: "wrap" }}>
           <SegmentControl t={t} accent={accent} value={modus} onChange={setModus}
             options={[{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]}/>
+          {modus === "personentage" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
+              <button onClick={() => setPtJahr(j => j - 1)}
+                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>‹</button>
+              <div style={{ textAlign: "center", minWidth: 84 }}>
+                <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
+                <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
+              </div>
+              <button onClick={() => setPtJahr(j => j + 1)}
+                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
+            </div>
+          )}
         </div>
 
         {modus === "tabelle" ? (
@@ -1126,21 +1142,6 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         ) : (
           /* ── MODUS: Personen-Tage-Aufschlüsselung je Einheit (Weg A) ── */
           <div>
-            {/* Gemeinsamer Jahr-Umschalter für alle Einheiten */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
-              gap: 14, marginBottom: 14 }}>
-              <button onClick={() => setPtJahr(j => j - 1)}
-                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                  color: t.sub, fontSize: 18, cursor: "pointer", width: 40, height: 34 }}>‹</button>
-              <div style={{ textAlign: "center", minWidth: 90 }}>
-                <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
-                <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
-              </div>
-              <button onClick={() => setPtJahr(j => j + 1)}
-                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                  color: t.sub, fontSize: 18, cursor: "pointer", width: 40, height: 34 }}>›</button>
-            </div>
-
             {einheiten.length === 0 ? (
               <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 }}>
                 Dieses Objekt hat noch keine Einheiten.
@@ -1150,12 +1151,9 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
                 {einheiten.filter(e => !isStellplatzTyp(e.typ)).map(e => (
                   <div key={e.id} style={{ background: t.card, border: `1px solid ${t.border}`,
                     borderRadius: RAD.lg, padding: "4px 12px 8px" }}>
-                    <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: accent,
-                      padding: "8px 2px 0" }}>
-                      {e.nr || e.lage || "Einheit"}{e.nr && e.lage ? ` · ${e.lage}` : ""}
-                    </div>
                     <PersonenTageUebersicht einheit={e} t={t} accent={accent}
                       jahrExtern={ptJahr} immerOffen titel={`Personen-Tage ${ptJahr}`}
+                      einheitLabel={`${e.nr || e.lage || "Einheit"}${e.nr && e.lage ? ` · ${e.lage}` : ""}`}
                       onUpdate={(neuE) => patchEinheit(e.id, () => neuE)}/>
                   </div>
                 ))}

@@ -1868,7 +1868,7 @@ function TeilRaeume({ raeume, t, accent, editMode, onAdd, onChange, onRemove,
 // hinzufügen/löschen. Lücken zwischen Abschnitten = 0 Personen (Leerstand).
 // Bezugsjahr ist umschaltbar (Pfeile), vorbelegt aus dem Objekt-WJ.
 // Schreibt über onUpdate die geänderte Einheit zurück.
-function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahrExtern = null, immerOffen = false, titel = null }) {
+function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahrExtern = null, immerOffen = false, titel = null, einheitLabel = null }) {
   const isStellplatz = isStellplatzTyp(einheit.typ);
   // Bezugsjahr-State: Default aus dem übergebenen WJ (sonst Vorjahr).
   const defaultJahr = (() => {
@@ -1953,17 +1953,29 @@ function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahr
 
   const kopf = (
     <div onClick={immerOffen ? undefined : () => setOffen(o => !o)}
-      style={{ display: "flex", alignItems: "center", gap: 8,
+      style={{ display: "flex", alignItems: einheitLabel ? "flex-start" : "center", gap: 8,
         cursor: immerOffen ? "default" : "pointer",
         padding: "10px 2px", userSelect: "none" }}>
-      <span style={{ fontSize: FS.l }}>📊</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
-          {titel || `Personen-Tage ${jahr}`}
-        </div>
-        <div style={{ fontSize: FS.xs, color: t.muted }}>
-          {jahrTage} Tage im Jahr · Lücken = Leerstand (0)
-        </div>
+        {einheitLabel ? (
+          <>
+            <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: accent }}>
+              {einheitLabel}
+            </div>
+            <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 2 }}>
+              {titel || `Personen-Tage ${jahr}`} · {jahrTage} Tage im Jahr · Lücken = Leerstand (0)
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
+              {titel || `Personen-Tage ${jahr}`}
+            </div>
+            <div style={{ fontSize: FS.xs, color: t.muted }}>
+              {jahrTage} Tage im Jahr · Lücken = Leerstand (0)
+            </div>
+          </>
+        )}
       </div>
       <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: accent, flexShrink: 0 }}>
         {auf.summe}
@@ -1975,16 +1987,22 @@ function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahr
     </div>
   );
 
+  // Im Header-Modus (einheitLabel gesetzt) ist der Kopf selbst die Kopfzeile der
+  // Einheit — keine Trennlinie davor. Sonst (Detail im Objekt) grenzt borderTop ab.
+  const wrapStyle = einheitLabel
+    ? {}
+    : { marginTop: 12, borderTop: `1px solid ${t.border}` };
+
   if (!offen) {
     return (
-      <div style={{ marginTop: 12, borderTop: `1px solid ${t.border}` }}>
+      <div style={wrapStyle}>
         {kopf}
       </div>
     );
   }
 
   return (
-    <div style={{ marginTop: 12, borderTop: `1px solid ${t.border}` }}>
+    <div style={wrapStyle}>
       {kopf}
       <div style={{ paddingBottom: 8 }}>
         {/* Jahr-Umschalter — nur wenn das Jahr lokal gesteuert wird (Detail).
@@ -7129,33 +7147,36 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
         {/* Header: Name links, Download + x rechts.
             paddingTop berücksichtigt die Safe-Area (Notch/Dynamic Island), sonst
             liegt der x-Button am iPhone unter der Statusleiste und ist untippbar. */}
-        <div style={{ padding: "12px 16px",
-          paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
-          paddingLeft: "calc(env(safe-area-inset-left, 0px) + 16px)",
-          paddingRight: "calc(env(safe-area-inset-right, 0px) + 16px)",
+        <div style={{ padding: "7px 14px",
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 7px)",
+          paddingLeft: "calc(env(safe-area-inset-left, 0px) + 14px)",
+          paddingRight: "calc(env(safe-area-inset-right, 0px) + 14px)",
           background: transparent ? (istDunkel ? "rgba(13,13,22,0.85)" : "rgba(255,255,255,0.85)") : t.card,
           borderBottom: `1px solid ${t.border}`,
-          display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <I name="document" size={16} color={accent}/>
-          <span style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold, color: t.text,
+          display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <I name="document" size={15} color={accent}/>
+          <span style={{ flex: 1, minWidth: 0, fontSize: FS.m, fontWeight: FW.bold, color: t.text,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{anzeigeName}</span>
           <button onClick={function () { dateiOeffnen(datei.id, anzeigeName); }}
             title="Herunterladen" aria-label="Herunterladen"
             style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-              width: 36, height: 36, background: "transparent", color: accent,
+              width: 32, height: 32, background: "transparent", color: accent,
               border: `1px solid ${t.border}`, borderRadius: RAD.sm, cursor: "pointer" }}>
-            <I name="download" size={18} color={t.sub}/>
+            <I name="download" size={17} color={t.sub}/>
           </button>
           <button onClick={onClose} title="Schließen" aria-label="Schließen"
             style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-              width: 36, height: 36, background: accent, border: "none",
+              width: 32, height: 32, background: accent, border: "none",
               borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
-            <I name="x" size={16} color={getContrastColor(accent)}/>
+            <I name="x" size={15} color={getContrastColor(accent)}/>
           </button>
         </div>
-        {/* Inhalt — Pinch-Zoom-Container (Touch) */}
+        {/* Inhalt — Pinch-Zoom-Container (nur Bild). Hinter PDF ist die Fläche
+            dunkel (passt zum dunklen Rahmen des nativen PDF-Viewers); bei Bildern
+            folgt sie der gewählten Hintergrund-Variante. */}
         <div onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd}
-          style={{ flex: 1, minHeight: 0, background: inhaltBg, overflow: "auto",
+          style={{ flex: 1, minHeight: 0,
+            background: istPdf ? "#1A1A22" : inhaltBg, overflow: "auto",
             display: "flex", alignItems: (istBild ? "center" : "flex-start"),
             justifyContent: "center", touchAction: zoom > 1 ? "none" : "auto" }}>
           {zustand.laedt && (
@@ -7167,13 +7188,12 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
             </div>
           )}
           {!zustand.laedt && !zustand.fehler && zustand.url && istPdf && (
-            // PDF im Browser-Viewer (iframe). Zoom skaliert das iframe grob:
-            // Breite/Höhe × zoom, damit der scrollbare Bereich mitwächst.
-            <div style={{ width: (zoom * 100) + "%", height: (zoom * 100) + "%", flexShrink: 0 }}>
-              <iframe src={zustand.url} title={anzeigeName}
-                style={{ width: "100%", height: "100%", border: "none", background: "#fff",
-                  display: "block" }}/>
-            </div>
+            // PDF: iframe füllt das ganze Fenster. Der eingebaute PDF-Betrachter
+            // des Browsers übernimmt Zoom + Scrollen und zeigt das Blatt scharf,
+            // zentriert auf dunklem Grund. (Eigene Zoom-Leiste nur für Bilder.)
+            <iframe src={zustand.url} title={anzeigeName}
+              style={{ width: "100%", height: "100%", border: "none",
+                background: "#525659", display: "block" }}/>
           )}
           {!zustand.laedt && !zustand.fehler && zustand.url && istBild && (
             <img src={zustand.url} alt={anzeigeName}
@@ -7189,8 +7209,9 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
           )}
         </div>
 
-        {/* Zoom-Leiste — nur wenn anzeigbar (Bild oder PDF) */}
-        {!zustand.laedt && !zustand.fehler && zustand.url && (istBild || istPdf) && (
+        {/* Zoom-Leiste — nur für Bilder. PDF nutzt den nativen Browser-Viewer
+            mit dessen eigener Zoom-/Scroll-Steuerung. */}
+        {!zustand.laedt && !zustand.fehler && zustand.url && istBild && (
           <div style={{ flexShrink: 0, borderTop: `1px solid ${t.border}`,
             background: transparent ? (istDunkel ? "rgba(13,13,22,0.85)" : "rgba(255,255,255,0.85)") : t.card,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
