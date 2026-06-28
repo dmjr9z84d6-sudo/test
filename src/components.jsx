@@ -240,15 +240,19 @@ function DatumKalender({ startWert, onWaehle, t, accent, iso, hoehe = 330 }) {
   const heute = new Date();
   const init = parseDatumWert(startWert) || heute;
   const initY = init.getFullYear(), initM = init.getMonth(); // M = 0..11
-  // Sichtbare Monate: 18 zurück … 30 voraus, am Start-Monat zentriert.
-  const VOR = 18, NACH = 30;
+  // Sichtbare Monate: volle 2 Jahre zurück … 2 Jahre voraus (Jan…Dez), damit
+  // jeder Jahres-Klick in der Kopf-Leiste auch wirklich hinscrollen kann.
+  const JAHR_SPANNE = 2;
   const monate = [];
-  for (let off = -VOR; off <= NACH; off++) {
-    const d = new Date(initY, initM + off, 1);
-    monate.push({ y: d.getFullYear(), m: d.getMonth(), key: d.getFullYear() + "-" + d.getMonth() });
+  for (let jy = initY - JAHR_SPANNE; jy <= initY + JAHR_SPANNE; jy++) {
+    for (let mm = 0; mm < 12; mm++) {
+      monate.push({ y: jy, m: mm, key: jy + "-" + mm });
+    }
   }
   const scrollRef = useRef(null);
   const startMonatRef = useRef(null);
+  // Refs auf den Januar jedes Jahres → Sprungziel für die Jahres-Leiste.
+  const jahrRefs = useRef({});
   // Header zeigt den aktuell sichtbaren Monat/Jahr (folgt dem Scrollen).
   const [kopf, setKopf] = useState({ y: initY, m: initM });
   // Beim Öffnen direkt zum Start-Monat scrollen.
@@ -257,6 +261,16 @@ function DatumKalender({ startWert, onWaehle, t, accent, iso, hoehe = 330 }) {
     const box = scrollRef.current;
     if (el && box) box.scrollTop = el.offsetTop - box.offsetTop - 4;
   }, []);
+
+  // Klick auf eine Jahreszahl in der Kopf-Leiste → zum Januar des Jahres scrollen.
+  const springZuJahr = (jahr) => {
+    const box = scrollRef.current;
+    const ziel = jahrRefs.current[jahr];
+    if (box && ziel) {
+      box.scrollTop = ziel.offsetTop - box.offsetTop - 4;
+      setKopf({ y: jahr, m: 0 });
+    }
+  };
 
   const waehle = (y, m, tag) => {
     const wert = iso
@@ -305,9 +319,13 @@ function DatumKalender({ startWert, onWaehle, t, accent, iso, hoehe = 330 }) {
     const wochen = [];
     for (let i = 0; i < zellen.length; i += 7) wochen.push(zellen.slice(i, i + 7));
     const istStart = y === initY && m === initM;
+    const setMonatRef = (el) => {
+      if (istStart) startMonatRef.current = el;
+      if (m === 0) { if (el) jahrRefs.current[y] = el; else delete jahrRefs.current[y]; }
+    };
     return (
       <div key={mo.key} data-y={y} data-m={m}
-        ref={istStart ? startMonatRef : null} style={{ marginBottom: 10 }}>
+        ref={setMonatRef} style={{ marginBottom: 10 }}>
         <div style={{ fontSize: FS.s, fontWeight: FW.heavy, color: t.text, marginBottom: 4,
           textAlign: "center" }}>
           {DATUM_MONATE[m]}
@@ -354,9 +372,29 @@ function DatumKalender({ startWert, onWaehle, t, accent, iso, hoehe = 330 }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {/* Jahr-Kopf (folgt dem Scrollen) */}
-      <div style={{ textAlign: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: FS.l, fontWeight: FW.heavy, color: accent }}>{kopf.y}</span>
+      {/* Jahres-Leiste: kopf.y ±2, mittiges (sichtbares) Jahr farbig, Trenner dazwischen */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
+        gap: 4, marginBottom: 8 }}>
+        {[kopf.y - 2, kopf.y - 1, kopf.y, kopf.y + 1, kopf.y + 2].map((jahr, ji) => {
+          const aktiv = jahr === kopf.y;
+          return (
+            <Fragment key={jahr}>
+              {ji > 0 ? (
+                <span style={{ color: t.border, fontSize: FS.xs, flexShrink: 0 }}>·</span>
+              ) : null}
+              <button onClick={() => springZuJahr(jahr)}
+                style={{ flex: 1, padding: "5px 0", borderRadius: RAD.sm,
+                  border: "none", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: aktiv ? FS.s : FS.xs,
+                  fontWeight: aktiv ? FW.heavy : FW.medium,
+                  color: aktiv ? accent : t.text,
+                  background: aktiv ? accent + "22" : "transparent",
+                  outline: "none" }}>
+                {jahr}
+              </button>
+            </Fragment>
+          );
+        })}
       </div>
       {/* Fixer Wochentag-Kopf (mit KW-Spalte) */}
       <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, gap: 2,
@@ -395,8 +433,11 @@ function DatumPickerModal({ startWert, onConfirm, onClose, t, accent, iso }) {
           borderRadius: RAD.xl, padding: 14, width: "100%", maxWidth: 320,
           display: "flex", flexDirection: "column", maxHeight: "82dvh",
           boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end",
-          marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+          marginBottom: 8 }}>
+          <span style={{ fontSize: FS.s, fontWeight: FW.heavy, color: t.text }}>
+            Datum auswählen
+          </span>
           <button onClick={onClose} title="Schließen" aria-label="Schließen"
             style={{ width: 28, height: 28, borderRadius: RAD.sm, cursor: "pointer",
               border: `1px solid ${t.border}`, background: "transparent", flexShrink: 0,
@@ -3339,21 +3380,35 @@ function ScreenKopf({ t, accent, titel, titelAktiv = true, onTitelClick = null,
 // ObjektListeMitDetail (accent+"08"-BG, 1px solid accent, RAD.lg, Padding) plus
 // optionalem Kopf (titel groß in accent, sub klein). So sehen ALLE Detailfenster
 // gleich aus — Statistik, Listengenerator, Schnelleingabe, Vorgänge.
-function DetailRahmen({ t, accent, titel = null, sub = null, children }) {
+// DetailRahmen — kanonischer Detail-Kopf für ALLE Detail-Ansichten (§77).
+// Aufbau verbindlich: Nummer (titel, groß, Akzent) + Adresse (sub, klein, WEISS)
+// in EINER Zeile, baseline-ausgerichtet; Adresse wird bei Platzmangel mit … ge-
+// kürzt, die Nummer bleibt immer ganz. Optionaler aktion-Slot rechts (z. B. der
+// Edit-Stift bei Objekten). Wer einen Detail-Kopf braucht, nutzt DIESEN Baustein
+// und baut ihn NICHT selbst nach — neue Kacheln/Bereiche erben damit dieselbe
+// Kopf-Optik automatisch.
+function DetailRahmen({ t, accent, titel = null, sub = null, aktion = null, children }) {
+  const hatKopf = titel != null || aktion != null;
   return (
     <div style={{ background: accent + "08", border: `1px solid ${accent}`,
       borderRadius: RAD.lg, padding: "14px 16px",
       boxSizing: "border-box", width: "100%", minWidth: 0, overflowWrap: "anywhere" }}>
-      {(titel != null) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, minWidth: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
-              lineHeight: 1.1, overflowWrap: "anywhere" }}>{titel}</div>
+      {hatKopf && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline",
+            gap: 10, overflow: "hidden" }}>
+            {(titel != null) && (
+              <span style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
+                lineHeight: 1.1, whiteSpace: "nowrap", flexShrink: 0 }}>{titel}</span>
+            )}
             {(sub != null) && (
-              <div style={{ fontSize: FS.s, color: t.sub, marginTop: 2,
-                overflowWrap: "anywhere" }}>{sub}</div>
+              <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>
             )}
           </div>
+          {(aktion != null) && (
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>{aktion}</div>
+          )}
         </div>
       )}
       {children}

@@ -1311,14 +1311,22 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
   return (
     <EinheitOffenContext.Provider value={{ offen: einheitOffen, setOffen: setEinheitOffen }}>
     <div>
-      {/* Header: VE-Nummer prominent + runder Bearbeiten-Button daneben.
-          headerOhneEditBtn=true im Mobile-Detail-Modus, wo der Button stattdessen
-          im Sticky-Header oben sitzt. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      {/* Detail-Kopf — identische Optik zum kanonischen DetailRahmen-Kopf (§77):
+          VE-Nummer groß/Akzent + Adresse klein/WEISS in EINER Zeile (baseline),
+          Adresse kürzt mit … ; rechts der runde Bearbeiten-Button.
+          headerOhneEditBtn=true im Mobile-Detail-Modus (Button sitzt im Sticky-Header). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, minWidth: 0 }}>
         <div onClick={(headerOhneEditBtn && onBack) ? onBack : undefined}
-          style={{ flex: 1, minWidth: 0, fontSize: FS.icon, fontWeight: FW.heavy,
-          color: accent, overflow: "hidden", textOverflow: "ellipsis",
-          whiteSpace: "nowrap", cursor: (headerOhneEditBtn && onBack) ? "pointer" : "default" }}>{ve.nr}</div>
+          style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: 10,
+          overflow: "hidden",
+          cursor: (headerOhneEditBtn && onBack) ? "pointer" : "default" }}>
+          <span style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
+            whiteSpace: "nowrap", flexShrink: 0 }}>{ve.nr}</span>
+          {ve.adresse ? (
+            <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ve.adresse}</span>
+          ) : null}
+        </div>
         {!headerOhneEditBtn && !(einheitOffen && !editMode) && (
           editMode ? (
             <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
