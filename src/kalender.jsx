@@ -2709,7 +2709,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         }
         rechts={
           (kalNurDetail) ? (
-            <HeaderZurueck onClick={() => { setOffenTerminKey(null); if (setKalViewVEId) setKalViewVEId(null); }} label="Zurück zur Liste" t={t}/>
+            <HeaderZurueck onClick={() => { setOffenTerminKey(null); if (setKalViewVEId) setKalViewVEId(null); }} t={t}/>
           ) : (setVes && !dockAktiv) ? (
             <HeaderPlus
               onClick={() => {
@@ -3101,12 +3101,9 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
             return (
               <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0, minWidth: 0,
                 width: "100%", overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
-                <button onClick={() => setOffenTerminKey(null)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
-                    background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
-                    padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-                  Zurück zur Timeline
-                </button>
+                <div style={{ marginBottom: 12 }}>
+                  <HeaderZurueck onClick={() => setOffenTerminKey(null)} t={t}/>
+                </div>
                 {detailInhalt}
               </div>
             );

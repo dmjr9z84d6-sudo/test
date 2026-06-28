@@ -997,7 +997,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   const seHeader = (
     <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"
       rechts={(ve && seNurDetail) ? (
-        <HeaderZurueck onClick={() => setObjektId(null)} label="Anderes Objekt" t={t}/>
+        <HeaderZurueck onClick={() => setObjektId(null)} t={t}/>
       ) : null}/>
   );
 
@@ -1172,7 +1172,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"
           rechts={
-            <HeaderZurueck onClick={() => setObjektId(null)} label="Anderes Objekt" t={t}/>
+            <HeaderZurueck onClick={() => setObjektId(null)} t={t}/>
           }/>
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
@@ -1501,12 +1501,9 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   const lgDetailKern = lgHatAuswahl ? (
     <>
       {!istDesktopLG && (
-        <button onClick={() => { setObjektId(null); setAktGruppe(null); setVorlageId(null); }}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
-            background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
-            padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-          Zurück zur Auswahl
-        </button>
+        <div style={{ marginBottom: 12 }}>
+          <HeaderZurueck onClick={() => { setObjektId(null); setAktGruppe(null); setVorlageId(null); }} t={t}/>
+        </div>
       )}
       {/* Vorlagenauswahl (bereichsgefiltert) — solange keine Vorlage gewählt. */}
       {!vorlage && (
@@ -1546,7 +1543,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
                 {vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " · " + ve.adresse : "") : vorlage.sub}
               </div>
             </div>
-            <HeaderZurueck onClick={() => setVorlageId(null)} label="Andere Liste" t={t}/>
+            <HeaderZurueck onClick={() => setVorlageId(null)} t={t}/>
           </div>
 
           {vorlage.bereich === "objekt" && hausWaehlbar && (
@@ -1686,7 +1683,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
             aktiv={lgView} onWaehle={(id) => { setLgView(id); setVorlageId(null); }}/>
         }
         rechts={(lgHatAuswahl && lgNurDetail) ? (
-          <HeaderZurueck onClick={() => setVorlageId(null)} label="Andere Liste" t={t}/>
+          <HeaderZurueck onClick={() => setVorlageId(null)} t={t}/>
         ) : null}/>
 
       {lgView === "objekte" && legendeEl ? (
@@ -1801,7 +1798,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
           aktiv={statView} onWaehle={setStatView}/>
       }
       rechts={(hatAuswahl && statNurDetail) ? (
-        <HeaderZurueck onClick={() => { setAktVEId(null); setAktGruppe(null); }} label="Zurück zur Liste" t={t}/>
+        <HeaderZurueck onClick={() => { setAktVEId(null); setAktGruppe(null); }} t={t}/>
       ) : null}/>
   );
 
@@ -1812,12 +1809,9 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
         {header}
         {hatAuswahl ? (
           <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
-            <button onClick={() => { setAktVEId(null); setAktGruppe(null); }}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
-                background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
-                padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-              Zurück zur Auswahl
-            </button>
+            <div style={{ marginBottom: 12 }}>
+              <HeaderZurueck onClick={() => { setAktVEId(null); setAktGruppe(null); }} t={t}/>
+            </div>
             {detailInhalt}
           </div>
         ) : (

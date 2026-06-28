@@ -220,7 +220,6 @@ import {
   VerwendungenContext,
   VesContext,
   ZeitPickerContext,
-  ZurueckButton,
   ableiteStatusVonBis,
   belegungsRollenFuerKontakt,
   eingehendeVertretungen,
@@ -578,7 +577,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
           </div>
           {offenSektion && nurDetail && (
             <div style={{ marginLeft: "auto" }}>
-              <HeaderZurueck onClick={() => setAktSektion(null)} label="Zurück" t={t}/>
+              <HeaderZurueck onClick={() => setAktSektion(null)} t={t}/>
             </div>
           )}
         </div>
@@ -1113,7 +1112,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
         </div>
       ) : null}
       rechts={zeigeZurueck ? (
-        <HeaderZurueck onClick={() => setViewVEId && setViewVEId(null)} label="Zurück" t={t}/>
+        <HeaderZurueck onClick={() => setViewVEId && setViewVEId(null)} t={t}/>
       ) : null}/>
   );
   // Detail-Override-Wrapper: einheitliche Detail-Hülle (Objektkopf + Inhalt),
@@ -2195,7 +2194,7 @@ export default function App() {
           }
           rechts={
             (istMobileDetail || (hatOffen && objektNurDetail)) ? (
-              <HeaderZurueck onClick={() => setExpandedVEId(null)} label="Zurück" t={t}/>
+              <HeaderZurueck onClick={() => setExpandedVEId(null)} t={t}/>
             ) : (
               <HeaderPlus onClick={() => setNeuesObjektOffen(true)} accent={objektAccent} title="Neues Objekt" t={t}/>
             )
@@ -2252,7 +2251,7 @@ export default function App() {
           }
           rechts={
             (aktivKontaktId && kontaktNurDetail) ? (
-              <HeaderZurueck onClick={() => setAktivKontaktId(null)} label="Zurück" t={t}/>
+              <HeaderZurueck onClick={() => setAktivKontaktId(null)} t={t}/>
             ) : (
               <HeaderPlus onClick={() => setNeuerKontaktOffen(true)} accent={kontaktAccent} title="Neuer Kontakt" t={t}/>
             )
@@ -2962,7 +2961,7 @@ export default function App() {
                   aktiv={auftragView} onWaehle={setAuftragView}/>
               }
               rechts={(hatAuswahl && auftragNurDetail) ? (
-                <HeaderZurueck onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} label="Zurück zur Auswahl" t={t}/>
+                <HeaderZurueck onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} t={t}/>
               ) : null}/>
           );
 
@@ -2972,12 +2971,9 @@ export default function App() {
                 {auftragHeader}
                 {hatAuswahl ? (
                   <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
-                    <button onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
-                        background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
-                        padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-                      Zurück zur Auswahl
-                    </button>
+                    <div style={{ marginBottom: 12 }}>
+                      <HeaderZurueck onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} t={t}/>
+                    </div>
                     {detailInhalt}
                   </div>
                 ) : (

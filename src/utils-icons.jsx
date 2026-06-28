@@ -600,38 +600,7 @@ function I({ name, size = 16, color = "currentColor", strokeWidth = 1.6 }) {
   );
 }
 
-// ── ZurueckButton — EINHEITLICHER „Zurück"-Button für ALLE Master-Detail-Pfade
-// (Objekte, Kontakte, Einstellungen, alle ObjektListeMitDetail-Bereiche).
-// Vorher: 7 handkopierte Buttons, davon 5 mit kaputtem Icon-Namen
-// "chevron-left" (nicht in IC → I rendert null → gar kein Pfeil). Jetzt EIN
-// Bauplan, immer mit definiertem chevL. Siehe DESIGN §57 (Master-Detail).
-//   variante="body"   → eigene Zeile über dem Detail (gap6, marginBottom8,
-//                        alignSelf flex-start), Text „Zurück zur Liste".
-//   variante="header" → kompakt rechts im Sticky-Header (marginLeft auto, gap4,
-//                        flexShrink0), Text „Zurück".
-function ZurueckButton({ onClick, variante = "body", t, label, kbZurueck = false }) {
-  const istHeader = variante === "header";
-  const text = label || (istHeader ? "Zur\u00fcck" : "Zur\u00fcck zur Liste");
-  const style = istHeader
-    ? { marginLeft: "auto", display: "flex", alignItems: "center", gap: 4,
-        background: "none", border: `1px solid ${t.border}`, color: t.text,
-        borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
-        cursor: "pointer",
-        fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }
-    : { display: "flex", alignItems: "center", gap: 6,
-        background: "none", border: `1px solid ${t.border}`, color: t.text,
-        borderRadius: RAD.ms, padding: "6px 12px", cursor: "pointer",
-        fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-        marginBottom: 8, alignSelf: "flex-start" };
-  const extra = kbZurueck ? { "data-kb-zurueck": "1" } : {};
-  return (
-    <button onClick={onClick} {...extra}
-      title="Zurück zur Liste" aria-label="Zurück zur Liste" style={style}>
-      <I name="chevL" size={12} color={t.text}/>
-      {text}
-    </button>
-  );
-}
+
 
 // ── Hilfsfunktionen ─────────────────────────────────────────────────────────
 const HV_ADRESSE = { name: "Muster Hausverwaltung GmbH", strasse: "Musterstr. 99", plzOrt: "80333 München" };
@@ -2142,7 +2111,6 @@ export {
   findeAnkerWurzel,
   IC,
   I,
-  ZurueckButton,
   HV_ADRESSE,
   genRechnungsadresse,
   STORAGE_KEYS,
