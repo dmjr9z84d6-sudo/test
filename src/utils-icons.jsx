@@ -17,7 +17,7 @@ import {
 
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 3 · UTILS & ICONS — ausgelagertes Modul                         ║
-// ║ Heroicons (ICON_PATHS, I-Komponente) · Contexts · genRechnungsadresse   ║
+// ║ Heroicons (ICON_PATHS, I-Komponente) · Contexts                         ║
 // ╚═════════════════════════════════════════════════════════════════════════╝
 
 // ── Heroicons SVG-Pfade ─────────────────────────────────────────────────────
@@ -603,15 +603,6 @@ function I({ name, size = 16, color = "currentColor", strokeWidth = 1.6 }) {
 
 
 // ── Hilfsfunktionen ─────────────────────────────────────────────────────────
-const HV_ADRESSE = { name: "Muster Hausverwaltung GmbH", strasse: "Musterstr. 99", plzOrt: "80333 München" };
-
-function genRechnungsadresse(fields) {
-  const get = (n) => { const f = fields.find(x => x.name === n); return f ? f.value : ""; };
-  const str = get("Straße");
-  const plzOrt = joinPlzOrt(get("PLZ"), get("Ort")) || get("PLZ / Ort");
-  if (!str && !plzOrt) return "—";
-  return `${HV_ADRESSE.name}\nc/o ${str || "—"}\n${plzOrt || "—"}`;
-}
 
 // ── Storage-Layer ───────────────────────────────────────────────────────────
 // Persistente Speicherung mit zwei Modi:
@@ -2059,9 +2050,6 @@ function useHandlungsbedarf() { return useContext(HandlungsbedarfContext); }
 const ObjektTabsContext = createContext(null);
 function useObjektTabs() { return useContext(ObjektTabsContext); }
 
-// ── RechnungsadresseContext: Rechnungsadresse-Sektion in Stammdaten an/aus ─
-const RechnungsadresseContext = createContext(false);
-
 // ── LoeschenErlaubtContext: Sicherheits-Schalter — Löschen-Button getrennt für
 //    Objekte und Kontakte nur sichtbar, wenn true (aus den Einstellungen).
 //    Default beide false.
@@ -2078,7 +2066,6 @@ function useLoeschenErlaubt() { return useContext(LoeschenErlaubtContext); }
 const KontaktFarbeContext = createContext({ person: KONTAKTE_FARBE, firma: FIRMEN_FARBE, objekt: ACCENT, system: ACCENT, auswahlObjekt: ACCENT, auswahlKontakt: KONTAKTE_FARBE });
 function useKontaktFarbe() { return useContext(KontaktFarbeContext); }
 
-function useRechnungsadresseAn() { return useContext(RechnungsadresseContext); }
 
 // ── EinheitAnzeigeContext: welche Felder in der Einheit-Übersichts-Zeile ─────
 // (im Liegenschaft-Tab) angezeigt werden. Alles default an.
@@ -2111,8 +2098,6 @@ export {
   findeAnkerWurzel,
   IC,
   I,
-  HV_ADRESSE,
-  genRechnungsadresse,
   STORAGE_KEYS,
   STORAGE_SCHEMA_VERSION,
   FSA_VERFUEGBAR,
@@ -2205,12 +2190,10 @@ export {
   useHandlungsbedarf,
   ObjektTabsContext,
   useObjektTabs,
-  RechnungsadresseContext,
   LoeschenErlaubtContext,
   useLoeschenErlaubt,
   KontaktFarbeContext,
   useKontaktFarbe,
-  useRechnungsadresseAn,
   DEFAULT_EINHEIT_ANZEIGE,
   EinheitAnzeigeContext,
   KontaktAnzeigeContext,

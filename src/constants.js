@@ -94,7 +94,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "12.84";
+export const APP_VERSION = "12.88";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
@@ -356,12 +356,30 @@ export function formatKontaktName(k, settings) {
   const kern = !vor ? nach : !nach ? vor : vor + " " + nach;
   return tit ? tit + " " + kern : kern;
 }
-export function sortKontakte(liste, settings) {
+export function sortKontakte(liste, settings, gemischt) {
   // Sortier-Reihenfolge folgt dem Name-Format: Wer "Nachname, Vorname" anzeigt,
   // sortiert nach Nachname; wer "Vorname Nachname" anzeigt, nach Vorname.
   const nameFormat = settings && settings.kontakteNameFormat;
   const sortNach = nameFormat === "nachname-vorname" ? "nachname" : "vorname";
   const collator = new Intl.Collator("de", { sensitivity: "base", numeric: true });
+  // gemischt = true: Personen UND Firmen in EINEM Topf, rein nach Anzeigename
+  // sortiert (keine Firma-vor-Person-Trennung). Firma → name; Person → vorname/
+  // nachname je nach Format.
+  if (gemischt) {
+    const sortName = (k) => {
+      if (!k) return "";
+      if (k.typ === "firma") return k.name || "";
+      return ((sortNach === "vorname" ? k.vorname : k.nachname) || k.nachname || k.vorname || k.name || "");
+    };
+    return [...liste].sort((a, b) => {
+      const primary = collator.compare(sortName(a), sortName(b));
+      if (primary !== 0) return primary;
+      // Sekundär: für Personen der jeweils andere Namensteil, für Firmen leer.
+      const aSec = a && a.typ !== "firma" ? ((sortNach === "vorname" ? a.nachname : a.vorname) || "") : "";
+      const bSec = b && b.typ !== "firma" ? ((sortNach === "vorname" ? b.nachname : b.vorname) || "") : "";
+      return collator.compare(aSec, bSec);
+    });
+  }
   return [...liste].sort((a, b) => {
     if (a.typ === "firma" && b.typ === "firma") {
       return collator.compare(a.name || "", b.name || "");

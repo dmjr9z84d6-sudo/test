@@ -244,11 +244,13 @@ const DEFAULT_SETTINGS = {
   filterAktiv: true,
   filterTyp: "verwalter",       // "verwalter" oder "buchhalter"
   filterAktive: {},             // Map: { kontaktId: false } – sichtbar wenn nicht false
+  // Nur Objekte + Kontakte: Das sind die einzigen Quellen, die die Universalsuche
+  // (sucheAlles) real durchsucht. „Adressen" steckt bereits in den Objekt-Treffern
+  // (Adress-Vorschläge aus ve.adresse) und in den Kontakten; „Verträge" hatte gar
+  // keinen eigenen Such-Branch (toter Schalter). Beide entfernt (v12.88).
   suchKategorien: [
     { id:"objekte",   label:"Objekte",   aktiv:true  },
     { id:"kontakte",  label:"Kontakte",  aktiv:true  },
-    { id:"adressen",  label:"Adressen",  aktiv:true  },
-    { id:"vertraege", label:"Verträge",  aktiv:false },
   ],
   // Intelligente Suche — alle Stufen default an. Stufe 1 (exakt) ist immer aktiv.
   sucheDiakritika:           true,   // Umlaute & Akzente ignorieren (Müller=Mueller=Muller)
@@ -298,10 +300,6 @@ const DEFAULT_SETTINGS = {
   zeitMinutenschritt: 15,    // 5 | 15
   zeitStundenModus: "arbeit", // "24h" | "arbeit"
   zeitArbeitPuffer: 1,       // Stunden vor/nach Arbeitszeit (nur bei "arbeit")
-  // Rechnungsadresse-Sektion in der Liegenschaft-Stammdaten-Karte. Default
-  // aus, da viele Verwalter ihre eigene Adresse nicht direkt im Objekt sehen
-  // wollen.
-  rechnungsadresseAnzeigen: false,
   farbIntensitaet: 100,    // Farb-Intensität 0..100 %. 100 = volle Akzentfarben, 0 = neutrales Grau
   systemFarbe: ACCENT,     // Akzentfarbe für System-Elemente (Logo, Zahnrad, Profil, Stift) — vom seriös-Modus mit eingegraut
   // ── Mein Profil ──

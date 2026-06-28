@@ -48,7 +48,7 @@ import React, { useState, useRef, useEffect, createContext, useContext, Fragment
 //
 //   ┌─ 3. UTILS & ICONS ──────────────────────────────────────────────────┐
 //   │  · Heroicons (ICON_PATHS), I-Komponente                             │
-//   │  · genRechnungsadresse, sucheAlles                                  │
+//   │  · sucheAlles                                                       │
 //   └─────────────────────────────────────────────────────────────────────┘
 //
 //   ┌─ 4. UI-BAUSTEINE (später ausgelagert in eigene Dateien) ────────────┐
@@ -197,7 +197,6 @@ import {
   EinheitOffenContext,
   FirmenRollenContext,
   HEADER_FILTER_LEER,
-  HV_ADRESSE,
   HandlungsbedarfContext,
   I,
   KartenBadgesContext,
@@ -208,7 +207,6 @@ import {
   LeistungenContext,
   LoeschenErlaubtContext,
   ObjektTabsContext,
-  RechnungsadresseContext,
   RollenContext,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
@@ -230,7 +228,6 @@ import {
   findScrollParent,
   flacheZuweisungen,
   formatNameMitCtx,
-  genRechnungsadresse,
   haltePositionUeberUpdate,
   headerFilterIstAktiv,
   importiereJSON,
@@ -257,7 +254,6 @@ import {
   useLoeschenErlaubt,
   useObjektTabs,
   useOutsideClick,
-  useRechnungsadresseAn,
   useRollen,
   useStatusLeiste,
   useTerminBezeichnungen,
@@ -1515,6 +1511,15 @@ export default function App() {
         const fehlendeK = (DEFAULT_SETTINGS.kacheln || []).filter(k => vorhandeneIds.indexOf(k.id) < 0);
         if (fehlendeK.length > 0) sett.kacheln = [...sett.kacheln, ...fehlendeK];
       }
+      // Migration (v12.88): tote Suchkategorien „adressen" + „vertraege" aus
+      // Bestands-Settings entfernen. Die Universalsuche durchsucht real nur
+      // Objekte + Kontakte; Adressen stecken bereits in den Objekt-Treffern,
+      // „Verträge" hatte nie einen eigenen Such-Branch. Sonst blieben die toten
+      // Schalter bei Bestands-Usern sichtbar. Nur die zwei bekannten id's filtern.
+      if (Array.isArray(sett.suchKategorien)) {
+        const tot = { adressen: true, vertraege: true };
+        sett.suchKategorien = sett.suchKategorien.filter(k => k && !tot[k.id]);
+      }
       // Gleiches Muster für Objekt-Tabs: neue Default-Tabs (z. B. „Legionellen",
       // eingeführt in v11.67) in Bestands-Settings nachrüsten — sonst kann das
       // Tab nie erscheinen, weil die gespeicherte objektTabs-Config den Eintrag
@@ -2391,12 +2396,12 @@ export default function App() {
       eigentuemer: settings.einheitAnzeigeEigentuemer !== false,
       mieter:      settings.einheitAnzeigeMieter      !== false,
     }}>
-    <RechnungsadresseContext.Provider value={settings.rechnungsadresseAnzeigen === true}>
     <LoeschenErlaubtContext.Provider value={{ objekte: settings.loeschenErlaubtObjekte === true, kontakte: settings.loeschenErlaubtKontakte === true }}>
     <KontaktFarbeContext.Provider value={{ person: kontaktAccent, firma: kontaktAccent, objekt: objektAccent, system: systemAccent, auswahlObjekt: auswahlObjekt, auswahlKontakt: auswahlKontakt }}>
     <KontaktAnzeigeContext.Provider value={{
       nameFormat: settings.kontakteNameFormat || "vorname-nachname",
       alphaTrenner: settings.kontakteAlphaTrenner !== false,
+      trenneTypen: settings.kontakteTrennePersonenFirmen === true,
     }}>
     <div className={istDesktop ? "ad-root-desktop" : "ad-root-mobile"} style={{
       // ── Layout-Modus ──────────────────────────────────────────────────────
@@ -3408,7 +3413,6 @@ export default function App() {
     </KontaktAnzeigeContext.Provider>
     </KontaktFarbeContext.Provider>
     </LoeschenErlaubtContext.Provider>
-    </RechnungsadresseContext.Provider>
     </EinheitAnzeigeContext.Provider>
     </ObjektTabsContext.Provider>
     </HandlungsbedarfContext.Provider>

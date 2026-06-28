@@ -4214,8 +4214,16 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
 
   const anzeige = useKontaktAnzeige();
   const sortSet = { kontakteNameFormat: anzeige.nameFormat };
+  // trenneTypen aus (Default): Personen UND Firmen in EINEM Topf, gemeinsam
+  // alphabetisch sortiert. trenneTypen an: erst alle Personen, dann alle Firmen
+  // (getrennte Listen, alter Modus).
+  const trenneTypen = anzeige.trenneTypen === true;
   const personenGef = sortKontakte(gefiltert.filter(k => k.typ === "person"), sortSet);
   const firmenGef   = sortKontakte(gefiltert.filter(k => k.typ === "firma"),   sortSet);
+  // Gemischte Liste: nur die Typen, die der Filter aktuell zulässt; rein nach
+  // Anzeigename sortiert (gemischt=true schaltet die Firma-vor-Person-Regel ab).
+  const gemischtGef = sortKontakte(gefiltert.filter(k =>
+    (k.typ === "person" && zeigePersonen) || (k.typ === "firma" && zeigeFirmen)), sortSet, true);
 
   // Kontakt-Legende: steht in ALLEN Zuständen (auch bei offener Detailkarte),
   // damit man jederzeit nachschlagen kann — analog zur Objekt-Legende.
@@ -4296,9 +4304,15 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
     };
     return (
     <>
-      {zeigePersonen && personenGef.length > 0 && renderGruppeMD(personenGef, "person")}
-      {zeigeFirmen && firmenGef.length > 0 && renderGruppeMD(firmenGef, "firma",
-        (zeigePersonen && personenGef.length > 0) ? { marginTop: 12 } : null)}
+      {trenneTypen ? (
+        <>
+          {zeigePersonen && personenGef.length > 0 && renderGruppeMD(personenGef, "person")}
+          {zeigeFirmen && firmenGef.length > 0 && renderGruppeMD(firmenGef, "firma",
+            (zeigePersonen && personenGef.length > 0) ? { marginTop: 12 } : null)}
+        </>
+      ) : (
+        gemischtGef.length > 0 && renderGruppeMD(gemischtGef, "alle")
+      )}
     </>
     );
   };
@@ -4387,15 +4401,19 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
     <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
       {/* Aufklappbare Legende — erklärt die genutzten Rollen-Badges, Status & Ring. */}
       {kontaktLegendeEl}
-      {/* Personen — kein Section-Header mehr, die Filter-Buttons oben
-          dienen als Gliederung. */}
-      {zeigePersonen && personenGef.length > 0 && renderGruppe(personenGef, "person")}
-
-      {/* Firmen — kleiner Abstand wenn Personen darüber sichtbar waren. */}
-      {zeigeFirmen && firmenGef.length > 0 && (
-        <div style={{ marginTop: (zeigePersonen && personenGef.length > 0) ? 16 : 0 }}>
-          {renderGruppe(firmenGef, "firma")}
-        </div>
+      {/* Kontakte — gemischt (ein Topf) oder nach Typ getrennt, je nach
+          Einstellung „Person & Firma getrennt auflisten". */}
+      {trenneTypen ? (
+        <>
+          {zeigePersonen && personenGef.length > 0 && renderGruppe(personenGef, "person")}
+          {zeigeFirmen && firmenGef.length > 0 && (
+            <div style={{ marginTop: (zeigePersonen && personenGef.length > 0) ? 16 : 0 }}>
+              {renderGruppe(firmenGef, "firma")}
+            </div>
+          )}
+        </>
+      ) : (
+        gemischtGef.length > 0 && renderGruppe(gemischtGef, "alle")
       )}
 
       {/* Leerer Zustand */}

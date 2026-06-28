@@ -14,13 +14,13 @@ import {
   vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wirtschaftsjahrZeitraum, personenTageAufschluesselung, neuerPersonenAbschnitt, tageInklusive, wendeKontaktZuweisungenAn, zaehlerArtLabel
 } from "./datenmodell.js";
 import {
-  DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, HV_ADRESSE, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
-  SortierPfeile, ableiteStatusVonBis, genRechnungsadresse, haltePositionUeberUpdate,
+  DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
+  SortierPfeile, ableiteStatusVonBis, haltePositionUeberUpdate,
   headerFilterIstAktiv, scrollToCard, sidebarModus, useEinheitAnzeige, useEinheitOffen,
-  useKartenIcons, useKontaktFarbe, useOutsideClick, useRechnungsadresseAn, useRollen, useVerwendungen, useWindowWidth
+  useKartenIcons, useKontaktFarbe, useOutsideClick, useRollen, useVerwendungen, useWindowWidth
 } from "./utils-icons.jsx";
 import {
-  Avatar, BelegungswechselVorgang, CopyBtn, DatumFeld, EckPille, EigentumBlock, EigentumHistorie,
+  Avatar, BelegungswechselVorgang, DatumFeld, EckPille, EigentumBlock, EigentumHistorie,
   EigentumswechselVorgang, FeldKontaktKarte, FieldList, KontaktPicker, PersonCard, Toggle,
   VerwendungBadge, datumAnzeige, parseAnteile
 } from "./components.jsx";
@@ -4831,28 +4831,6 @@ function GebaeudeKopf({ karte, t, accent, editMode, renaming, name, setName,
   );
 }
 
-// Block 4: Rechnungsadresse — auto-generierte Adress-Box (nur Stammdaten-Karte)
-function GebaeudeRechnungsadresse({ t, accent, allFields }) {
-  return (
-    <div style={{ marginTop: 12, background: t.surface,
-      border: `1px solid ${t.border}`, borderRadius: RAD.md, padding: "10px 13px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: FS.l }}>📬</span>
-          <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>Rechnungsadresse</span>
-          <span style={{ fontSize: FS.xxs, color: t.muted, background: t.card,
-            border: `1px solid ${t.border}`, padding: "1px 6px", borderRadius: RAD.sm }}>auto</span>
-        </div>
-        <CopyBtn text={genRechnungsadresse(allFields)} label="Kopieren" t={t} accent={accent}/>
-      </div>
-      <pre style={{ margin: 0, fontSize: FS.s, color: t.sub, lineHeight: 1.7,
-        fontFamily: "inherit", whiteSpace: "pre-wrap" }}>{genRechnungsadresse(allFields)}</pre>
-      <div style={{ marginTop: 6, fontSize: FS.xxs, color: t.muted }}>
-        c/o {HV_ADRESSE.name} · wird in <strong>Einstellungen</strong> hinterlegt
-      </div>
-    </div>
-  );
-}
 
 // Block 5: Einheiten-Liste (numerisch sortiert) + Inline-Add-Form
 function GebaeudeEinheiten({ t, accent, editMode, karte, isTG,
@@ -5608,7 +5586,6 @@ function VertragZeile({ v, firma, t, accent, editMode, onKontaktClick, onRemove,
 
 function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakte, setKontakte, onUpdateKarte, ohneEinheiten = false, onKontaktClick = null, sort = null, ves = [], onVEClick = null, etvStamm = null, onSyncChange = null, lokalEditGesperrt = false, onLokalEditChange = null, akkordeonOffen = null, onAkkordeonToggle = null, alleGeraete = [], aggregierteEinheiten = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
-  const rechnungsadresseAn = useRechnungsadresseAn();
   // "Immer offen" (nicht klappbar): die fixe Stammdaten-Karte sowie ETV-
   // Stammdaten. Diese Karten zeigen keinen Klapp-Mechanismus.
   const immerOffen = !!karte.fixed || karte.kategorie === "etv";
@@ -6047,11 +6024,6 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
             </div>
           )}
 
-
-          {/* Rechnungsadresse — nur Stammdaten-Karte, wenn Setting aktiv */}
-          {karte.fixed && karte.kategorie === "stammdaten" && rechnungsadresseAn && (
-            <GebaeudeRechnungsadresse t={t} accent={accent} allFields={allFields}/>
-          )}
 
           {/* Einheiten-Liste (DnD) + Add-Form — nur wo Einheiten sinnvoll sind.
               Läuft über effEdit (global ODER lokaler Karten-Stift), analog zu den

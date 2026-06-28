@@ -824,6 +824,8 @@ function SektionKontakte({ settings, setSettings, t, accent, kontakte = [] }) {
   // Sichtbarkeit der Kontaktart-Pillen neben der Überschrift „Kontakte".
   const kart = settings.filterKontaktarten || { person: true, firma: true };
   const [rollenTab, setRollenTab] = useState("personen"); // "personen" | "firmen"
+  // Akkordeon der Filter-Pillen-Gruppen: nur EINE Gruppe offen, alle starten zu.
+  const [offeneFilterGruppe, setOffeneFilterGruppe] = useState(null);
   // Wiederverwendbare Pill-Gruppe für Auswahl-Optionen mit 2-3 sichtbaren Werten.
   // width:100% damit die Gruppe in der EinstellZeile (nach Wrap auf Mobile) die
   // volle Breite einnimmt — konsistent zum Tab-Switcher in RollenTabelle.
@@ -865,7 +867,30 @@ function SektionKontakte({ settings, setSettings, t, accent, kontakte = [] }) {
           <Toggle value={settings.kontakteAlphaTrenner !== false}
             onChange={v => save({ kontakteAlphaTrenner: v })} color={accent}/>
         </EinstellZeile>
+        <EinstellZeile label="Personen & Firmen getrennt"
+          sub="Aus: alle Kontakte in einem Topf, gemeinsam alphabetisch sortiert. An: erst alle Personen, dann alle Firmen — jeweils getrennt aufgelistet." t={t}>
+          <Toggle value={settings.kontakteTrennePersonenFirmen === true}
+            onChange={v => save({ kontakteTrennePersonenFirmen: v })} color={accent}/>
+        </EinstellZeile>
       </EinstellKarte>
+
+      {/* Eigene Kontakt-Gruppen → Pillen im Kontakte-Header. Bewusst oben
+          direkt unter „Anzeige" (Benny-Wunsch). */}
+      <SektionGruppen titel="Kontakt-Gruppen" t={t} accent={accent}
+        beschreibung="Eigene Gruppen als Filter-Pillen im Kontakte-Header — kombinierbar mit Personen/Firmen. Manuell zusammenstellen oder nach Rollen — Kriterien-Gruppen halten sich selbst aktuell."
+        gruppen={settings.kontaktGruppen || []}
+        onChange={(neu) => setSettings(s => ({ ...s, kontaktGruppen: neu }))}
+        manuellTitel="Manuell auswählen" kriterienTitel="Nach Rollen"
+        kriterienGruppen={[
+          { key: "rollen", titel: "Rollen",
+            chips: [...(settings.rollen || []), ...(settings.firmenRollen || [])]
+              .filter(r => r && r.aktiv !== false)
+              .map(r => ({ id: r.name, label: r.name, kurz: r.kuerzel || r.name })) },
+        ]}
+        eintraege={kontakte.map(k => ({ id: k.id,
+          label: k.typ === "firma" ? (k.name || "") : (((k.vorname || "") + " " + (k.nachname || "")).trim() || k.name || ""),
+          sub: k.typ === "firma" ? "Firma" : "Person",
+          passtKriterien: (g) => kontaktInGruppe(k, g) }))}/>
 
       {/* Rollen-Verwaltung: Anlegen/Bearbeiten/Löschen + Position/Sichtbarkeit.
           Getrennt nach Personen-Rollen und Firmen (Gewerke). Die FARBE wird
@@ -897,8 +922,41 @@ function SektionKontakte({ settings, setSettings, t, accent, kontakte = [] }) {
         </div>
       </EinstellKarte>
 
+      {/* Filter-Pillen neben der Überschrift „Kontakte" (feiner Filter
+          INNERHALB des großen Header-Filters). Untergruppen als Akkordeon
+          (nur EINE offen) — analog zu den Farb-Gruppen, damit die langen
+          Rollen-/Gewerke-Listen nicht endlos sind. */}
+      <EinstellKarte title="Filter-Pillen: Kontaktarten" t={t} accent={accent}>
+        <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 10, lineHeight: 1.4 }}>
+          Welche Arten als Filter-Pillen neben der Überschrift „Kontakte" erscheinen. Klick auf den Schriftzug „Kontakte" setzt zurück auf alle.
+        </div>
+        {[
+          { key: "haupt", label: "Hauptarten",
+            zeilen: KONTAKTARTEN_KATEGORIEN.map(a => ({ id: a.id, label: a.label, farbe: accent })) },
+          { key: "personen", label: "Personen-Rollen",
+            zeilen: (settings.rollen || DEFAULT_ROLLEN).filter(r => r.aktiv !== false)
+              .map(r => ({ id: "p_" + r.name, label: r.name, farbe: r.color || accent })) },
+          { key: "firmen", label: "Firmen-Rollen",
+            zeilen: (settings.firmenRollen || DEFAULT_GEWERKE_LISTE).filter(r => r.aktiv !== false)
+              .map(r => ({ id: "f_" + r.name, label: r.name, farbe: r.color || accent })) },
+        ].map(gruppe => (
+          <KlappGruppe key={gruppe.key} label={gruppe.label} anzahl={gruppe.zeilen.length}
+            offen={offeneFilterGruppe === gruppe.key}
+            onToggle={() => setOffeneFilterGruppe(offeneFilterGruppe === gruppe.key ? null : gruppe.key)}
+            t={t} accent={accent}>
+            {gruppe.zeilen.map(z => (
+              <EinstellZeile key={z.id} label={z.label} t={t}>
+                <Toggle value={!!kart[z.id]}
+                  onChange={v => save({ filterKontaktarten: { ...kart, [z.id]: v } })}
+                  color={z.farbe}/>
+              </EinstellZeile>
+            ))}
+          </KlappGruppe>
+        ))}
+      </EinstellKarte>
+
       {/* Sicherheit: Löschen-Button für Kontakte freischalten (getrennt von den
-          Objekten — eigener Schalter). */}
+          Objekten — eigener Schalter). Bewusst ganz unten (selten gebraucht). */}
       <EinstellKarte title="Sicherheit" t={t} accent={accent}>
         <EinstellZeile label="Kontakte löschen erlauben"
           sub={'Zeigt den Löschen-Button bei Kontakten. Aus Sicherheitsgründen standardmäßig aus — Löschen entfernt den Kontakt mit allen Daten unwiderruflich.'} t={t}>
@@ -906,67 +964,6 @@ function SektionKontakte({ settings, setSettings, t, accent, kontakte = [] }) {
             onChange={v => save({ loeschenErlaubtKontakte: v })} color={accent}/>
         </EinstellZeile>
       </EinstellKarte>
-
-      {/* Filter-Pillen neben der Überschrift „Kontakte" (feiner Filter
-          INNERHALB des großen Header-Filters) */}
-      <EinstellKarte title="Filter-Pillen: Kontaktarten" t={t} accent={accent}>
-        <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 8, lineHeight: 1.4 }}>
-          Welche Arten als Filter-Pillen neben der Überschrift „Kontakte" erscheinen. Klick auf den Schriftzug „Kontakte" setzt zurück auf alle.
-        </div>
-        <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
-          textTransform: "uppercase", letterSpacing: "0.05em",
-          marginTop: 4, marginBottom: 4 }}>Hauptarten</div>
-        {KONTAKTARTEN_KATEGORIEN.map(a => (
-          <EinstellZeile key={a.id} label={a.label} t={t}>
-            <Toggle value={!!kart[a.id]}
-              onChange={v => save({ filterKontaktarten: { ...kart, [a.id]: v } })}
-              color={accent}/>
-          </EinstellZeile>
-        ))}
-        <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
-          textTransform: "uppercase", letterSpacing: "0.05em",
-          marginTop: 12, marginBottom: 4 }}>Personen-Rollen</div>
-        {(settings.rollen || DEFAULT_ROLLEN).filter(r => r.aktiv !== false).map(r => {
-          const id = "p_" + r.name;
-          return (
-            <EinstellZeile key={id} label={r.name} t={t}>
-              <Toggle value={!!kart[id]}
-                onChange={v => save({ filterKontaktarten: { ...kart, [id]: v } })}
-                color={r.color || accent}/>
-            </EinstellZeile>
-          );
-        })}
-        <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
-          textTransform: "uppercase", letterSpacing: "0.05em",
-          marginTop: 12, marginBottom: 4 }}>Firmen-Rollen</div>
-        {(settings.firmenRollen || DEFAULT_GEWERKE_LISTE).filter(r => r.aktiv !== false).map(r => {
-          const id = "f_" + r.name;
-          return (
-            <EinstellZeile key={id} label={r.name} t={t}>
-              <Toggle value={!!kart[id]}
-                onChange={v => save({ filterKontaktarten: { ...kart, [id]: v } })}
-                color={r.color || accent}/>
-            </EinstellZeile>
-          );
-        })}
-      </EinstellKarte>
-
-      {/* Eigene Kontakt-Gruppen → Pillen im Kontakte-Header */}
-      <SektionGruppen titel="Kontakt-Gruppen" t={t} accent={accent}
-        beschreibung="Eigene Gruppen als Filter-Pillen im Kontakte-Header — kombinierbar mit Personen/Firmen. Manuell zusammenstellen oder nach Rollen — Kriterien-Gruppen halten sich selbst aktuell."
-        gruppen={settings.kontaktGruppen || []}
-        onChange={(neu) => setSettings(s => ({ ...s, kontaktGruppen: neu }))}
-        manuellTitel="Manuell auswählen" kriterienTitel="Nach Rollen"
-        kriterienGruppen={[
-          { key: "rollen", titel: "Rollen",
-            chips: [...(settings.rollen || []), ...(settings.firmenRollen || [])]
-              .filter(r => r && r.aktiv !== false)
-              .map(r => ({ id: r.name, label: r.name, kurz: r.kuerzel || r.name })) },
-        ]}
-        eintraege={kontakte.map(k => ({ id: k.id,
-          label: k.typ === "firma" ? (k.name || "") : (((k.vorname || "") + " " + (k.nachname || "")).trim() || k.name || ""),
-          sub: k.typ === "firma" ? "Firma" : "Person",
-          passtKriterien: (g) => kontaktInGruppe(k, g) }))}/>
     </>
   );
 }
@@ -1234,24 +1231,6 @@ function SektionObjekte({ settings, setSettings, t, accent, ves = [] }) {
         </EinstellZeile>
       </EinstellKarte>
 
-      {/* Stammdaten-Karte des Objekts: optionale Auto-Sektionen */}
-      <EinstellKarte title="Stammdaten der Liegenschaft" t={t} accent={accent}>
-        <EinstellZeile label="Rechnungsadresse anzeigen"
-          sub={'Auto-Sektion „c/o Hausverwaltung …“ unter den Stammdaten. Standard: aus.'} t={t}>
-          <Toggle value={settings.rechnungsadresseAnzeigen === true}
-            onChange={v => save({ rechnungsadresseAnzeigen: v })} color={accent}/>
-        </EinstellZeile>
-      </EinstellKarte>
-
-      {/* Sicherheit: Löschen-Buttons nur auf bewusste Freigabe sichtbar */}
-      <EinstellKarte title="Sicherheit" t={t} accent={accent}>
-        <EinstellZeile label="Objekte löschen erlauben"
-          sub={'Zeigt den Löschen-Button bei Objekten. Aus Sicherheitsgründen standardmäßig aus — Löschen entfernt das Objekt mit allen Einheiten und Daten unwiderruflich.'} t={t}>
-          <Toggle value={settings.loeschenErlaubtObjekte === true}
-            onChange={v => save({ loeschenErlaubtObjekte: v })} color={accent}/>
-        </EinstellZeile>
-      </EinstellKarte>
-
       {/* Filter-Pillen neben der Überschrift „Objekte" (feiner Filter
           INNERHALB des großen Header-Filters) */}
       <EinstellKarte title="Filter-Pillen: Verwaltungsarten" t={t} accent={accent}>
@@ -1300,6 +1279,16 @@ function SektionObjekte({ settings, setSettings, t, accent, ves = [] }) {
 
       {/* Objekt-Detail-Tabs: Reihenfolge & Sichtbarkeit der Reiter */}
       <SektionObjektTabs settings={settings} setSettings={setSettings} t={t} accent={accent}/>
+
+      {/* Sicherheit: Löschen-Buttons nur auf bewusste Freigabe sichtbar.
+          Bewusst ganz unten (selten gebraucht). */}
+      <EinstellKarte title="Sicherheit" t={t} accent={accent}>
+        <EinstellZeile label="Objekte löschen erlauben"
+          sub={'Zeigt den Löschen-Button bei Objekten. Aus Sicherheitsgründen standardmäßig aus — Löschen entfernt das Objekt mit allen Einheiten und Daten unwiderruflich.'} t={t}>
+          <Toggle value={settings.loeschenErlaubtObjekte === true}
+            onChange={v => save({ loeschenErlaubtObjekte: v })} color={accent}/>
+        </EinstellZeile>
+      </EinstellKarte>
 
     </>
   );
@@ -2595,10 +2584,10 @@ function SektionSuche({ settings, setSettings, t, accent }) {
         <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 8, lineHeight: 1.4 }}>
           Welche Bereiche werden in der Universalsuche durchsucht.
         </div>
-        {settings.suchKategorien.map((kat, i) => (
+        {(settings.suchKategorien || []).map((kat, i) => (
           <EinstellZeile key={kat.id} label={kat.label} t={t}>
             <Toggle value={kat.aktiv}
-              onChange={v => save({ suchKategorien: settings.suchKategorien.map((k, j) => j === i ? { ...k, aktiv: v } : k) })}
+              onChange={v => save({ suchKategorien: (settings.suchKategorien || []).map((k, j) => j === i ? { ...k, aktiv: v } : k) })}
               color={accent}/>
           </EinstellZeile>
         ))}
