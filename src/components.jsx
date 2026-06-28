@@ -3458,7 +3458,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
       </div>
       {layout.cols > 0 && (
         <div data-ad-auslauf="1" style={{ flex: `0 0 ${detailBreite}px`,
-          minWidth: 0, overflowY: "auto" }}>
+          minWidth: 0, overflowY: "auto", padding: "8px 0", boxSizing: "border-box" }}>
           {detail}
         </div>
       )}
