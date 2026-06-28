@@ -7535,6 +7535,7 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAns
 function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null }) {
   const karten = (ve && Array.isArray(ve.dokumenteKarten)) ? ve.dokumenteKarten : [];
   // EIN Viewer-State für den ganzen Dokumente-Tab (Checkliste + Karten teilen ihn)
+  const [viewerDatei, setViewerDatei] = useState(null);
 
   const setKarten = (updater, scrollZielId) => {
     if (!setVes) return;
@@ -8271,6 +8272,7 @@ export {
   quoteLabel,
   tagsDiffMS
 };
+
 
 
 
