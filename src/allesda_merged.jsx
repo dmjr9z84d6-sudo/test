@@ -1118,8 +1118,15 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
           </div>
         )}
         {istMobileDetail && (
-          <ZurueckButton onClick={() => setViewVEId && setViewVEId(null)}
-            variante="header" t={t} kbZurueck={true}/>
+          <button onClick={() => setViewVEId && setViewVEId(null)} data-kb-zurueck="1"
+            title="Zur\u00fcck zur Liste" aria-label="Zur\u00fcck zur Liste"
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center",
+              background: "none", border: `1px solid ${t.border}`, color: t.text,
+              borderRadius: RAD.ms, padding: "0 12px", height: 36, boxSizing: "border-box",
+              cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+              flexShrink: 0 }}>
+            Zur\u00fcck
+          </button>
         )}
       </div>
     </StickySectionHeader>
@@ -1716,6 +1723,7 @@ export default function App() {
   // Meldet der Baustein, dass die Liste ganz weg ist (Mobil/eng) → im Header
   // den +Button gegen einen pfeillosen Zurück-Button tauschen.
   const [kontaktNurDetail, setKontaktNurDetail] = useState(false);
+  const [objektNurDetail, setObjektNurDetail] = useState(false);
   const [kontaktDetailEditMode, setKontaktDetailEditMode] = useState(false);
   useEffect(() => { setKontaktDetailEditMode(false); }, [aktivKontaktId]);
   // Counter zum Triggern des Reset im SucheFeld (per useEffect dort)
@@ -2145,7 +2153,8 @@ export default function App() {
           kontakte={kontakte} setKontakte={setKontakte}
           ves={ves} setVes={setVes}
           sprungZiel={veSprungZiel}
-          gotoKontakt={gotoKontakt}/>
+          gotoKontakt={gotoKontakt}
+          onNurDetail={setObjektNurDetail}/>
       );
     } else if (hatOffen && !istDesktop) {
       detailInhalt = (
@@ -2208,9 +2217,16 @@ export default function App() {
             </>
           }
           rechts={
-            istMobileDetail ? (
-              <ZurueckButton onClick={() => setExpandedVEId(null)}
-                variante="header" t={t} kbZurueck={true}/>
+            (istMobileDetail || (hatOffen && objektNurDetail)) ? (
+              <button onClick={() => setExpandedVEId(null)} data-kb-zurueck="1"
+                title="Zur\u00fcck zur Liste" aria-label="Zur\u00fcck zur Liste"
+                style={{ display: "flex", alignItems: "center",
+                  background: "none", border: `1px solid ${t.border}`, color: t.text,
+                  borderRadius: RAD.ms, padding: "0 12px", height: 36,
+                  boxSizing: "border-box", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: FS.m, fontWeight: FW.medium, flexShrink: 0 }}>
+                Zur\u00fcck
+              </button>
             ) : (
               <button onClick={() => setNeuesObjektOffen(true)}
                 data-kb-neu="1" title="Neues Objekt" aria-label="Neues Objekt" style={{
@@ -3014,7 +3030,7 @@ export default function App() {
                       style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
                         background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
                         padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-                      <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Auswahl
+                      Zurück zur Auswahl
                     </button>
                     {detailInhalt}
                   </div>

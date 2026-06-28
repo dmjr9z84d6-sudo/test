@@ -1197,7 +1197,8 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         istDesktop={true}
         listenAnsicht={listenAnsicht} listeOpt={listeOpt}
         kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
-        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
+        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
+        t={t} onZurueck={() => setObjektId(null)} zurueckLabel="Anderes Objekt"/>
     </div>
   );
 }
@@ -1505,7 +1506,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
           style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
             background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
             padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-          <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Auswahl
+          Zurück zur Auswahl
         </button>
       )}
       {/* Vorlagenauswahl (bereichsgefiltert) — solange keine Vorlage gewählt. */}
@@ -1704,7 +1705,8 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
         istDesktop={istDesktopLG}
         listenAnsicht={listenAnsicht} listeOpt={listeOpt}
         kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
-        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
+        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
+        t={t} onZurueck={() => setVorlageId(null)} zurueckLabel="Andere Liste"/>
     </div>
   );
 }
@@ -1816,7 +1818,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
               style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
                 background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
                 padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-              <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Auswahl
+              Zurück zur Auswahl
             </button>
             {detailInhalt}
           </div>
@@ -1843,7 +1845,8 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
         istDesktop={true}
         listenAnsicht={listenAnsicht} listeOpt={listeOpt}
         kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
-        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
+        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
+        t={t} onZurueck={() => { setAktVEId(null); setAktGruppe(null); }} zurueckLabel="Zurück zur Liste"/>
     </div>
   );
 }

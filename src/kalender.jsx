@@ -2627,6 +2627,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
   // Akkordeon: nur EINE Kalenderzeile gleichzeitig aufgeklappt (wie Karten,
   // DESIGN §21.1). Schlüssel = iso+titel+objektId — stabil über Re-Renders.
   const [offenTerminKey, setOffenTerminKey] = useState(null);
+  const [kalNurDetail, setKalNurDetail] = useState(false);
   const sprungSperreRef = useRef(0);
   const terminKey = function(x) { return x.iso + "|" + x.titel + "|" + (x.objektId || x.kontaktId || ""); };
   // Nach dem Anlegen: zum frisch erstellten Termin springen, damit der Nutzer
@@ -3118,7 +3119,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
                   style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
                     background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
                     padding: "6px 12px", color: t.text, fontSize: FS.s, fontWeight: FW.medium, cursor: "pointer" }}>
-                  <I name="chevronLeft" size={14} color={t.sub}/> Zurück zur Timeline
+                  Zurück zur Timeline
                 </button>
                 {detailInhalt}
               </div>
@@ -3127,15 +3128,30 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           return masterListe;
         }
         // DESKTOP: Master-Detail über den kanonischen Baustein (§75).
+        const detailMitZurueck = (
+          <>
+            {kalNurDetail && offenerTermin && (
+              <button onClick={() => setOffenTerminKey(null)} data-kb-zurueck="1"
+                title="Zurück zur Timeline" aria-label="Zurück zur Timeline"
+                style={{ display: "inline-flex", alignItems: "center", marginBottom: 12,
+                  background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.ms,
+                  padding: "0 12px", height: 36, boxSizing: "border-box",
+                  color: t.text, fontSize: FS.m, fontWeight: FW.medium, cursor: "pointer" }}>
+                Zurück zur Timeline
+              </button>
+            )}
+            {detailInhalt}
+          </>
+        );
         return (
           <MasterDetailRahmen
             master={masterListe}
-            detail={detailInhalt}
+            detail={detailMitZurueck}
             istDesktop={true}
             listenAnsicht={listenAnsicht} listeOpt={listeOpt}
             kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
             kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
-            gap={10}/>
+            gap={10} onNurDetail={setKalNurDetail}/>
         );
       })()
       )}

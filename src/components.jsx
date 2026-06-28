@@ -3351,7 +3351,7 @@ function DetailRahmen({ t, accent, titel = null, sub = null, children }) {
 function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   listenAnsicht = "karten", listeOpt = null, kartenSpalten = 2,
   kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, detailMin = null,
-  gap = 10, mobilDetail = undefined, onNurDetail = null }) {
+  gap = 10, mobilDetail = undefined, onNurDetail = null, onZurueck = null, zurueckLabel = "Zurück", t = null }) {
   const [contentRef, contentW] = useContentWidth();
   const istListe = listenAnsicht === "liste";
   const hatDetail = detail != null;
@@ -3412,9 +3412,23 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   //                             NICHT auf masterBreite begrenzen, sonst werden die
   //                             Karten abgeschnitten.
   if (layout.cols === 0 && hatDetail) {
+    const tt = t || {};
+    const zurueckBtn = (typeof onZurueck === "function") ? (
+      <button onClick={onZurueck} data-kb-zurueck="1"
+        title={zurueckLabel} aria-label={zurueckLabel}
+        style={{ display: "inline-flex", alignItems: "center", marginBottom: 12,
+          background: tt.card || "transparent",
+          border: `1px solid ${tt.border || "rgba(128,128,128,0.4)"}`,
+          color: tt.text || "inherit", borderRadius: RAD.ms,
+          padding: "0 12px", height: 36, boxSizing: "border-box",
+          cursor: "pointer", fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium }}>
+        {zurueckLabel}
+      </button>
+    ) : null;
     return (
       <div ref={contentRef} data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 0", boxSizing: "border-box" }}>
+        {zurueckBtn}
         {detail}
       </div>
     );

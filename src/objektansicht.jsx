@@ -1547,7 +1547,7 @@ const TE_MUSTER_PUNKTE = [
 // VEListenZeile) hier leben und so KEIN Modul-Init-Zyklus entsteht; Nutzer sind
 // der App-Rumpf UND der Kalender (renderDetailOverride für Objekt-Termine).
 function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, gefiltert, expandedVEId, setExpandedVEId, sprungZiel = null,
-  offenVE, t, accent, kontakte, setKontakte, ves, setVes, gotoKontakt, listenAnsicht = "karten", renderDetailOverride = null, auswahlAccentOverride = null }) {
+  offenVE, t, accent, kontakte, setKontakte, ves, setVes, gotoKontakt, listenAnsicht = "karten", renderDetailOverride = null, auswahlAccentOverride = null, onNurDetail = null }) {
   const istListe = listenAnsicht === "liste";
   // Auswahl-Akzent: Mehr-Farbe = Objekt-Bereichsfarbe, Graumodus = System-Akzent.
   // Override (z. B. Kalenderfarbe) hat Vorrang.
@@ -1613,7 +1613,8 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = nul
       istDesktop={istDesktop}
       listenAnsicht={listenAnsicht} listeOpt={listeOpt}
       kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
-      kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}/>
+      kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
+      onNurDetail={onNurDetail}/>
   );
 }
 

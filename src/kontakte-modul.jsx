@@ -3752,7 +3752,7 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
 //   · 1-Spalten-Master + Detail (wenn Detail sonst zu schmal würde)
 //   · nur Detail mit "Zurück"-Button (wenn auch 1-Spalten-Master nicht passt)
 function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, listenAnsicht = "karten", renderKartenSpalte, aktivK, t, accent,
-  ves, kontakte, setKontakte, onVEClick, setAktiv, updateKontakt, onDelete }) {
+  ves, kontakte, setKontakte, onVEClick, setAktiv, updateKontakt, onDelete, onNurDetail = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const detailKarte = (
     <KontaktDetailKarte k={aktivK} t={t} accent={accent} listenModus={true}
@@ -3770,7 +3770,8 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreit
       istDesktop={istDesktop}
       listenAnsicht={listenAnsicht} listeOpt={listeOpt}
       kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
-      kartenMin={kartenMin} detailMinBreite={detailMinBreite}/>
+      kartenMin={kartenMin} detailMinBreite={detailMinBreite}
+      onNurDetail={onNurDetail}/>
   );
 }
 
