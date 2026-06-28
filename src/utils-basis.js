@@ -392,10 +392,8 @@ export function dateiLoeschen(id) {
   });
 }
 
-// Öffnet/lädt eine gespeicherte Datei zum Ansehen herunter. Holt den Blob aus
-// IndexedDB und löst einen Download/Öffnen über einen unsichtbaren <a> aus —
-// KEIN window.open (in iOS-Standalone-PWAs blockiert, DESIGN §25.2/§26.3).
-// Nutzt dasselbe Blob→<a>-Muster wie exportiereJSON. dateiname optional.
+// Lädt eine gespeicherte Datei als Download herunter (unsichtbarer <a download>,
+// KEIN window.open). Für den expliziten „Herunterladen"-Button im Viewer.
 export function dateiOeffnen(id, dateiname) {
   return new Promise(function (resolve) {
     dateiLaden(id).then(function (blob) {
@@ -404,9 +402,7 @@ export function dateiOeffnen(id, dateiname) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        if (dateiname) a.download = dateiname;
-        a.target = "_blank";
-        a.rel = "noopener";
+        a.download = dateiname || "Datei";
         document.body.appendChild(a);
         a.click();
         setTimeout(function () {
@@ -416,5 +412,26 @@ export function dateiOeffnen(id, dateiname) {
         resolve(true);
       } catch (e) { resolve(false); }
     }).catch(function () { resolve(false); });
+  });
+}
+
+// Liefert für den Inline-Viewer eine Object-URL + den MIME-Typ der Datei.
+// Aufrufer MUSS die URL nach Gebrauch via URL.revokeObjectURL freigeben
+// (sonst Speicher-Leak). Promise mit { url, typ, name } oder null.
+export function dateiBlobUrl(id) {
+  return new Promise(function (resolve) {
+    dateiDbOeffnen().then(function (db) {
+      const tx = db.transaction(DATEI_DB_STORE, "readonly");
+      const req = tx.objectStore(DATEI_DB_STORE).get(id);
+      req.onsuccess = function () {
+        db.close();
+        const e = req.result;
+        if (!e || !e.blob) { resolve(null); return; }
+        try {
+          resolve({ url: URL.createObjectURL(e.blob), typ: e.typ || "", name: e.name || "Datei" });
+        } catch (err) { resolve(null); }
+      };
+      req.onerror = function () { db.close(); resolve(null); };
+    }).catch(function () { resolve(null); });
   });
 }

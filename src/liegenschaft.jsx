@@ -3,7 +3,7 @@ import {
   FS, FW, KONTAKTE_FARBE, RAD, feldInput, feldLabel, getContrastColor
 } from "./constants.js";
 import { datumDe, isoHeute, joinPlzOrt, splitPlzOrt, zuIsoDatum,
-  dateiSpeichern, dateiOeffnen, dateiLoeschen } from "./utils-basis.js";
+  dateiSpeichern, dateiOeffnen, dateiLoeschen, dateiBlobUrl } from "./utils-basis.js";
 import {
   BELEGUNG_LABEL, BELEGUNG_VERWENDUNGEN, BEWOHNER_RECHTE, RAUM_ART_OPTIONEN, VS_BASEN,
   ZAEHLER_ARTEN, abgeleiteterBelegungstyp, aktiveBelegung, belegungsPhase, belegungsVerwendungen,
@@ -5585,7 +5585,7 @@ function VertragZeile({ v, firma, t, accent, editMode, onKontaktClick, onRemove,
 }
 
 
-function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakte, setKontakte, onUpdateKarte, ohneEinheiten = false, onKontaktClick = null, sort = null, ves = [], onVEClick = null, etvStamm = null, onSyncChange = null, lokalEditGesperrt = false, onLokalEditChange = null, akkordeonOffen = null, onAkkordeonToggle = null, alleGeraete = [], aggregierteEinheiten = null }) {
+function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakte, setKontakte, onUpdateKarte, ohneEinheiten = false, onKontaktClick = null, sort = null, ves = [], onVEClick = null, etvStamm = null, onSyncChange = null, lokalEditGesperrt = false, onLokalEditChange = null, akkordeonOffen = null, onAkkordeonToggle = null, alleGeraete = [], aggregierteEinheiten = null, onDateiAnsehen = null }) {
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   // "Immer offen" (nicht klappbar): die fixe Stammdaten-Karte sowie ETV-
   // Stammdaten. Diese Karten zeigen keinen Klapp-Mechanismus.
@@ -5988,6 +5988,27 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
             </div>
           )}
 
+          {/* Angehängte Dateien (Dokument-Anhänge) — gleiche DateiZeile wie in
+              der Checkliste. Nur wenn die Karte Dateien trägt. */}
+          {Array.isArray(karte.dateien) && karte.dateien.length > 0 && (
+            <div style={{ marginBottom: 8, padding: "8px 10px", background: `${accent}0A`,
+              border: `1px solid ${accent}22`, borderRadius: RAD.ms }}>
+              <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.sub,
+                textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+                Dateien
+              </div>
+              {karte.dateien.map(m => (
+                <DateiZeile key={m.id} meta={m} t={t} accent={accent}
+                  onAnsehen={onDateiAnsehen || (() => {})}
+                  onEntfernen={effEdit ? (() => {
+                    dateiLoeschen(m.id);
+                    if (onUpdateKarte) onUpdateKarte({ ...karte,
+                      dateien: karte.dateien.filter(x => x.id !== m.id) });
+                  }) : null}/>
+              ))}
+            </div>
+          )}
+
           {/* Verträge danach — für Versicherungen/Verträge und eigene Karten. */}
           {zeigtVertraege && (
             <div style={{ marginBottom: 8 }}>
@@ -6064,6 +6085,7 @@ function GebaeudeKarte({ karte, t, accent, editMode, onRename, onRemove, kontakt
 }
 // Ersetzt die JSX-IIFE aus liegenschaft-komplett.jsx
 function KartenList({ karten, setKarten, t, accent, editMode, kontakte, setKontakte, ve, onKontaktClick, ohneEinheiten = false, ves = [], etvStamm = null, onSyncChange = null, sprungKarte = null,
+  onDateiAnsehen = null,
   offeneKarteId: offeneKarteIdProp, setOffeneKarteId: setOffeneKarteIdProp,
   aktiveEditId: aktiveEditIdProp, setAktiveEditId: setAktiveEditIdProp }) {
   // Es darf immer nur EINE Karte gleichzeitig im karten-eigenen Bearbeiten-Modus
@@ -6153,6 +6175,7 @@ function KartenList({ karten, setKarten, t, accent, editMode, kontakte, setKonta
               aggregierteEinheiten={aggregierteEinheiten}
               ohneEinheiten={ohneEinheiten} onKontaktClick={onKontaktClick}
               ves={ves} onVEClick={null}
+              onDateiAnsehen={onDateiAnsehen}
               etvStamm={etvStamm} onSyncChange={onSyncChange}
               lokalEditGesperrt={aktiveEditId !== null && aktiveEditId !== karte.id}
               onLokalEditChange={(aktiv) => setAktiveEditId(aktiv ? karte.id : null)}
@@ -6985,6 +7008,120 @@ function VerwaltungAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editM
   );
 }
 
+// ── DateiZeile — EINE Zeile für eine angehängte Datei (Name + Ansehen + Entf.) ─
+// Wiederverwendbarer Baustein für ALLE Stellen, an denen eine Datei mit
+// „Ansehen"/Entfernen gelistet wird (Checkliste Katalog + eigene Karten +
+// aufgeklappte Dokument-Karte). onAnsehen(meta) öffnet den Viewer; onEntfernen
+// (optional, nur editMode) löscht. So existiert die Datei-Zeile genau EINMAL.
+function DateiZeile({ meta, t, accent, onAnsehen, onEntfernen }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
+      <I name="document" size={13} color={t.sub}/>
+      <span style={{ flex: 1, fontSize: FS.s, color: t.text,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.name}</span>
+      <button onClick={(e) => { e.stopPropagation(); onAnsehen(meta); }}
+        style={{ flexShrink: 0, background: "transparent", color: accent,
+          border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "3px 11px",
+          cursor: "pointer", fontSize: FS.xs, fontWeight: FW.medium, fontFamily: "inherit" }}>
+        Ansehen
+      </button>
+      {onEntfernen && (
+        <button onClick={(e) => { e.stopPropagation(); onEntfernen(meta); }}
+          style={{ flexShrink: 0, background: "transparent", color: t.sub,
+            border: "none", borderRadius: RAD.sm, padding: "3px 6px",
+            cursor: "pointer", fontSize: FS.xs, fontFamily: "inherit" }}>
+          <I name="trash" size={13} color={t.sub}/>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── DateiViewerModal — zeigt eine gespeicherte Datei inline im Overlay ───────
+// Folgt dem kanonischen Modal-Muster (fixed-Overlay rgba(0,0,0,0.7) → Box → sticky
+// Header mit Titel + Download + x), nur größer (Datei soll groß sein). Lädt die
+// Datei als Object-URL aus IndexedDB (dateiBlobUrl) und zeigt sie typgerecht:
+// PDF → <iframe>, Bild → <img>, sonst Hinweis + Download. KEIN window.open.
+// Object-URL wird beim Schließen/Unmount via revokeObjectURL freigegeben.
+function DateiViewerModal({ t, accent, datei, onClose }) {
+  const [zustand, setZustand] = useState({ url: null, typ: "", name: "", laedt: true, fehler: false });
+
+  useEffect(function () {
+    let aktuelleUrl = null;
+    let abgebrochen = false;
+    if (!datei || !datei.id) { setZustand({ url: null, typ: "", name: "", laedt: false, fehler: true }); return; }
+    dateiBlobUrl(datei.id).then(function (res) {
+      if (abgebrochen) { if (res && res.url) URL.revokeObjectURL(res.url); return; }
+      if (!res) { setZustand({ url: null, typ: "", name: "", laedt: false, fehler: true }); return; }
+      aktuelleUrl = res.url;
+      setZustand({ url: res.url, typ: res.typ, name: res.name, laedt: false, fehler: false });
+    });
+    return function () { abgebrochen = true; if (aktuelleUrl) URL.revokeObjectURL(aktuelleUrl); };
+  }, [datei && datei.id]);
+
+  const istBild = (zustand.typ || "").indexOf("image/") === 0 ||
+    /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(zustand.name || (datei && datei.name) || "");
+  const istPdf = (zustand.typ || "").indexOf("pdf") >= 0 ||
+    /\.pdf$/i.test(zustand.name || (datei && datei.name) || "");
+  const anzeigeName = (datei && datei.name) || zustand.name || "Datei";
+
+  return (
+    <div onClick={onClose}
+      style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.7)",
+        zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={function (e) { e.stopPropagation(); }}
+        style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.xl,
+          width: "100%", maxWidth: 900, height: "90dvh", display: "flex", flexDirection: "column",
+          overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+        {/* Header: Name links, Download + x rechts */}
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.border}`,
+          display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <I name="document" size={16} color={accent}/>
+          <span style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold, color: t.text,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{anzeigeName}</span>
+          <button onClick={function () { dateiOeffnen(datei.id, anzeigeName); }}
+            style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6,
+              background: "transparent", color: accent, border: `1px solid ${accent}`,
+              borderRadius: RAD.sm, padding: "5px 11px", cursor: "pointer",
+              fontSize: FS.s, fontWeight: FW.medium, fontFamily: "inherit" }}>
+            <I name="arrow" size={13} color={accent}/>Herunterladen
+          </button>
+          <button onClick={onClose} style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer" }}
+            title="Schließen" aria-label="Schließen">
+            <I name="x" size={18} color={t.sub}/>
+          </button>
+        </div>
+        {/* Inhalt */}
+        <div style={{ flex: 1, minHeight: 0, background: "#0b0b0b", display: "flex",
+          alignItems: "center", justifyContent: "center", overflow: "auto" }}>
+          {zustand.laedt && (
+            <div style={{ fontSize: FS.m, color: t.sub }}>Datei wird geladen …</div>
+          )}
+          {!zustand.laedt && zustand.fehler && (
+            <div style={{ fontSize: FS.m, color: t.sub, padding: 24, textAlign: "center" }}>
+              Datei konnte nicht geladen werden.
+            </div>
+          )}
+          {!zustand.laedt && !zustand.fehler && zustand.url && istPdf && (
+            <iframe src={zustand.url} title={anzeigeName}
+              style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}/>
+          )}
+          {!zustand.laedt && !zustand.fehler && zustand.url && istBild && (
+            <img src={zustand.url} alt={anzeigeName}
+              style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}/>
+          )}
+          {!zustand.laedt && !zustand.fehler && zustand.url && !istPdf && !istBild && (
+            <div style={{ fontSize: FS.m, color: t.sub, padding: 24, textAlign: "center", lineHeight: 1.5 }}>
+              Diese Dateiart kann nicht direkt angezeigt werden.<br/>
+              Über „Herunterladen" oben öffnest du sie in der passenden App.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── DokumentUploadModal — Anlege-Dialog für einen Dokument-Upload ───────────
 // Folgt EXAKT dem kanonischen Modal-Muster (NeuesObjektModal / TerminAnlegen):
 // fixed-Overlay → Box (RAD.xl, maxHeight 90dvh) → sticky Header mit Icon+Titel+x
@@ -7156,7 +7293,7 @@ function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene }) {
 // ── DokumenteChecklist: erste Karte im Dokumente-Tab. Listet alle WEG-relevanten
 // Unterlagen mit Checkbox. Haken setzen → fügt darunter eine Dokument-Karte
 // hinzu; Haken entfernen → entfernt sie wieder (mit den erfassten Feldern).
-function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
+function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAnsehen }) {
   const kartenIconsAn = useKartenIcons();
   // Welche Katalog-Dokumente sind bereits als Karte vorhanden?
   const vorhandene = {};
@@ -7324,26 +7461,9 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
               {dateien.length > 0 && (
                 <div style={{ padding: "2px 8px 8px 38px" }}>
                   {dateien.map(m => (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8,
-                      padding: "5px 0" }}>
-                      <I name="document" size={13} color={t.sub}/>
-                      <span style={{ flex: 1, fontSize: FS.s, color: t.text,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
-                      <button onClick={(e) => { e.stopPropagation(); dateiOeffnen(m.id, m.name); }}
-                        style={{ flexShrink: 0, background: "transparent", color: accent,
-                          border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "3px 11px",
-                          cursor: "pointer", fontSize: FS.xs, fontWeight: FW.medium, fontFamily: "inherit" }}>
-                        Ansehen
-                      </button>
-                      {editMode && (
-                        <button onClick={(e) => { e.stopPropagation(); dateiEntfernen(dok.id, m.id); }}
-                          style={{ flexShrink: 0, background: "transparent", color: t.sub,
-                            border: "none", borderRadius: RAD.sm, padding: "3px 6px",
-                            cursor: "pointer", fontSize: FS.xs, fontFamily: "inherit" }}>
-                          <I name="trash" size={13} color={t.sub}/>
-                        </button>
-                      )}
-                    </div>
+                    <DateiZeile key={m.id} meta={m} t={t} accent={accent}
+                      onAnsehen={onDateiAnsehen}
+                      onEntfernen={editMode ? (() => dateiEntfernen(dok.id, m.id)) : null}/>
                   ))}
                 </div>
               )}
@@ -7392,25 +7512,9 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
             </div>
             <div style={{ padding: "2px 8px 8px 38px" }}>
               {k.dateien.map(m => (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
-                  <I name="document" size={13} color={t.sub}/>
-                  <span style={{ flex: 1, fontSize: FS.s, color: t.text,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
-                  <button onClick={(e) => { e.stopPropagation(); dateiOeffnen(m.id, m.name); }}
-                    style={{ flexShrink: 0, background: "transparent", color: accent,
-                      border: `1px solid ${accent}`, borderRadius: RAD.sm, padding: "3px 11px",
-                      cursor: "pointer", fontSize: FS.xs, fontWeight: FW.medium, fontFamily: "inherit" }}>
-                    Ansehen
-                  </button>
-                  {editMode && (
-                    <button onClick={(e) => { e.stopPropagation(); dateiAusEigen(k.id, m.id); }}
-                      style={{ flexShrink: 0, background: "transparent", color: t.sub,
-                        border: "none", borderRadius: RAD.sm, padding: "3px 6px",
-                        cursor: "pointer", fontSize: FS.xs, fontFamily: "inherit" }}>
-                      <I name="trash" size={13} color={t.sub}/>
-                    </button>
-                  )}
-                </div>
+                <DateiZeile key={m.id} meta={m} t={t} accent={accent}
+                  onAnsehen={onDateiAnsehen}
+                  onEntfernen={editMode ? (() => dateiAusEigen(k.id, m.id)) : null}/>
               ))}
             </div>
           </div>
@@ -7430,6 +7534,7 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode }) {
 // frei ergänzbare eigene Karten. Verhalten exakt wie VerwaltungAnsicht.
 function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null }) {
   const karten = (ve && Array.isArray(ve.dokumenteKarten)) ? ve.dokumenteKarten : [];
+  // EIN Viewer-State für den ganzen Dokumente-Tab (Checkliste + Karten teilen ihn)
 
   const setKarten = (updater, scrollZielId) => {
     if (!setVes) return;
@@ -7464,13 +7569,20 @@ function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMo
       )}
 
       {/* Checkliste der WEG-Unterlagen */}
-      <DokumenteChecklist karten={karten} setKarten={setKarten} t={t} accent={accent} editMode={editMode}/>
+      <DokumenteChecklist karten={karten} setKarten={setKarten} t={t} accent={accent}
+        editMode={editMode} onDateiAnsehen={setViewerDatei}/>
 
       {/* Dokument-Karten (aus der Checkliste + eigene) */}
       <KartenList karten={karten} setKarten={setKarten} t={t} accent={accent} editMode={editMode}
         kontakte={kontakte} setKontakte={setKontakte} ve={ve} onKontaktClick={onKontaktClick} ves={ves}
-        sprungKarte={sprungKarte}
+        sprungKarte={sprungKarte} onDateiAnsehen={setViewerDatei}
         ohneEinheiten/>
+
+      {/* Datei-Viewer — EIN Overlay für den ganzen Dokumente-Tab */}
+      {viewerDatei && (
+        <DateiViewerModal t={t} accent={accent} datei={viewerDatei}
+          onClose={() => setViewerDatei(null)}/>
+      )}
 
       {editMode && (
         <div style={{ marginTop: 4 }}>
@@ -8159,6 +8271,7 @@ export {
   quoteLabel,
   tagsDiffMS
 };
+
 
 
 
