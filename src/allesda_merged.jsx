@@ -2960,10 +2960,11 @@ export default function App() {
           );
 
           const hatAuswahl = (auftragView === "objekt" && auftragViewVEId) || (auftragView === "firma" && auftragFirmaId);
-          let detailKopf = null, detailListe = null;
+          let detailKopf = null, detailSub = null, detailListe = null;
           if (auftragView === "objekt" && auftragViewVEId) {
             const vo = (vesSichtbar || []).find(v => v.id === auftragViewVEId);
-            detailKopf = vo ? (vo.nr || "Objekt") + (vo.adresse ? " · " + vo.adresse : "") : "";
+            detailKopf = vo ? (vo.nr || "Objekt") : "";
+            detailSub = (vo && vo.adresse) ? vo.adresse : null;
             detailListe = renderVorgaenge(demoAlle); // TODO echte Quelle: Vorgänge dieses Objekts
           } else if (auftragView === "firma" && auftragFirmaId) {
             const fk = firmen.find(f => f.id === auftragFirmaId);
@@ -3005,7 +3006,7 @@ export default function App() {
           );
 
           const detailInhalt = hatAuswahl ? (
-            <DetailRahmen t={t} accent={aAccent} titel={detailKopf}>
+            <DetailRahmen t={t} accent={aAccent} titel={detailKopf} sub={detailSub}>
               {detailListe}
             </DetailRahmen>
           ) : null;
