@@ -2229,19 +2229,6 @@ export default function App() {
         <ScreenKopf t={t} accent={objektAccent} titel="Objekte"
           titelAktiv={titleAktiv}
           onTitelClick={() => { setFilterArt("alle"); setFilterObjektGruppe("alle"); setExpandedVEId(null); }}
-          mitte={
-            <>
-              <FilterButtons arten={VERWALTUNGSARTEN} aktive={aktiveArten}
-                counts={countsArt} wert={filterArt} onWert={setFilterArt}
-                t={t} accent={objektAccent} ohneAlle={true}/>
-              {objGruppenArten.length > 0 && (
-                <FilterButtons arten={objGruppenArten} aktive={objGruppenArten.map(a => a.id)}
-                  counts={objGruppenCounts} wert={filterObjektGruppe}
-                  onWert={(w) => { setFilterObjektGruppe(w); setExpandedVEId(null); }}
-                  t={t} accent={objektAccent} ohneAlle={true}/>
-              )}
-            </>
-          }
           rechts={
             (istMobileDetail || (hatOffen && objektNurDetail)) ? (
               <HeaderZurueck onClick={() => setExpandedVEId(null)} t={t}/>
@@ -2249,6 +2236,22 @@ export default function App() {
               <HeaderPlus onClick={() => setNeuesObjektOffen(true)} accent={objektAccent} title="Neues Objekt" t={t}/>
             )
           }/>
+        {/* Filter-Pillen (Verwaltungsart + Gruppen) als EIGENE horizontal scrollbare
+            Zeile unter dem Kopf — NICHT im ScreenKopf-mitte-Slot (der schwebt seit §89
+            absolut rechts → kein Scrollen, verdeckt den Titel). Nicht im Mobil-Detail. */}
+        {!(istMobileDetail || (hatOffen && objektNurDetail)) && (
+          <div style={{ flexShrink: 0, padding: "8px 2px 4px", display: "flex", gap: 6, minWidth: 0 }}>
+            <FilterButtons arten={VERWALTUNGSARTEN} aktive={aktiveArten}
+              counts={countsArt} wert={filterArt} onWert={setFilterArt}
+              t={t} accent={objektAccent} ohneAlle={true}/>
+            {objGruppenArten.length > 0 && (
+              <FilterButtons arten={objGruppenArten} aktive={objGruppenArten.map(a => a.id)}
+                counts={objGruppenCounts} wert={filterObjektGruppe}
+                onWert={(w) => { setFilterObjektGruppe(w); setExpandedVEId(null); }}
+                t={t} accent={objektAccent} ohneAlle={true}/>
+            )}
+          </div>
+        )}
         {objektLegendeEl}
         {detailInhalt}
         {gefiltert.length === 0 && (
@@ -2285,20 +2288,6 @@ export default function App() {
         <ScreenKopf t={t} accent={kontaktAccent} titel="Kontakte"
           titelAktiv={titleAktiv}
           onTitelClick={() => { setFilterKontaktart("alle"); setFilterKontaktGruppe("alle"); setAktivKontaktId(null); }}
-          mitte={
-            <>
-              <FilterButtons arten={arten} aktive={aktiveArten}
-                counts={countsArt} wert={filterKontaktart}
-                onWert={(w) => { setFilterKontaktart(w); setAktivKontaktId(null); }}
-                t={t} accent={kontaktAccent} ohneAlle={true}/>
-              {konGruppenArten.length > 0 && (
-                <FilterButtons arten={konGruppenArten} aktive={konGruppenArten.map(a => a.id)}
-                  counts={konGruppenCounts} wert={filterKontaktGruppe}
-                  onWert={(w) => { setFilterKontaktGruppe(w); setAktivKontaktId(null); }}
-                  t={t} accent={kontaktAccent} ohneAlle={true}/>
-              )}
-            </>
-          }
           rechts={
             (aktivKontaktId && kontaktNurDetail) ? (
               <HeaderZurueck onClick={() => setAktivKontaktId(null)} t={t}/>
@@ -2306,6 +2295,23 @@ export default function App() {
               <HeaderPlus onClick={() => setNeuerKontaktOffen(true)} accent={kontaktAccent} title="Neuer Kontakt" t={t}/>
             )
           }/>
+        {/* Filter-Pillen (Kontaktart + Gruppen) als EIGENE horizontal scrollbare
+            Zeile unter dem Kopf (§89-Konvention, siehe Objekte/Kalender). Nicht im
+            Mobil-Detail. */}
+        {!(aktivKontaktId && kontaktNurDetail) && (
+          <div style={{ flexShrink: 0, padding: "8px 2px 4px", display: "flex", gap: 6, minWidth: 0 }}>
+            <FilterButtons arten={arten} aktive={aktiveArten}
+              counts={countsArt} wert={filterKontaktart}
+              onWert={(w) => { setFilterKontaktart(w); setAktivKontaktId(null); }}
+              t={t} accent={kontaktAccent} ohneAlle={true}/>
+            {konGruppenArten.length > 0 && (
+              <FilterButtons arten={konGruppenArten} aktive={konGruppenArten.map(a => a.id)}
+                counts={konGruppenCounts} wert={filterKontaktGruppe}
+                onWert={(w) => { setFilterKontaktGruppe(w); setAktivKontaktId(null); }}
+                t={t} accent={kontaktAccent} ohneAlle={true}/>
+            )}
+          </div>
+        )}
         <KontakteScreen t={t} accent={kontaktAccent}
           listenAnsicht={effectiveSettings.listenAnsicht}
           kontaktart={filterKontaktart}

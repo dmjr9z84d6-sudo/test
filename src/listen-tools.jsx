@@ -1123,7 +1123,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
           {legendeEl}
-          {seMasterInhalt({ cols: 1, kartenBreite: kartenMaxBreite })}
+          {seMasterInhalt({ einspaltig: true, nurMaster: true, cols: 1, kartenMaxBreite: kartenMaxBreite })}
         </div>
       </div>
     );
@@ -1366,6 +1366,9 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
           }/>
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
+          {legendeEl ? (
+            <div style={{ flexShrink: 0, padding: "0 2px", marginBottom: 10 }}>{legendeEl}</div>
+          ) : null}
           {ve ? <DetailRahmen t={t} accent={accent}>{seMaske}</DetailRahmen> : seMaske}
         </div>
       </div>

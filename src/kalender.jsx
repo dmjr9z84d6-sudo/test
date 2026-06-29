@@ -2694,18 +2694,10 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         titelAktiv={typFilter === "alle"}
         onTitelClick={() => { setTypFilter("alle"); if (setKalViewVEId) setKalViewVEId(null); }}
         mitte={
-          <>
-            {/* View-Umschalter: Objekte | Timeline — gemeinsame KopfPille (§73) */}
-            <KopfPille t={t} accent={kalFarbe}
-              optionen={[{ id: "objekte", label: "Objekte" }, { id: "timeline", label: "Timeline" }]}
-              aktiv={kalView}
-              onWaehle={(id) => { if (setKalView) setKalView(id); if (setKalViewVEId) setKalViewVEId(null); }}/>
-            {kalView === "timeline" && (
-              <FilterButtons arten={KALENDER_TYPEN} aktive={aktiveTypen}
-                counts={counts} wert={typFilter} onWert={setTypFilter}
-                t={t} accent={accent} ohneAlle={true}/>
-            )}
-          </>
+          <KopfPille t={t} accent={kalFarbe}
+            optionen={[{ id: "objekte", label: "Objekte" }, { id: "timeline", label: "Timeline" }]}
+            aktiv={kalView}
+            onWaehle={(id) => { if (setKalView) setKalView(id); if (setKalViewVEId) setKalViewVEId(null); }}/>
         }
         rechts={
           (kalNurDetail) ? (
@@ -2725,6 +2717,17 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
               icon={(anlegenOffen || (kalViewVEId && objektAnlegenVE === kalViewVEId)) ? "x" : "plus"}/>
           ) : null
         }/>
+      {/* Filter-Pillen (Verw./ETV/…) als EIGENE horizontal scrollbare Zeile unter
+          dem Kopf — nur in der Timeline-Ansicht und nicht im Detail. Gehören NICHT
+          in den ScreenKopf-mitte-Slot (der schwebt seit §89 absolut rechts und
+          verhindert das Scrollen + verdeckt den Titel). */}
+      {kalView === "timeline" && !kalNurDetail && (
+        <div style={{ flexShrink: 0, padding: "8px 2px 4px" }}>
+          <FilterButtons arten={KALENDER_TYPEN} aktive={aktiveTypen}
+            counts={counts} wert={typFilter} onWert={setTypFilter}
+            t={t} accent={accent} ohneAlle={true}/>
+        </div>
+      )}
       {!kalIstDesktop && !dockAktiv ? (
         <KalenderPanel variante="overlay" offen={panelOffen} onClose={() => setPanelOffen(false)}
           termine={panelTermine} settings={settings} t={t} accent={kalFarbe}
