@@ -1095,34 +1095,38 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   // Maske-Inhalt (Detail) — gemeinsam für Desktop-Detail und Mobil-Vollbild.
   const seMaske = (
       <>
-        {/* Detail-Titelzeile aus dem zentralen DetailKopf-Baustein (§76) — gleiche
-            Optik wie Objekt-Detail. Der Bearbeiten-Stift sitzt im Sticky-Header
-            (editAktion); hier rechts nur der Wirtschaftsjahr-Umschalter (nur im
-            Personen-Tage-Modus). */}
+        {/* Detail-Titelzeile aus dem zentralen DetailKopf-Baustein (§76) — exakt
+            wie Objekt-Detail: VE-Nr + Adresse links, Bearbeiten-Stift (bzw. X+Haken)
+            rechts in DERSELBEN Zeile. */}
         {ve && (
           <DetailKopf t={t} accent={accent} titel={ve.nr} sub={ve.adresse || null}
-            aktion={modus === "personentage" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <button onClick={() => setPtJahr(j => j - 1)}
-                  title="Jahr zurück" aria-label="Jahr zurück"
-                  style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                    color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>‹</button>
-                <div style={{ textAlign: "center", minWidth: 84 }}>
-                  <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
-                  <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
-                </div>
-                <button onClick={() => setPtJahr(j => j + 1)}
-                  title="Jahr vor" aria-label="Jahr vor"
-                  style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                    color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
-              </div>
-            ) : null}/>
+            aktion={editAktion}/>
         )}
 
-        {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73). */}
-        <div style={{ marginBottom: 14 }}>
-          <SegmentControl t={t} accent={accent} value={modus} onChange={setModus}
-            options={[{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]}/>
+        {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73).
+            Jahr-Umschalter (nur Personen-Tage) sitzt rechts daneben. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12,
+          flexWrap: "wrap", marginBottom: 14 }}>
+          <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+            <SegmentControl t={t} accent={accent} value={modus} onChange={setModus}
+              options={[{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]}/>
+          </div>
+          {modus === "personentage" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <button onClick={() => setPtJahr(j => j - 1)}
+                title="Jahr zurück" aria-label="Jahr zurück"
+                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>‹</button>
+              <div style={{ textAlign: "center", minWidth: 84 }}>
+                <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
+                <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
+              </div>
+              <button onClick={() => setPtJahr(j => j + 1)}
+                title="Jahr vor" aria-label="Jahr vor"
+                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
+            </div>
+          )}
         </div>
 
         {modus === "tabelle" ? (
@@ -1253,10 +1257,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"
           rechts={
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              {editAktion}
-              <HeaderZurueck onClick={() => setObjektId(null)} t={t}/>
-            </div>
+            <HeaderZurueck onClick={() => setObjektId(null)} t={t}/>
           }/>
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>

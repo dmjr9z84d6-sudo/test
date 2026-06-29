@@ -1316,7 +1316,6 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
           Mobile-Detail (Button sitzt im Sticky-Header) → kein Aktions-Slot hier,
           Klick auf den Titel geht zurück. */}
       <DetailKopf t={t} accent={accent} titel={ve.nr} sub={ve.adresse || null}
-        marginBottom={12}
         onTitelClick={(headerOhneEditBtn && onBack) ? onBack : null}
         aktion={(!headerOhneEditBtn && !(einheitOffen && !editMode)) ? (
           editMode ? (
