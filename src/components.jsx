@@ -3484,12 +3484,14 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   }, [nurDetail, onNurDetail]);
 
   // MOBIL: Detail ersetzt die Liste (Detail offen → nur Detail, sonst nur Liste).
+  // KEIN horizontales Padding hier — die Karten sollen wie im Kontakte-Vollbild
+  // bis zum Rand laufen (sonst minimal schmaler als andere Screens).
   if (!istDesktop) {
     const md = mobilDetail !== undefined ? mobilDetail : detail;
     if (hatDetail && md != null) {
       return (
         <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
-          minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 2px",
+          minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 0",
           boxSizing: "border-box" }}>
           {md}
         </div>
@@ -3497,7 +3499,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
     }
     return (
       <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, minWidth: 0,
-        width: "100%", overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
+        width: "100%", overflowY: "auto", padding: "8px 0", boxSizing: "border-box" }}>
         {masterNode}
       </div>
     );

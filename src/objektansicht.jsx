@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FS, FW, RAD, KACHEL_GRID, KACHEL_W, kachelGridBreite, feldInput, feldLabel, getContrastColor } from "./constants.js";
+import { FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getContrastColor } from "./constants.js";
 import { parseDatumWert } from "./utils-basis.js";
 import {
   flaecheVon, isStellplatzTyp, istAnonymesMitglied, teileVon
@@ -1581,9 +1581,7 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = nul
   const masterListe = (layout) => (
     <div style={listenAnsicht === "liste"
       ? { display: "flex", flexDirection: "column", gap: 6 }
-      : (layout.nurMaster
-          ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig)
-          : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+      : kartenGridStyle(layout)}>
       {gefiltert.map(ve => listenAnsicht === "liste" ? (
         <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
           aktiv={expandedVEId === ve.id} kbItem id={"obj-" + ve.id}

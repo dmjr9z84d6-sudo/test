@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { FS, FW, RAD, KACHEL_GRID, kachelGridBreite, getContrastColor } from "./constants.js";
+import { FS, FW, RAD, KACHEL_W, kartenGridStyle, getContrastColor } from "./constants.js";
 import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
   VERWALTUNGSARTEN, aktiveBelegung, aktiverTeil, belegungsTyp, bewohnerRecht,
@@ -1023,7 +1023,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     ) : (
       <div style={istListeSE
         ? { display: "flex", flexDirection: "column", gap: 6 }
-        : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+        : kartenGridStyle(layout)}>
         {(ves || []).map(v => istListeSE ? (
           <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
             aktiv={objektId === v.id} kbItem id={"se-" + v.id}
@@ -1561,7 +1561,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
     lgView === "objekte" ? (
       <div style={istListeLG
         ? { display: "flex", flexDirection: "column", gap: 6 }
-        : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+        : kartenGridStyle(layout)}>
         {(ves || []).map(v => istListeLG ? (
           <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
             aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
@@ -1610,7 +1610,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
           <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 10px" }}>
             Welche Liste möchtest du erstellen?
           </div>
-          <div style={KACHEL_GRID}>
+          <div style={kartenGridStyle({ einspaltig: !istDesktopLG, nurMaster: true, kartenMaxBreite: KACHEL_W })}>
             {sichtbareVorlagen.map(v => (
               <div key={v.id} onClick={() => { setVorlageId(v.id); setHausId(null); }} data-kb-item="1"
                 style={{ display: "flex", flexDirection: "column", cursor: "pointer",
@@ -1849,7 +1849,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   const masterInhalt = (layout) => {
     const masterGridStyle = istListe
       ? { display: "flex", flexDirection: "column", gap: 6 }
-      : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` });
+      : kartenGridStyle(layout);
     return statView === "objekte" ? (
     <div style={masterGridStyle}>
       {ves.map(ve => istListe ? (

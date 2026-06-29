@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  ACCENT, FS, FW, RAD, KACHEL_GRID, KACHEL_W, kachelGridBreite, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
+  ACCENT, FS, FW, RAD, KACHEL_GRID, kartenGridStyle, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
 } from "./constants.js";
 import {
   datumDe, istEmailGueltig, istPlzGueltig, istTelefonGueltig, istUrlGueltig, joinPlzOrt, listeBreiteAus
@@ -4243,16 +4243,14 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   const windowW = useWindowWidth();
   const istDesktop = windowW >= 900;
 
-  // Einheitliches KACHEL_GRID (feste Kachelbreite, nie gedehnt) — identisch zu
-  // Objekten/Einstellungen. Bei wenig Inhalt bleibt rechts Abstand statt
-  // breitgezogener Karten. MOBIL: hartes 1fr (EINE Spalte, volle Breite) —
-  // bewusst NICHT über var(--ad-kg), damit es unabhängig von der Klassenregel
-  // sicher greift (Mobil-Overflow-Fix, sonst zweispaltig + Querscroll).
-  const wrapStyle = !istDesktop
-    ? { display: "grid", gridTemplateColumns: "1fr", gap: 10 }
-    : (festeGridSpec
-        ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" }
-        : { ...KACHEL_GRID, gridAutoFlow: "dense" });
+  // Karten-Raster der Vollbild-Übersicht — zentral aus kartenGridStyle (§76),
+  // damit es identisch zu Objekten/Schnelleingabe läuft (Mobil = 1fr volle
+  // Breite). SONDERFALL: festeGridSpec (Desktop, explizit vorgegebene Spalten-
+  // Spezifikation) + gridAutoFlow:dense bleibt lokal — das nutzt nur Kontakte.
+  const wrapStyle = (!istDesktop || !festeGridSpec)
+    ? kartenGridStyle({ einspaltig: !istDesktop, nurMaster: true, kartenMaxBreite: kartenMaxBreite },
+        istDesktop ? { gridAutoFlow: "dense" } : null)
+    : { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" }; // SONDERFALL: feste Spaltenspez (nur Kontakte-Desktop)
 
   // Master-Detail: linke schmale Spalte mit Karten, rechts Detail
   const hatOffen = aktiv != null && aktivK != null;
@@ -4278,9 +4276,13 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   );
 
   const renderKartenSpalte = (cols, kartenBreite, nurMasterBreite, einspaltig) => {
-    const gridStyle = kartenBreite
-      ? { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${kartenBreite}px)`, alignContent: "start" }
-      : { ...kachelGridBreite(nurMasterBreite, einspaltig), alignContent: "start" };
+    const gridStyle = kartenGridStyle({
+      einspaltig: einspaltig,
+      nurMaster: !kartenBreite,
+      cols: cols,
+      kartenBreite: kartenBreite,
+      kartenMaxBreite: nurMasterBreite,
+    }, { alignContent: "start" });
     const alphaTrennerAn = anzeige.alphaTrenner !== false;
     // EINE Gruppe rendern — identisch zur Vollbild-Logik (renderGruppe), nur mit
     // dem Master-Detail-Grid und Toggle-Klick. So gibt es die Buchstaben-Einteilung

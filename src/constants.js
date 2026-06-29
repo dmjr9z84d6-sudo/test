@@ -75,6 +75,33 @@ export function kachelGridBreite(kartenBreite, einspaltig) {
   };
 }
 
+// ── kartenGridStyle — DIE EINE Quelle fürs Karten-Raster (§76) ──────────────
+// Jede Master-Übersicht (Objekte, Kontakte, Schnelleingabe, Listengenerator,
+// Statistik und künftige Bereichs-Kacheln) holt ihren Grid-Style NUR hier.
+// Kein Screen baut mehr selbst `KACHEL_GRID`/`kachelGridBreite` mit eigener
+// Mobil-/Spalten-Logik zusammen — sonst driften die Screens wieder auseinander
+// (genau der Bug, der Objekte/Kontakte unterschiedlich breit machte).
+//
+// Erwartet das `layout`-Objekt aus MasterDetailRahmen/passendeMasterSpalten:
+//   { einspaltig, nurMaster, cols, kartenBreite, kartenMaxBreite }
+// Regeln:
+//   • einspaltig (Mobil)      → hartes 1fr, EINE Spalte volle Breite.
+//   • nurMaster (Übersicht)   → auto-fill mit kartenMaxBreite (volle Breite füllen).
+//   • Detail offen (Desktop)  → feste Spaltenzahl × kartenBreite.
+// extra = optionale Zusatz-Styles (z. B. alignContent:"start").
+export function kartenGridStyle(layout, extra) {
+  const lay = layout || {};
+  const zusatz = extra || {};
+  if (lay.einspaltig) {
+    return { display: "grid", gridTemplateColumns: "1fr", justifyContent: "stretch", gap: 10, ...zusatz };
+  }
+  if (lay.nurMaster) {
+    return { ...kachelGridBreite(lay.kartenMaxBreite, false), ...zusatz };
+  }
+  const cols = Math.max(1, lay.cols || 1);
+  return { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${lay.kartenBreite}px)`, ...zusatz };
+}
+
 // ── Zentrale Eingabefeld-/Label-Styles ──────────────────────────────────────
 // Vermeidet ~40 byte-gleiche Inline-Style-Objekte in Formularen. Die Varianten
 // unterscheiden sich nur in padding/fontSize/borderRadius — daher parametriert.
@@ -100,7 +127,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "13.08";
+export const APP_VERSION = "13.10";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
