@@ -23661,7 +23661,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.12";
+  var APP_VERSION = "13.13";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -43646,45 +43646,15 @@
         accent,
         titel: ve.nr,
         sub: ve.adresse || null,
-        aktion: modus === "personentage" ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ import_react5.default.createElement(
-          "button",
-          {
-            onClick: () => setPtJahr((j) => j - 1),
-            title: "Jahr zur\xFCck",
-            "aria-label": "Jahr zur\xFCck",
-            style: {
-              background: "none",
-              border: `1px solid ${t.border}`,
-              borderRadius: RAD.sm,
-              color: t.sub,
-              fontSize: 18,
-              cursor: "pointer",
-              width: 38,
-              height: 34
-            }
-          },
-          "\u2039"
-        ), /* @__PURE__ */ import_react5.default.createElement("div", { style: { textAlign: "center", minWidth: 84 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, fontWeight: FW.bold, color: t.text } }, "Jahr ", ptJahr), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.xxs, color: t.muted } }, "Wirtschaftsjahr")), /* @__PURE__ */ import_react5.default.createElement(
-          "button",
-          {
-            onClick: () => setPtJahr((j) => j + 1),
-            title: "Jahr vor",
-            "aria-label": "Jahr vor",
-            style: {
-              background: "none",
-              border: `1px solid ${t.border}`,
-              borderRadius: RAD.sm,
-              color: t.sub,
-              fontSize: 18,
-              cursor: "pointer",
-              width: 38,
-              height: 34
-            }
-          },
-          "\u203A"
-        )) : null
+        aktion: editAktion
       }
-    ), /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react5.default.createElement(
+    ), /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      flexWrap: "wrap",
+      marginBottom: 14
+    } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: "1 1 200px", minWidth: 0 } }, /* @__PURE__ */ import_react5.default.createElement(
       SegmentControl,
       {
         t,
@@ -43693,7 +43663,43 @@
         onChange: setModus,
         options: [{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]
       }
-    )), modus === "tabelle" ? /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ptEdit && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+    )), modus === "personentage" && /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 } }, /* @__PURE__ */ import_react5.default.createElement(
+      "button",
+      {
+        onClick: () => setPtJahr((j) => j - 1),
+        title: "Jahr zur\xFCck",
+        "aria-label": "Jahr zur\xFCck",
+        style: {
+          background: "none",
+          border: `1px solid ${t.border}`,
+          borderRadius: RAD.sm,
+          color: t.sub,
+          fontSize: 18,
+          cursor: "pointer",
+          width: 38,
+          height: 34
+        }
+      },
+      "\u2039"
+    ), /* @__PURE__ */ import_react5.default.createElement("div", { style: { textAlign: "center", minWidth: 84 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, fontWeight: FW.bold, color: t.text } }, "Jahr ", ptJahr), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.xxs, color: t.muted } }, "Wirtschaftsjahr")), /* @__PURE__ */ import_react5.default.createElement(
+      "button",
+      {
+        onClick: () => setPtJahr((j) => j + 1),
+        title: "Jahr vor",
+        "aria-label": "Jahr vor",
+        style: {
+          background: "none",
+          border: `1px solid ${t.border}`,
+          borderRadius: RAD.sm,
+          color: t.sub,
+          fontSize: 18,
+          cursor: "pointer",
+          width: 38,
+          height: 34
+        }
+      },
+      "\u203A"
+    ))), modus === "tabelle" ? /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ptEdit && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
       fontSize: FS.xs,
       fontWeight: FW.bold,
       color: t.muted,
@@ -43820,7 +43826,7 @@
           t,
           accent,
           titel: "Schnelleingabe",
-          rechts: /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0 } }, editAktion, /* @__PURE__ */ import_react5.default.createElement(HeaderZurueck, { onClick: () => setObjektId(null), t }))
+          rechts: /* @__PURE__ */ import_react5.default.createElement(HeaderZurueck, { onClick: () => setObjektId(null), t })
         }
       ), /* @__PURE__ */ import_react5.default.createElement("div", { "data-ad-scroll": "y", style: {
         flex: 1,
@@ -45980,7 +45986,6 @@
         accent,
         titel: ve.nr,
         sub: ve.adresse || null,
-        marginBottom: 12,
         onTitelClick: headerOhneEditBtn && onBack ? onBack : null,
         aktion: !headerOhneEditBtn && !(einheitOffen && !editMode) ? editMode ? /* @__PURE__ */ import_react6.default.createElement("div", { style: { display: "flex", gap: 6, flexShrink: 0 } }, loeschenErlaubt.objekte && setVes && /* @__PURE__ */ import_react6.default.createElement(
           AktionsButton,
