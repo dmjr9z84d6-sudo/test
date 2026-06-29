@@ -1096,7 +1096,7 @@
             var dispatcher = resolveDispatcher();
             return dispatcher.useReducer(reducer, initialArg, init);
           }
-          function useRef11(initialValue) {
+          function useRef12(initialValue) {
             var dispatcher = resolveDispatcher();
             return dispatcher.useRef(initialValue);
           }
@@ -1890,7 +1890,7 @@
           exports.useLayoutEffect = useLayoutEffect;
           exports.useMemo = useMemo;
           exports.useReducer = useReducer;
-          exports.useRef = useRef11;
+          exports.useRef = useRef12;
           exports.useState = useState12;
           exports.useSyncExternalStore = useSyncExternalStore;
           exports.useTransition = useTransition;
@@ -23609,7 +23609,10 @@
     justifyContent: "start",
     gap: 10
   };
-  function kachelGridBreite(kartenBreite) {
+  function kachelGridBreite(kartenBreite, einspaltig) {
+    if (einspaltig) {
+      return { display: "grid", gridTemplateColumns: "1fr", justifyContent: "stretch", gap: 10 };
+    }
     const w = Math.max(160, kartenBreite || KACHEL_W);
     return {
       display: "grid",
@@ -23643,7 +23646,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.07";
+  var APP_VERSION = "13.08";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -43248,6 +43251,24 @@
     const ptDefaultJahr = wjDefault && wjDefault.von ? Number(String(wjDefault.von).slice(0, 4)) : (/* @__PURE__ */ new Date()).getFullYear() - 1;
     const [ptJahr, setPtJahr] = (0, import_react5.useState)(ptDefaultJahr);
     const [ptEdit, setPtEdit] = (0, import_react5.useState)(false);
+    const ptSnapshotRef = (0, import_react5.useRef)(null);
+    const ptEditStart = () => {
+      try {
+        ptSnapshotRef.current = JSON.parse(JSON.stringify(ves || []));
+      } catch (e) {
+        ptSnapshotRef.current = null;
+      }
+      setPtEdit(true);
+    };
+    const ptEditAbbrechen = () => {
+      if (ptSnapshotRef.current && setVes) setVes(ptSnapshotRef.current);
+      ptSnapshotRef.current = null;
+      setPtEdit(false);
+    };
+    const ptEditFertig = () => {
+      ptSnapshotRef.current = null;
+      setPtEdit(false);
+    };
     const SPALTEN_KATALOG = [
       { id: "nr", label: "Nr.", breite: 120, art: "text" },
       { id: "typ", label: "Typ", breite: 170, art: "typ" },
@@ -43490,7 +43511,35 @@
         }
       );
     };
-    const seMasterInhalt = (layout) => (ves || []).length === 0 ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 } }, "Noch keine Objekte vorhanden.") : /* @__PURE__ */ import_react5.default.createElement("div", { style: istListeSE ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, (ves || []).map((v) => istListeSE ? /* @__PURE__ */ import_react5.default.createElement(
+    const isoZuDe = (s) => {
+      const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || "");
+    };
+    const zellText = (einheit, sdef) => {
+      const wert = leseWert(einheit, sdef.id);
+      if (sdef.art === "kontakt") {
+        if (isStellplatzTyp(einheit.typ)) {
+          return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.s, color: t.muted, fontStyle: "italic" } }, "\u2014");
+        }
+        const k = wert ? kontaktById(wert) : null;
+        return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.m, color: k ? t.text : t.muted } }, k ? kontaktName(k) : "\u2014");
+      }
+      if (sdef.art === "datum") {
+        if (isStellplatzTyp(einheit.typ)) {
+          return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.s, color: t.muted, fontStyle: "italic" } }, "\u2014");
+        }
+        return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.m, color: wert ? t.text : t.muted, whiteSpace: "nowrap" } }, wert ? isoZuDe(wert) : "\u2014");
+      }
+      return /* @__PURE__ */ import_react5.default.createElement("span", { style: {
+        fontSize: FS.m,
+        color: wert ? t.text : t.muted,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        display: "block"
+      } }, wert || "\u2014");
+    };
+    const seMasterInhalt = (layout) => (ves || []).length === 0 ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 } }, "Noch keine Objekte vorhanden.") : /* @__PURE__ */ import_react5.default.createElement("div", { style: istListeSE ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, (ves || []).map((v) => istListeSE ? /* @__PURE__ */ import_react5.default.createElement(
       VEListenZeile,
       {
         key: v.id,
@@ -43534,6 +43583,47 @@
         paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)"
       } }, legendeEl, seMasterInhalt({ cols: 1, kartenBreite: kartenMaxBreite })));
     }
+    const rundBtnStyle = {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: 36,
+      height: 36,
+      flexShrink: 0,
+      background: accent,
+      border: "none",
+      borderRadius: RAD.pill,
+      cursor: "pointer",
+      boxShadow: `0 1px 2px ${accent}40`
+    };
+    const editAktion = ve ? ptEdit ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", gap: 6, flexShrink: 0 } }, /* @__PURE__ */ import_react5.default.createElement(
+      "button",
+      {
+        onClick: ptEditAbbrechen,
+        title: "Abbrechen \u2014 Eingaben zur\xFCcksetzen",
+        "aria-label": "Abbrechen",
+        style: rundBtnStyle
+      },
+      /* @__PURE__ */ import_react5.default.createElement(I, { name: "x", size: 16, color: "#EF4444" })
+    ), /* @__PURE__ */ import_react5.default.createElement(
+      "button",
+      {
+        onClick: ptEditFertig,
+        title: "Fertig \u2014 \xC4nderungen behalten",
+        "aria-label": "Fertig",
+        style: rundBtnStyle
+      },
+      /* @__PURE__ */ import_react5.default.createElement(I, { name: "check", size: 14, color: "#FFFFFF" })
+    )) : /* @__PURE__ */ import_react5.default.createElement(
+      "button",
+      {
+        onClick: ptEditStart,
+        title: "Bearbeiten",
+        "aria-label": "Bearbeiten",
+        style: rundBtnStyle
+      },
+      /* @__PURE__ */ import_react5.default.createElement(I, { name: "pencil", size: 14, color: getContrastColor(accent) })
+    ) : null;
     const seMaske = /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ve && /* @__PURE__ */ import_react5.default.createElement("div", { style: {
       display: "flex",
       alignItems: "center",
@@ -43597,35 +43687,7 @@
         }
       },
       "\u203A"
-    )), /* @__PURE__ */ import_react5.default.createElement(
-      "button",
-      {
-        onClick: () => setPtEdit((e) => !e),
-        title: ptEdit ? "Fertig \u2014 Anzeige" : "Bearbeiten \u2014 alle Einheiten",
-        "aria-label": ptEdit ? "Fertig" : "Bearbeiten",
-        style: {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 36,
-          height: 36,
-          flexShrink: 0,
-          background: accent,
-          border: "none",
-          borderRadius: RAD.pill,
-          cursor: "pointer",
-          boxShadow: `0 1px 2px ${accent}40`
-        }
-      },
-      /* @__PURE__ */ import_react5.default.createElement(
-        I,
-        {
-          name: ptEdit ? "check" : "pencil",
-          size: ptEdit ? 14 : 14,
-          color: getContrastColor(accent)
-        }
-      )
-    ))), /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react5.default.createElement(
+    )))), /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react5.default.createElement(
       SegmentControl,
       {
         t,
@@ -43634,7 +43696,7 @@
         onChange: setModus,
         options: [{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]
       }
-    )), modus === "tabelle" ? /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+    )), modus === "tabelle" ? /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ptEdit && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
       fontSize: FS.xs,
       fontWeight: FW.bold,
       color: t.muted,
@@ -43712,7 +43774,7 @@
       fontWeight: FW.regular,
       color: t.muted,
       fontStyle: "italic"
-    } }, "Oben Spalten w\xE4hlen \u2026"))), /* @__PURE__ */ import_react5.default.createElement("tbody", null, einheiten.map((e, ri) => /* @__PURE__ */ import_react5.default.createElement("tr", { key: e.id, style: { background: ri % 2 ? t.card : "transparent" } }, /* @__PURE__ */ import_react5.default.createElement("td", { style: {
+    } }, ptEdit ? "Oben Spalten w\xE4hlen \u2026" : "Noch keine Spalten \u2014 zum Bearbeiten tippen"))), /* @__PURE__ */ import_react5.default.createElement("tbody", null, einheiten.map((e, ri) => /* @__PURE__ */ import_react5.default.createElement("tr", { key: e.id, style: { background: ri % 2 ? t.card : "transparent" } }, /* @__PURE__ */ import_react5.default.createElement("td", { style: {
       padding: "6px 12px",
       borderBottom: `1px solid ${t.border}40`,
       position: "sticky",
@@ -43727,7 +43789,7 @@
         padding: "6px 8px",
         borderBottom: `1px solid ${t.border}40`,
         verticalAlign: "middle"
-      } }, zellInput(e, sd)) : null;
+      } }, ptEdit ? zellInput(e, sd) : zellText(e, sd)) : null;
     }), spalten.length === 0 && /* @__PURE__ */ import_react5.default.createElement("td", { style: {
       padding: "6px 12px",
       borderBottom: `1px solid ${t.border}40`,
@@ -43761,7 +43823,7 @@
           t,
           accent,
           titel: "Schnelleingabe",
-          rechts: /* @__PURE__ */ import_react5.default.createElement(HeaderZurueck, { onClick: () => setObjektId(null), t })
+          rechts: /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0 } }, editAktion, /* @__PURE__ */ import_react5.default.createElement(HeaderZurueck, { onClick: () => setObjektId(null), t }))
         }
       ), /* @__PURE__ */ import_react5.default.createElement("div", { "data-ad-scroll": "y", style: {
         flex: 1,
@@ -44031,7 +44093,7 @@
       borderBottom: "1px solid #ddd",
       verticalAlign: "top"
     } }, r[s.id] != null ? r[s.id] : "")))))), fussnote && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginTop: 10, fontSize: fontPx + 1, fontWeight: 600 } }, fussnote)));
-    const lgMasterInhalt = (layout) => lgView === "objekte" ? /* @__PURE__ */ import_react5.default.createElement("div", { style: istListeLG ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, (ves || []).map((v) => istListeLG ? /* @__PURE__ */ import_react5.default.createElement(
+    const lgMasterInhalt = (layout) => lgView === "objekte" ? /* @__PURE__ */ import_react5.default.createElement("div", { style: istListeLG ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, (ves || []).map((v) => istListeLG ? /* @__PURE__ */ import_react5.default.createElement(
       VEListenZeile,
       {
         key: v.id,
@@ -44292,7 +44354,7 @@
     }
     const hatAuswahl = statView === "objekte" && aktVEId || statView === "gruppen" && aktGruppe;
     const masterInhalt = (layout) => {
-      const masterGridStyle = istListe ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` };
+      const masterGridStyle = istListe ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` };
       return statView === "objekte" ? /* @__PURE__ */ import_react5.default.createElement("div", { style: masterGridStyle }, ves.map((ve) => istListe ? /* @__PURE__ */ import_react5.default.createElement(
         VEListenZeile,
         {
@@ -46347,7 +46409,7 @@
         onBack: () => setExpandedVEId(null)
       }
     ));
-    const masterListe = (layout) => /* @__PURE__ */ import_react6.default.createElement("div", { style: listenAnsicht === "liste" ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, gefiltert.map((ve) => listenAnsicht === "liste" ? /* @__PURE__ */ import_react6.default.createElement(
+    const masterListe = (layout) => /* @__PURE__ */ import_react6.default.createElement("div", { style: listenAnsicht === "liste" ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, gefiltert.map((ve) => listenAnsicht === "liste" ? /* @__PURE__ */ import_react6.default.createElement(
       VEListenZeile,
       {
         key: ve.id,
@@ -55764,7 +55826,7 @@
     return /* @__PURE__ */ import_react8.default.createElement(
       MasterDetailRahmen,
       {
-        master: (layout) => layout.nurMaster ? renderKartenSpalte(Math.max(1, layout.cols), null, layout.kartenMaxBreite) : renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite),
+        master: (layout) => layout.nurMaster ? renderKartenSpalte(Math.max(1, layout.cols), null, layout.kartenMaxBreite, layout.einspaltig) : renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite),
         detail: detailKarte,
         mobilDetail: detailKarte,
         istDesktop,
@@ -56229,9 +56291,9 @@
         }
       }
     ) : null;
-    const wrapStyle = festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" } : { ...KACHEL_GRID, gridAutoFlow: "dense" };
     const windowW = useWindowWidth();
     const istDesktop = windowW >= 900;
+    const wrapStyle = !istDesktop ? { display: "grid", gridTemplateColumns: "1fr", gap: 10 } : festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" } : { ...KACHEL_GRID, gridAutoFlow: "dense" };
     const hatOffen = aktiv != null && aktivK != null;
     (0, import_react8.useEffect)(() => {
       if (typeof onNurDetail !== "function") return;
@@ -56269,8 +56331,8 @@
         onClick
       }
     );
-    const renderKartenSpalte = (cols, kartenBreite, nurMasterBreite) => {
-      const gridStyle = kartenBreite ? { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${kartenBreite}px)`, alignContent: "start" } : { ...kachelGridBreite(nurMasterBreite), alignContent: "start" };
+    const renderKartenSpalte = (cols, kartenBreite, nurMasterBreite, einspaltig) => {
+      const gridStyle = kartenBreite ? { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${kartenBreite}px)`, alignContent: "start" } : { ...kachelGridBreite(nurMasterBreite, einspaltig), alignContent: "start" };
       const alphaTrennerAn2 = anzeige.alphaTrenner !== false;
       const renderGruppeMD = (liste, typ, extraStyle) => {
         const listenWrap = { display: "flex", flexDirection: "column", gap: 6, ...extraStyle || {} };
@@ -60405,7 +60467,8 @@
       ...layoutRaw,
       nurMaster: !hatDetail,
       kartenMaxBreite,
-      kartenMin
+      kartenMin,
+      einspaltig: !istDesktop
     };
     const masterBreite = layout.masterBreite;
     const detailBreite = layout.detailBreite || detailMinBreite;
