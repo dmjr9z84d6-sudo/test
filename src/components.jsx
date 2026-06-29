@@ -3445,9 +3445,19 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   const [contentRef, contentW] = useContentWidth();
   const istListe = listenAnsicht === "liste";
   const hatDetail = detail != null;
-  const verf = contentW || Math.max(1200, detailMinBreite + kartenMaxBreite + 80);
-  const layoutRaw = passendeMasterSpalten(verf, kartenSpalten, kartenMaxBreite,
-    kartenMin, detailMinBreite, gap, detailMin, istListe ? listeOpt : null);
+  // Auf Mobil NIE den 1200px-Desktop-Fallback nutzen: solange die echte Breite
+  // (contentW) noch nicht gemessen ist (erster Render = 0), würde verf=1200 in
+  // passendeMasterSpalten ZWEI Spalten ergeben → zweispaltiges Grid auf fiktiver
+  // 1200px-Breite → horizontaler Overflow (Querscroll) am Handy. Mobil rechnet
+  // ausschließlich einspaltig; Desktop behält den Fallback bis zur Messung.
+  const verf = contentW || (istDesktop
+    ? Math.max(1200, detailMinBreite + kartenMaxBreite + 80)
+    : 360);
+  const layoutRaw = istDesktop
+    ? passendeMasterSpalten(verf, kartenSpalten, kartenMaxBreite,
+        kartenMin, detailMinBreite, gap, detailMin, istListe ? listeOpt : null)
+    // MOBIL: immer genau EINE Spalte, volle Breite (das --ad-kg:1fr-Grid greift).
+    : { cols: 1, kartenBreite: 0, masterBreite: 0, detailBreite: verf };
   // nurMaster = Übersicht ohne offenes Detail → der Master nutzt die VOLLE Breite
   // und das Grid füllt per auto-fill so viele Spalten wie passen,
   // statt auf die feste Master-neben-Detail-Spaltenzahl begrenzt zu sein. Die

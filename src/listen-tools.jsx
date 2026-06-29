@@ -739,6 +739,9 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   const ptDefaultJahr = (wjDefault && wjDefault.von)
     ? Number(String(wjDefault.von).slice(0, 4)) : (new Date().getFullYear() - 1);
   const [ptJahr, setPtJahr] = useState(ptDefaultJahr);
+  // Stift im Kopf: schaltet ALLE Einheiten der Personen-Tage-Ansicht zugleich
+  // auf Bearbeiten (Felder editierbar). Aus = reine Anzeige.
+  const [ptEdit, setPtEdit] = useState(false);
 
   // ── Verfügbare Spalten (Pillen). Welle 1: direkt an der Einheit tippbare
   //    Felder. Eigentümer/Mieter/Telefon folgen in Welle 2. ──
@@ -1018,32 +1021,56 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   // Maske-Inhalt (Detail) — gemeinsam für Desktop-Detail und Mobil-Vollbild.
   const seMaske = (
       <>
-        {/* Kopf: um welches Objekt geht es — kanonische Objektkarte (VEKachel
-            kompakt), identisch zu Objekte/Kalender/ETV. */}
-        <div style={{ marginBottom: 14 }}>
-          <VEKachel ve={ve} t={t} accent={accent} kompakt onClick={() => {}}/>
+        {/* Kopf wie im Objekte-Detail (§77): VE-Nummer groß/Akzent + Adresse
+            klein/weiß links, Wirtschaftsjahr-Umschalter in der Mitte, rechts der
+            runde Stift. Der Stift schaltet ALLE Einheiten der Personen-Tage-
+            Ansicht zugleich auf Bearbeiten. Jahr+Stift nur im Personen-Tage-Modus. */}
+        {ve && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12,
+          marginBottom: 14, minWidth: 0, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 200px", minWidth: 0, display: "flex",
+            alignItems: "baseline", gap: 10, overflow: "hidden" }}>
+            <span style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
+              whiteSpace: "nowrap", flexShrink: 0 }}>{ve.nr}</span>
+            {ve.adresse ? (
+              <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ve.adresse}</span>
+            ) : null}
+          </div>
+          {modus === "personentage" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button onClick={() => setPtJahr(j => j - 1)}
+                  title="Jahr zurück" aria-label="Jahr zurück"
+                  style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                    color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>‹</button>
+                <div style={{ textAlign: "center", minWidth: 84 }}>
+                  <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
+                  <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
+                </div>
+                <button onClick={() => setPtJahr(j => j + 1)}
+                  title="Jahr vor" aria-label="Jahr vor"
+                  style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                    color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
+              </div>
+              <button onClick={() => setPtEdit(e => !e)}
+                title={ptEdit ? "Fertig — Anzeige" : "Bearbeiten — alle Einheiten"}
+                aria-label={ptEdit ? "Fertig" : "Bearbeiten"}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
+                  borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
+                <I name={ptEdit ? "check" : "pencil"} size={ptEdit ? 14 : 14}
+                  color={getContrastColor(accent)}/>
+              </button>
+            </>
+          )}
         </div>
+        )}
 
-        {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73).
-            Im Personen-Tage-Modus steht das Wirtschaftsjahr rechts in derselben Zeile. */}
-        <div style={{ marginBottom: 14, display: "flex", alignItems: "center",
-          gap: 12, flexWrap: "wrap" }}>
+        {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73). */}
+        <div style={{ marginBottom: 14 }}>
           <SegmentControl t={t} accent={accent} value={modus} onChange={setModus}
             options={[{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]}/>
-          {modus === "personentage" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
-              <button onClick={() => setPtJahr(j => j - 1)}
-                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                  color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>‹</button>
-              <div style={{ textAlign: "center", minWidth: 84 }}>
-                <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
-                <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
-              </div>
-              <button onClick={() => setPtJahr(j => j + 1)}
-                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                  color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
-            </div>
-          )}
         </div>
 
         {modus === "tabelle" ? (
@@ -1154,6 +1181,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
                     <PersonenTageUebersicht einheit={e} t={t} accent={accent}
                       jahrExtern={ptJahr} immerOffen titel={`Personen-Tage ${ptJahr}`}
                       einheitLabel={`${e.nr || e.lage || "Einheit"}${e.nr && e.lage ? ` · ${e.lage}` : ""}`}
+                      bearbeiten={ptEdit}
                       onUpdate={(neuE) => patchEinheit(e.id, () => neuE)}/>
                   </div>
                 ))}

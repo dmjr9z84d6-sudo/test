@@ -1868,7 +1868,7 @@ function TeilRaeume({ raeume, t, accent, editMode, onAdd, onChange, onRemove,
 // hinzufügen/löschen. Lücken zwischen Abschnitten = 0 Personen (Leerstand).
 // Bezugsjahr ist umschaltbar (Pfeile), vorbelegt aus dem Objekt-WJ.
 // Schreibt über onUpdate die geänderte Einheit zurück.
-function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahrExtern = null, immerOffen = false, titel = null, einheitLabel = null }) {
+function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahrExtern = null, immerOffen = false, titel = null, einheitLabel = null, bearbeiten = true }) {
   const isStellplatz = isStellplatzTyp(einheit.typ);
   // Bezugsjahr-State: Default aus dem übergebenen WJ (sonst Vorjahr).
   const defaultJahr = (() => {
@@ -2053,6 +2053,7 @@ function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahr
                   <div key={z.id} style={{ display: "flex", alignItems: "center", gap: 6,
                     flexWrap: "wrap" }}>
                     {hatAbschnitte ? (
+                      bearbeiten ? (
                       <>
                         <div style={{ flex: "1 1 110px", minWidth: 100 }}>
                           <DatumFeld value={z.von || null}
@@ -2078,6 +2079,18 @@ function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahr
                           style={{ background: "none", border: "none", color: t.muted,
                             cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }}>×</button>
                       </>
+                      ) : (
+                        // LESEMODUS: gleiche Daten als reiner Text (keine Inputs/Buttons).
+                        <div style={{ fontSize: FS.s, color: t.sub, display: "flex",
+                          alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ color: t.text }}>{datumDe(z.von) || "—"}</span>
+                          <span style={{ color: t.muted }}>–</span>
+                          <span style={{ color: t.text }}>{datumDe(z.bis) || "—"}</span>
+                          <span style={{ color: t.muted, whiteSpace: "nowrap" }}>
+                            · {z.anzahl} Pers · {z.kalenderTage} T = <b style={{ color: t.text }}>{z.tage}</b>
+                          </span>
+                        </div>
+                      )
                     ) : (
                       // Fallback-Sammelzeile (read-only) — Hinweis + Button zum Aufschlüsseln.
                       <div style={{ fontSize: FS.s, color: t.sub }}>
@@ -2091,12 +2104,14 @@ function PersonenTageUebersicht({ einheit, t, accent, wjZeitraum, onUpdate, jahr
 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
                 marginTop: 8, gap: 8 }}>
-                <button onClick={() => addAbschnitt(belegId)}
-                  style={{ background: "none", border: `1px dashed ${accent}80`, borderRadius: RAD.sm,
-                    color: accent, fontSize: FS.xs, fontWeight: FW.medium, cursor: "pointer",
-                    padding: "5px 9px" }}>
-                  + Abschnitt
-                </button>
+                {bearbeiten ? (
+                  <button onClick={() => addAbschnitt(belegId)}
+                    style={{ background: "none", border: `1px dashed ${accent}80`, borderRadius: RAD.sm,
+                      color: accent, fontSize: FS.xs, fontWeight: FW.medium, cursor: "pointer",
+                      padding: "5px 9px" }}>
+                    + Abschnitt
+                  </button>
+                ) : <span/>}
                 <span style={{ fontSize: FS.xs, color: t.sub }}>
                   Σ {belegSumme}
                 </span>
