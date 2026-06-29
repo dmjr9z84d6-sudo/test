@@ -23661,7 +23661,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.13";
+  var APP_VERSION = "13.14";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -60368,7 +60368,7 @@
     mitte = null,
     rechts = null
   }) {
-    return /* @__PURE__ */ import_react9.default.createElement(StickySectionHeader, { t, accent }, /* @__PURE__ */ import_react9.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, width: "100%", minWidth: 0 } }, typeof titel === "string" ? /* @__PURE__ */ import_react9.default.createElement(
+    const titelNode = typeof titel === "string" ? /* @__PURE__ */ import_react9.default.createElement(
       "div",
       {
         onClick: onTitelClick || void 0,
@@ -60376,21 +60376,36 @@
         style: {
           fontSize: FS.xxl,
           fontWeight: FW.heavy,
-          flexShrink: 0,
           color: titelAktiv ? t.text : t.sub,
           cursor: onTitelClick ? "pointer" : "default",
           userSelect: "none",
-          transition: "color 0.15s"
+          transition: "color 0.15s",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis"
         }
       },
       titel
-    ) : titel, mitte, rechts ? /* @__PURE__ */ import_react9.default.createElement("div", { style: {
-      marginLeft: "auto",
+    ) : titel;
+    const hatRechts = mitte != null || rechts != null;
+    return /* @__PURE__ */ import_react9.default.createElement(StickySectionHeader, { t, accent }, /* @__PURE__ */ import_react9.default.createElement("div", { style: {
+      position: "relative",
+      display: "flex",
+      alignItems: "center",
+      width: "100%",
+      minWidth: 0
+    } }, /* @__PURE__ */ import_react9.default.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 } }, titelNode), hatRechts && /* @__PURE__ */ import_react9.default.createElement("div", { style: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      right: 0,
       display: "flex",
       alignItems: "center",
       gap: 8,
-      flexShrink: 0
-    } }, rechts) : null));
+      flexShrink: 0,
+      paddingLeft: 32,
+      background: `linear-gradient(to right, ${t.bg}00 0%, ${t.bg} 24px, ${t.bg} 100%)`
+    } }, mitte, rechts)));
   }
   function DetailKopf({ t, accent, titel = null, sub = null, aktion = null, onTitelClick = null, marginBottom = 14 }) {
     if (titel == null && aktion == null) return null;
