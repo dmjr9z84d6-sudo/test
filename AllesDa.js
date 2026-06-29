@@ -23661,7 +23661,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.25";
+  var APP_VERSION = "13.28";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -43387,13 +43387,19 @@
     const kontakteListe = Array.isArray(kontakte) ? kontakte : [];
     const kontaktById = (id) => kontakteListe.find((k) => k && String(k.id) === String(id)) || null;
     const kontaktName = (k) => k ? k.name || [k.vorname, k.nachname].filter(Boolean).join(" ") || "Kontakt" : "";
-    const kontaktTelefon = (k) => k ? k.telefon || k.mobil || k.tel || "" : "";
+    const kontaktTelefon = (k) => {
+      if (!k) return "";
+      const tels = Array.isArray(k.tels) ? k.tels : [];
+      const erste = tels.find((tt) => tt && tt.nr);
+      if (erste) return erste.nr;
+      return k.telefon || k.mobil || k.tel || "";
+    };
     const kontaktEmail = (k) => {
       if (!k) return "";
-      if (k.email) return k.email;
-      const liste = Array.isArray(k.emails) ? k.emails : [];
-      const erste = liste[0];
-      return erste ? erste.email || erste : "";
+      const mails = Array.isArray(k.emails) ? k.emails : [];
+      const erste = mails.find((ee) => ee && ee.email);
+      if (erste) return erste.email;
+      return k.email || "";
     };
     const kontaktAdresse = (k) => {
       if (!k) return "";
@@ -43998,40 +44004,38 @@
       marginTop: 10
     } }, /* @__PURE__ */ import_react5.default.createElement("table", { style: {
       borderCollapse: "collapse",
-      width: "100%",
       fontSize: FS.m,
       color: t.text
     } }, /* @__PURE__ */ import_react5.default.createElement("thead", null, /* @__PURE__ */ import_react5.default.createElement("tr", { style: { background: t.surface } }, /* @__PURE__ */ import_react5.default.createElement("th", { style: {
       textAlign: "left",
-      padding: "10px 12px",
+      padding: "8px 10px",
       borderBottom: `1px solid ${t.border}`,
       position: "sticky",
       left: 0,
       background: t.surface,
       fontWeight: FW.bold,
       color: t.sub,
-      minWidth: 130,
+      minWidth: 64,
       whiteSpace: "nowrap"
     } }, "Einheit"), spalten.map((sid) => {
       const sd = spalteDef(sid);
       return sd ? /* @__PURE__ */ import_react5.default.createElement("th", { key: sid, style: {
         textAlign: "left",
-        padding: "10px 12px",
+        padding: "8px 10px",
         borderBottom: `1px solid ${t.border}`,
         fontWeight: FW.bold,
         color: t.sub,
-        minWidth: sd.breite,
         whiteSpace: "nowrap"
       } }, sd.label) : null;
     }), spalten.length === 0 && /* @__PURE__ */ import_react5.default.createElement("th", { style: {
       textAlign: "left",
-      padding: "10px 12px",
+      padding: "8px 10px",
       borderBottom: `1px solid ${t.border}`,
       fontWeight: FW.regular,
       color: t.muted,
       fontStyle: "italic"
     } }, "Oben Spalten w\xE4hlen \u2026"))), /* @__PURE__ */ import_react5.default.createElement("tbody", null, einheiten.map((e, ri) => /* @__PURE__ */ import_react5.default.createElement("tr", { key: e.id, style: { background: ri % 2 ? t.card : "transparent" } }, /* @__PURE__ */ import_react5.default.createElement("td", { style: {
-      padding: "6px 12px",
+      padding: "6px 10px",
       borderBottom: `1px solid ${t.border}40`,
       position: "sticky",
       left: 0,
@@ -44582,10 +44586,12 @@
     });
     let auswahlVes = ves;
     let auswahlTitel = "";
+    let auswahlSub = null;
     if (statView === "objekte") {
       const vo = ves.find((v) => v.id === aktVEId) || null;
       auswahlVes = vo ? [vo] : [];
       auswahlTitel = vo ? vo.nr || "Objekt" : "";
+      auswahlSub = vo ? vo.adresse || null : null;
     } else {
       const g = gruppenOptionen.find((x) => x.kind + ":" + x.id === aktGruppe) || null;
       auswahlVes = g ? ves.filter(g.filter) : [];
@@ -44649,7 +44655,7 @@
         );
       }));
     };
-    const detailInhalt = hatAuswahl && auswahlVes.length > 0 ? /* @__PURE__ */ import_react5.default.createElement(DetailRahmen, { t, accent, titel: auswahlTitel }, /* @__PURE__ */ import_react5.default.createElement(StatistikInhalt, { ves: auswahlVes, kontakte, t, accent })) : null;
+    const detailInhalt = hatAuswahl && auswahlVes.length > 0 ? /* @__PURE__ */ import_react5.default.createElement(DetailRahmen, { t, accent, titel: auswahlTitel, sub: auswahlSub }, /* @__PURE__ */ import_react5.default.createElement(StatistikInhalt, { ves: auswahlVes, kontakte, t, accent })) : null;
     const header = /* @__PURE__ */ import_react5.default.createElement(
       ScreenKopf,
       {
@@ -60623,14 +60629,21 @@
       },
       titel
     ) : titel;
-    const hatRechts = mitte != null || rechts != null;
+    const hatRechts = rechts != null;
     return /* @__PURE__ */ import_react9.default.createElement(StickySectionHeader, { t, accent }, /* @__PURE__ */ import_react9.default.createElement("div", { style: {
       position: "relative",
       display: "flex",
       alignItems: "center",
       width: "100%",
       minWidth: 0
-    } }, /* @__PURE__ */ import_react9.default.createElement("div", { style: { flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 } }, titelNode), hatRechts && /* @__PURE__ */ import_react9.default.createElement("div", { style: {
+    } }, /* @__PURE__ */ import_react9.default.createElement("div", { style: {
+      flex: 1,
+      minWidth: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      paddingRight: hatRechts ? 48 : 0
+    } }, titelNode, mitte), hatRechts && /* @__PURE__ */ import_react9.default.createElement("div", { style: {
       position: "absolute",
       top: 0,
       bottom: 0,
@@ -60641,7 +60654,7 @@
       flexShrink: 0,
       paddingLeft: 32,
       background: `linear-gradient(to right, ${t.bg}00 0%, ${t.bg} 24px, ${t.bg} 100%)`
-    } }, mitte, rechts)));
+    } }, rechts)));
   }
   function DetailKopf({ t, accent, titel = null, sub = null, aktion = null, onTitelClick = null, marginBottom = 14 }) {
     if (titel == null && aktion == null) return null;
@@ -63945,10 +63958,11 @@
         overflowWrap: "anywhere"
       } }, d.firma))));
       const hatAuswahl = auftragView === "objekt" && auftragViewVEId || auftragView === "firma" && auftragFirmaId;
-      let detailKopf = null, detailListe = null;
+      let detailKopf = null, detailSub = null, detailListe = null;
       if (auftragView === "objekt" && auftragViewVEId) {
         const vo = (vesSichtbar || []).find((v) => v.id === auftragViewVEId);
-        detailKopf = vo ? (vo.nr || "Objekt") + (vo.adresse ? " \xB7 " + vo.adresse : "") : "";
+        detailKopf = vo ? vo.nr || "Objekt" : "";
+        detailSub = vo && vo.adresse ? vo.adresse : null;
         detailListe = renderVorgaenge(demoAlle);
       } else if (auftragView === "firma" && auftragFirmaId) {
         const fk = firmen.find((f) => f.id === auftragFirmaId);
@@ -63994,7 +64008,7 @@
           onClick: () => setAuftragFirmaId(auftragFirmaId === f.id ? null : f.id)
         }
       )));
-      const detailInhalt = hatAuswahl ? /* @__PURE__ */ import_react11.default.createElement(DetailRahmen, { t, accent: aAccent, titel: detailKopf }, detailListe) : null;
+      const detailInhalt = hatAuswahl ? /* @__PURE__ */ import_react11.default.createElement(DetailRahmen, { t, accent: aAccent, titel: detailKopf, sub: detailSub }, detailListe) : null;
       const aufLegende = baueObjektLegende(aAccent);
       const auftragHeader = /* @__PURE__ */ import_react11.default.createElement(
         ScreenKopf,
