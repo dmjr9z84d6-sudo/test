@@ -23661,7 +23661,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.14";
+  var APP_VERSION = "13.16";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -43833,7 +43833,7 @@
         minHeight: 0,
         overflowY: "auto",
         paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)"
-      } }, seMaske));
+      } }, ve ? /* @__PURE__ */ import_react5.default.createElement(DetailRahmen, { t, accent }, seMaske) : seMaske));
     }
     return /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } }, seHeader, legendeEl ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { flexShrink: 0, padding: "0 2px" } }, legendeEl) : null, /* @__PURE__ */ import_react5.default.createElement(
       MasterDetailRahmen,
@@ -44161,11 +44161,7 @@
         /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.s, color: t.muted, marginTop: 2 } }, g.sub)
       );
     }));
-    const lgDetailKern = lgHatAuswahl ? /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, !istDesktopLG && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 12 } }, /* @__PURE__ */ import_react5.default.createElement(HeaderZurueck, { onClick: () => {
-      setObjektId(null);
-      setAktGruppe(null);
-      setVorlageId(null);
-    }, t })), !vorlage && /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.s, color: t.muted, margin: "0 2px 10px" } }, "Welche Liste m\xF6chtest du erstellen?"), /* @__PURE__ */ import_react5.default.createElement("div", { style: kartenGridStyle({ einspaltig: !istDesktopLG, nurMaster: true, kartenMaxBreite: KACHEL_W }) }, sichtbareVorlagen.map((v) => /* @__PURE__ */ import_react5.default.createElement(
+    const lgDetailKern = lgHatAuswahl ? /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, !vorlage && /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.s, color: t.muted, margin: "0 2px 10px" } }, "Welche Liste m\xF6chtest du erstellen?"), /* @__PURE__ */ import_react5.default.createElement("div", { style: kartenGridStyle({ einspaltig: !istDesktopLG, nurMaster: true, kartenMaxBreite: KACHEL_W }) }, sichtbareVorlagen.map((v) => /* @__PURE__ */ import_react5.default.createElement(
       "div",
       {
         key: v.id,
@@ -44194,7 +44190,7 @@
         flex: 1,
         minHeight: 0
       } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: 22, flexShrink: 0 } }, v.icon), /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, fontWeight: FW.bold, color: t.text } }, v.label), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.s, color: t.sub } }, v.sub)))
-    )))), vorlage && /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: 22 } }, vorlage.icon), /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.l, fontWeight: FW.bold, color: t.text } }, vorlage.label), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.s, color: t.sub } }, vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " \xB7 " + ve.adresse : "") : vorlage.sub)), /* @__PURE__ */ import_react5.default.createElement(HeaderZurueck, { onClick: () => setVorlageId(null), t })), vorlage.bereich === "objekt" && hausWaehlbar && /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", gap: 14, flexWrap: "wrap" } }, /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("div", { style: labelStyle }, "Haus"), /* @__PURE__ */ import_react5.default.createElement(
+    )))), vorlage && /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: 22 } }, vorlage.icon), /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.l, fontWeight: FW.bold, color: t.text } }, vorlage.label), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.s, color: t.sub } }, vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " \xB7 " + ve.adresse : "") : vorlage.sub))), vorlage.bereich === "objekt" && hausWaehlbar && /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", gap: 14, flexWrap: "wrap" } }, /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("div", { style: labelStyle }, "Haus"), /* @__PURE__ */ import_react5.default.createElement(
       "select",
       {
         value: hausId == null ? "" : String(hausId),
@@ -44272,14 +44268,22 @@
             }
           }
         ),
-        rechts: lgHatAuswahl && lgNurDetail ? /* @__PURE__ */ import_react5.default.createElement(HeaderZurueck, { onClick: () => setVorlageId(null), t }) : null
+        rechts: lgHatAuswahl ? /* @__PURE__ */ import_react5.default.createElement(HeaderZurueck, { onClick: () => {
+          if (vorlage) {
+            setVorlageId(null);
+          } else {
+            setObjektId(null);
+            setAktGruppe(null);
+            setVorlageId(null);
+          }
+        }, t }) : null
       }
     ), lgView === "objekte" && legendeEl ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { flexShrink: 0, padding: "0 2px" } }, legendeEl) : null, /* @__PURE__ */ import_react5.default.createElement(
       MasterDetailRahmen,
       {
         master: lgMasterInhalt,
         detail: lgDetailInhalt,
-        mobilDetail: lgDetailKern,
+        mobilDetail: lgDetailInhalt,
         istDesktop: istDesktopLG,
         listenAnsicht,
         listeOpt,
