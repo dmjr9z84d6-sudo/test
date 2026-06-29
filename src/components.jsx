@@ -3387,6 +3387,34 @@ function ScreenKopf({ t, accent, titel, titelAktiv = true, onTitelClick = null,
 // Edit-Stift bei Objekten). Wer einen Detail-Kopf braucht, nutzt DIESEN Baustein
 // und baut ihn NICHT selbst nach — neue Kacheln/Bereiche erben damit dieselbe
 // Kopf-Optik automatisch.
+// ── DetailKopf — die EINE Detail-Titelzeile (§76) ───────────────────────────
+// VE-Nummer groß/Akzent + Adresse klein/weiß (kürzt mit …) links, Aktions-Slot
+// (Stift bzw. X+Haken) rechts. Jeder Detail-/Vollbild-Screen (Objekt, Schnell-
+// eingabe, künftige Bereiche) nutzt DIESEN Kopf und baut ihn NICHT selbst nach.
+// onTitelClick: optional (z. B. Mobil-Header → Zurück bei Klick auf den Titel).
+function DetailKopf({ t, accent, titel = null, sub = null, aktion = null, onTitelClick = null, marginBottom = 14 }) {
+  if (titel == null && aktion == null) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom, minWidth: 0 }}>
+      <div onClick={onTitelClick || undefined}
+        style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline",
+          gap: 10, overflow: "hidden", cursor: onTitelClick ? "pointer" : "default" }}>
+        {(titel != null) && (
+          <span style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
+            lineHeight: 1.1, whiteSpace: "nowrap", flexShrink: 0 }}>{titel}</span>
+        )}
+        {(sub != null) && (
+          <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>
+        )}
+      </div>
+      {(aktion != null) && (
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>{aktion}</div>
+      )}
+    </div>
+  );
+}
+
 function DetailRahmen({ t, accent, titel = null, sub = null, aktion = null, children }) {
   const hatKopf = titel != null || aktion != null;
   return (
@@ -3394,22 +3422,7 @@ function DetailRahmen({ t, accent, titel = null, sub = null, aktion = null, chil
       borderRadius: RAD.lg, padding: "14px 16px",
       boxSizing: "border-box", width: "100%", minWidth: 0, overflowWrap: "anywhere" }}>
       {hatKopf && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minWidth: 0 }}>
-          <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline",
-            gap: 10, overflow: "hidden" }}>
-            {(titel != null) && (
-              <span style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
-                lineHeight: 1.1, whiteSpace: "nowrap", flexShrink: 0 }}>{titel}</span>
-            )}
-            {(sub != null) && (
-              <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>
-            )}
-          </div>
-          {(aktion != null) && (
-            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>{aktion}</div>
-          )}
-        </div>
+        <DetailKopf t={t} accent={accent} titel={titel} sub={sub} aktion={aktion}/>
       )}
       {children}
     </div>
@@ -3561,6 +3574,7 @@ export {
   ScreenKopf,
   HeaderZurueck,
   HeaderPlus,
+  DetailKopf,
   DetailRahmen,
   MasterDetailRahmen,
   Toggle,

@@ -10,7 +10,7 @@ import {
 } from "./utils-icons.jsx";
 import {
   Avatar, DATUM_MONATE_KURZ, DatumFeld, FeldKontaktKarte, LEGIONELLEN_BEFUNDE,
-  LEGIONELLEN_STATUS_FARBE, DetailRahmen, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
+  LEGIONELLEN_STATUS_FARBE, DetailKopf, DetailRahmen, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
@@ -1311,23 +1311,14 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
   return (
     <EinheitOffenContext.Provider value={{ offen: einheitOffen, setOffen: setEinheitOffen }}>
     <div>
-      {/* Detail-Kopf — identische Optik zum kanonischen DetailRahmen-Kopf (§77):
-          VE-Nummer groß/Akzent + Adresse klein/WEISS in EINER Zeile (baseline),
-          Adresse kürzt mit … ; rechts der runde Bearbeiten-Button.
-          headerOhneEditBtn=true im Mobile-Detail-Modus (Button sitzt im Sticky-Header). */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, minWidth: 0 }}>
-        <div onClick={(headerOhneEditBtn && onBack) ? onBack : undefined}
-          style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: 10,
-          overflow: "hidden",
-          cursor: (headerOhneEditBtn && onBack) ? "pointer" : "default" }}>
-          <span style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
-            whiteSpace: "nowrap", flexShrink: 0 }}>{ve.nr}</span>
-          {ve.adresse ? (
-            <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ve.adresse}</span>
-          ) : null}
-        </div>
-        {!headerOhneEditBtn && !(einheitOffen && !editMode) && (
+      {/* Detail-Titelzeile aus dem zentralen DetailKopf-Baustein (§76). Aktions-
+          Slot: Stift bzw. X+Haken (+ Löschen im Edit). headerOhneEditBtn=true im
+          Mobile-Detail (Button sitzt im Sticky-Header) → kein Aktions-Slot hier,
+          Klick auf den Titel geht zurück. */}
+      <DetailKopf t={t} accent={accent} titel={ve.nr} sub={ve.adresse || null}
+        marginBottom={12}
+        onTitelClick={(headerOhneEditBtn && onBack) ? onBack : null}
+        aktion={(!headerOhneEditBtn && !(einheitOffen && !editMode)) ? (
           editMode ? (
             <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
               {loeschenErlaubt.objekte && setVes && (
@@ -1339,42 +1330,29 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
               )}
               <button onClick={bearbeitenAbbrechen}
                 title="Abbrechen — Änderungen verwerfen" aria-label="Abbrechen"
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0,
-                  background: accent, border: "none",
-                  borderRadius: RAD.pill, cursor: "pointer",
-                  boxShadow: `0 1px 2px ${accent}40`,
-                }}>
+                style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
+                  borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
                 <I name="x" size={16} color="#EF4444"/>
               </button>
               <button onClick={bearbeitenFertig}
                 title="Fertig — Änderungen behalten" aria-label="Fertig"
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0,
-                  background: accent, border: "none",
-                  borderRadius: RAD.pill, cursor: "pointer",
-                  boxShadow: `0 1px 2px ${accent}40`,
-                }}>
+                style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
+                  borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
                 <I name="check" size={14} color="#FFFFFF"/>
               </button>
             </div>
           ) : (
             <button onClick={() => setEditMode(true)}
               title="Bearbeiten" aria-label="Bearbeiten"
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 36, height: 36, flexShrink: 0,
-                background: accent, border: "none",
-                borderRadius: RAD.pill, cursor: "pointer",
-                boxShadow: `0 1px 2px ${accent}40`,
-              }}>
+              style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
+                borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
               <I name="pencil" size={14} color={getContrastColor(accent)}/>
             </button>
           )
-        )}
-      </div>
+        ) : null}/>
 
       {/* Reiter — horizontal scrollbar (wie das Dashboard im Header), damit
           auch 6+ Reiter auf Mobile Platz finden. Aktiver Reiter scrollt

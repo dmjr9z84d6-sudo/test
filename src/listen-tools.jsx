@@ -9,7 +9,7 @@ import {
 import {
   DESKTOP_MIN_WIDTH, I, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
-import { DatumFeld, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, SegmentControl } from "./components.jsx";
+import { DatumFeld, DetailKopf, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, SegmentControl } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -1095,24 +1095,13 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   // Maske-Inhalt (Detail) — gemeinsam für Desktop-Detail und Mobil-Vollbild.
   const seMaske = (
       <>
-        {/* Kopf wie im Objekte-Detail (§77): VE-Nummer groß/Akzent + Adresse
-            klein/weiß links, Wirtschaftsjahr-Umschalter in der Mitte, rechts der
-            runde Stift. Der Stift schaltet ALLE Einheiten der Personen-Tage-
-            Ansicht zugleich auf Bearbeiten. Jahr+Stift nur im Personen-Tage-Modus. */}
+        {/* Detail-Titelzeile aus dem zentralen DetailKopf-Baustein (§76) — gleiche
+            Optik wie Objekt-Detail. Der Bearbeiten-Stift sitzt im Sticky-Header
+            (editAktion); hier rechts nur der Wirtschaftsjahr-Umschalter (nur im
+            Personen-Tage-Modus). */}
         {ve && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12,
-          marginBottom: 14, minWidth: 0, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 200px", minWidth: 0, display: "flex",
-            alignItems: "baseline", gap: 10, overflow: "hidden" }}>
-            <span style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: accent,
-              whiteSpace: "nowrap", flexShrink: 0 }}>{ve.nr}</span>
-            {ve.adresse ? (
-              <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ve.adresse}</span>
-            ) : null}
-          </div>
-          {modus === "personentage" && (
-            <>
+          <DetailKopf t={t} accent={accent} titel={ve.nr} sub={ve.adresse || null}
+            aktion={modus === "personentage" ? (
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <button onClick={() => setPtJahr(j => j - 1)}
                   title="Jahr zurück" aria-label="Jahr zurück"
@@ -1127,9 +1116,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
                   style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
                     color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
               </div>
-            </>
-          )}
-        </div>
+            ) : null}/>
         )}
 
         {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73). */}
