@@ -23661,7 +23661,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.18";
+  var APP_VERSION = "13.22";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -42150,7 +42150,7 @@
           setTypFilter("alle");
           if (setKalViewVEId) setKalViewVEId(null);
         },
-        mitte: /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, /* @__PURE__ */ import_react4.default.createElement(
+        mitte: /* @__PURE__ */ import_react4.default.createElement(
           KopfPille,
           {
             t,
@@ -42162,19 +42162,7 @@
               if (setKalViewVEId) setKalViewVEId(null);
             }
           }
-        ), kalView === "timeline" && /* @__PURE__ */ import_react4.default.createElement(
-          FilterButtons,
-          {
-            arten: KALENDER_TYPEN,
-            aktive: aktiveTypen,
-            counts,
-            wert: typFilter,
-            onWert: setTypFilter,
-            t,
-            accent,
-            ohneAlle: true
-          }
-        )),
+        ),
         rechts: kalNurDetail ? /* @__PURE__ */ import_react4.default.createElement(HeaderZurueck, { onClick: () => {
           setOffenTerminKey(null);
           if (setKalViewVEId) setKalViewVEId(null);
@@ -42195,7 +42183,19 @@
           }
         ) : null
       }
-    ), !kalIstDesktop && !dockAktiv ? /* @__PURE__ */ import_react4.default.createElement(
+    ), kalView === "timeline" && !kalNurDetail && /* @__PURE__ */ import_react4.default.createElement("div", { style: { flexShrink: 0, padding: "8px 2px 4px" } }, /* @__PURE__ */ import_react4.default.createElement(
+      FilterButtons,
+      {
+        arten: KALENDER_TYPEN,
+        aktive: aktiveTypen,
+        counts,
+        wert: typFilter,
+        onWert: setTypFilter,
+        t,
+        accent,
+        ohneAlle: true
+      }
+    )), !kalIstDesktop && !dockAktiv ? /* @__PURE__ */ import_react4.default.createElement(
       KalenderPanel,
       {
         variante: "overlay",
@@ -43730,7 +43730,7 @@
         minHeight: 0,
         overflowY: "auto",
         paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)"
-      } }, legendeEl, seMasterInhalt({ cols: 1, kartenBreite: kartenMaxBreite })));
+      } }, legendeEl, seMasterInhalt({ einspaltig: true, nurMaster: true, cols: 1, kartenMaxBreite })));
     }
     const rundBtnStyle = {
       display: "flex",
@@ -44040,7 +44040,7 @@
         minHeight: 0,
         overflowY: "auto",
         paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)"
-      } }, ve ? /* @__PURE__ */ import_react5.default.createElement(DetailRahmen, { t, accent }, seMaske) : seMaske));
+      } }, legendeEl ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { flexShrink: 0, padding: "0 2px", marginBottom: 10 } }, legendeEl) : null, ve ? /* @__PURE__ */ import_react5.default.createElement(DetailRahmen, { t, accent }, seMaske) : seMaske));
     }
     return /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } }, seHeader, legendeEl ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { flexShrink: 0, padding: "0 2px" } }, legendeEl) : null, /* @__PURE__ */ import_react5.default.createElement(
       MasterDetailRahmen,
@@ -62999,37 +62999,36 @@
             setFilterObjektGruppe("alle");
             setExpandedVEId(null);
           },
-          mitte: /* @__PURE__ */ import_react11.default.createElement(import_react11.default.Fragment, null, /* @__PURE__ */ import_react11.default.createElement(
-            FilterButtons,
-            {
-              arten: VERWALTUNGSARTEN,
-              aktive: aktiveArten,
-              counts: countsArt,
-              wert: filterArt,
-              onWert: setFilterArt,
-              t,
-              accent: objektAccent,
-              ohneAlle: true
-            }
-          ), objGruppenArten.length > 0 && /* @__PURE__ */ import_react11.default.createElement(
-            FilterButtons,
-            {
-              arten: objGruppenArten,
-              aktive: objGruppenArten.map((a) => a.id),
-              counts: objGruppenCounts,
-              wert: filterObjektGruppe,
-              onWert: (w) => {
-                setFilterObjektGruppe(w);
-                setExpandedVEId(null);
-              },
-              t,
-              accent: objektAccent,
-              ohneAlle: true
-            }
-          )),
           rechts: istMobileDetail || hatOffen && objektNurDetail ? /* @__PURE__ */ import_react11.default.createElement(HeaderZurueck, { onClick: () => setExpandedVEId(null), t }) : /* @__PURE__ */ import_react11.default.createElement(HeaderPlus, { onClick: () => setNeuesObjektOffen(true), accent: objektAccent, title: "Neues Objekt", t })
         }
-      ), objektLegendeEl, detailInhalt, gefiltert.length === 0 && /* @__PURE__ */ import_react11.default.createElement("div", { style: {
+      ), !(istMobileDetail || hatOffen && objektNurDetail) && /* @__PURE__ */ import_react11.default.createElement("div", { style: { flexShrink: 0, padding: "8px 2px 4px", display: "flex", gap: 6, minWidth: 0 } }, /* @__PURE__ */ import_react11.default.createElement(
+        FilterButtons,
+        {
+          arten: VERWALTUNGSARTEN,
+          aktive: aktiveArten,
+          counts: countsArt,
+          wert: filterArt,
+          onWert: setFilterArt,
+          t,
+          accent: objektAccent,
+          ohneAlle: true
+        }
+      ), objGruppenArten.length > 0 && /* @__PURE__ */ import_react11.default.createElement(
+        FilterButtons,
+        {
+          arten: objGruppenArten,
+          aktive: objGruppenArten.map((a) => a.id),
+          counts: objGruppenCounts,
+          wert: filterObjektGruppe,
+          onWert: (w) => {
+            setFilterObjektGruppe(w);
+            setExpandedVEId(null);
+          },
+          t,
+          accent: objektAccent,
+          ohneAlle: true
+        }
+      )), objektLegendeEl, detailInhalt, gefiltert.length === 0 && /* @__PURE__ */ import_react11.default.createElement("div", { style: {
         fontSize: FS.m,
         color: t.muted,
         fontStyle: "italic",
@@ -63064,40 +63063,39 @@
             setFilterKontaktGruppe("alle");
             setAktivKontaktId(null);
           },
-          mitte: /* @__PURE__ */ import_react11.default.createElement(import_react11.default.Fragment, null, /* @__PURE__ */ import_react11.default.createElement(
-            FilterButtons,
-            {
-              arten,
-              aktive: aktiveArten,
-              counts: countsArt,
-              wert: filterKontaktart,
-              onWert: (w) => {
-                setFilterKontaktart(w);
-                setAktivKontaktId(null);
-              },
-              t,
-              accent: kontaktAccent,
-              ohneAlle: true
-            }
-          ), konGruppenArten.length > 0 && /* @__PURE__ */ import_react11.default.createElement(
-            FilterButtons,
-            {
-              arten: konGruppenArten,
-              aktive: konGruppenArten.map((a) => a.id),
-              counts: konGruppenCounts,
-              wert: filterKontaktGruppe,
-              onWert: (w) => {
-                setFilterKontaktGruppe(w);
-                setAktivKontaktId(null);
-              },
-              t,
-              accent: kontaktAccent,
-              ohneAlle: true
-            }
-          )),
           rechts: aktivKontaktId && kontaktNurDetail ? /* @__PURE__ */ import_react11.default.createElement(HeaderZurueck, { onClick: () => setAktivKontaktId(null), t }) : /* @__PURE__ */ import_react11.default.createElement(HeaderPlus, { onClick: () => setNeuerKontaktOffen(true), accent: kontaktAccent, title: "Neuer Kontakt", t })
         }
-      ), /* @__PURE__ */ import_react11.default.createElement(
+      ), !(aktivKontaktId && kontaktNurDetail) && /* @__PURE__ */ import_react11.default.createElement("div", { style: { flexShrink: 0, padding: "8px 2px 4px", display: "flex", gap: 6, minWidth: 0 } }, /* @__PURE__ */ import_react11.default.createElement(
+        FilterButtons,
+        {
+          arten,
+          aktive: aktiveArten,
+          counts: countsArt,
+          wert: filterKontaktart,
+          onWert: (w) => {
+            setFilterKontaktart(w);
+            setAktivKontaktId(null);
+          },
+          t,
+          accent: kontaktAccent,
+          ohneAlle: true
+        }
+      ), konGruppenArten.length > 0 && /* @__PURE__ */ import_react11.default.createElement(
+        FilterButtons,
+        {
+          arten: konGruppenArten,
+          aktive: konGruppenArten.map((a) => a.id),
+          counts: konGruppenCounts,
+          wert: filterKontaktGruppe,
+          onWert: (w) => {
+            setFilterKontaktGruppe(w);
+            setAktivKontaktId(null);
+          },
+          t,
+          accent: kontaktAccent,
+          ohneAlle: true
+        }
+      )), /* @__PURE__ */ import_react11.default.createElement(
         KontakteScreen,
         {
           t,
