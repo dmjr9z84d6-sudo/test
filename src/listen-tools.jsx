@@ -3,13 +3,15 @@ import { FS, FW, RAD, KACHEL_W, kartenGridStyle, getContrastColor } from "./cons
 import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
   VERWALTUNGSARTEN, aktiveBelegung, aktiverTeil, belegungsTyp, bewohnerRecht,
-  eigStatus, extractNachname, flaecheVon, heuteLaufendeBelegung, isStellplatzTyp, neueBelegung,
+  eigStatus, extractNachname, flaecheVon, heizflaecheVon, setzeEinheitHeizflaeche,
+  effVerteilerschluessel, vsWertVon,
+  heuteLaufendeBelegung, isStellplatzTyp, neueBelegung,
   neuesHhMitglied, objektInGruppe, objektOrt, parseFlaeche, personenTageWert, personenTageFolgejahr, setzePersonenTageManuell, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, I, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
-import { DatumFeld, DetailKopf, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck } from "./components.jsx";
+import { DetailKopf, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -761,24 +763,80 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     patchEinheit(einheitId, (e) => setzePersonenTageManuell(e, ptJahr, wert));
   };
 
-  // ── Verfügbare Spalten (Pillen). Welle 1: direkt an der Einheit tippbare
-  //    Felder. Eigentümer/Mieter/Telefon folgen in Welle 2. ──
-  const SPALTEN_KATALOG = [
-    { id: "nr",      label: "Nr.",     breite: 120, art: "text" },
-    { id: "typ",     label: "Typ",     breite: 170, art: "typ" },
-    { id: "lage",    label: "Lage",    breite: 160, art: "text" },
-    { id: "mea",     label: "MEA",     breite: 110, art: "num" },
-    { id: "flaeche", label: "Fläche",  breite: 110, art: "num" },
-    { id: "mieter",  label: "Mieter",  breite: 200, art: "kontakt" },
-    { id: "telefon", label: "Telefon", breite: 160, art: "ablesen" },
-    { id: "einzug",  label: "Einzug",  breite: 150, art: "datum" },
-    { id: "auszug",  label: "Auszug",  breite: 150, art: "datum" },
-    { id: "ptage",   label: "Personen-Tage", breite: 200, art: "ptage" },
+  // ── Verfügbare Spalten (Pillen), gruppiert nach Kategorie (kat). Reihenfolge
+  //    der Kategorien siehe SPALTEN_KATEGORIEN. Schritt A: vorhandene Felder
+  //    einsortiert, Einzug/Auszug entfernt. Heizfläche (B), Eigentümer-/Mieter-
+  //    Kontaktdaten (C) und Verteilerschlüssel (D) folgen.
+  const SPALTEN_KATALOG_STATISCH = [
+    { id: "nr",      label: "Nr.",     breite: 120, art: "text",    kat: "einheit" },
+    { id: "typ",     label: "Typ",     breite: 170, art: "typ",     kat: "einheit" },
+    { id: "lage",    label: "Lage",    breite: 160, art: "text",    kat: "einheit" },
+    { id: "flaeche", label: "Fläche",  breite: 110, art: "num",     kat: "einheit" },
+    { id: "heizflaeche", label: "Heizfläche", breite: 120, art: "num", kat: "einheit" },
+    { id: "mea",     label: "MEA",     breite: 110, art: "num",     kat: "einheit" },
+    // Eigentümer-Kontaktdaten (alle Eigentümer kommagetrennt) — Anzeige-only.
+    { id: "eig_name", label: "Eigentümer",  breite: 200, art: "ablesen", kat: "eigentuemer" },
+    { id: "eig_tel",  label: "Telefon",     breite: 160, art: "ablesen", kat: "eigentuemer" },
+    { id: "eig_mail", label: "E-Mail",      breite: 220, art: "ablesen", kat: "eigentuemer" },
+    { id: "eig_adr",  label: "Adresse",     breite: 240, art: "ablesen", kat: "eigentuemer" },
+    // Mieter/Pächter — Name editierbar (kontakt), Kontaktdaten abgeleitet.
+    { id: "mieter",  label: "Mieter",  breite: 200, art: "kontakt", kat: "mieter" },
+    { id: "telefon", label: "Telefon", breite: 160, art: "ablesen", kat: "mieter" },
+    { id: "mie_mail", label: "E-Mail", breite: 220, art: "ablesen", kat: "mieter" },
+    { id: "mie_adr",  label: "Adresse", breite: 240, art: "ablesen", kat: "mieter" },
+    { id: "ptage",   label: "Personen-Tage", breite: 200, art: "ptage", kat: "ptage" },
+  ];
+  // Dynamische Verteilerschlüssel-Spalten — nur die SELBST angelegten (eigenen)
+  // Schlüssel dieses Objekts (Standard-Schlüssel wie MEA/Fläche sind schon als
+  // eigene Spalten da). Wert = vsWertVon, Anzeige-only.
+  const eigeneVS = ve ? effVerteilerschluessel(ve).filter(s => s && !s.fix) : [];
+  const vsSpalten = eigeneVS.map(s => ({
+    id: "vs_" + s.id, label: s.name || "Schlüssel", breite: 130, art: "vs",
+    kat: "vs", vsId: s.id,
+  }));
+  const SPALTEN_KATALOG = [...SPALTEN_KATALOG_STATISCH, ...vsSpalten];
+  // Kategorie-Reihenfolge + Überschriften für die Pillen-Gruppierung.
+  const SPALTEN_KATEGORIEN = [
+    { id: "einheit",  label: "Einheit" },
+    { id: "eigentuemer", label: "Eigentümer" },
+    { id: "mieter",   label: "Mieter / Pächter" },
+    { id: "vs",       label: "Verteilerschlüssel" },
+    { id: "ptage",    label: "Personen-Tage" },
   ];
   const kontakteListe = Array.isArray(kontakte) ? kontakte : [];
   const kontaktById = (id) => kontakteListe.find(k => k && String(k.id) === String(id)) || null;
   const kontaktName = (k) => k ? (k.name || [k.vorname, k.nachname].filter(Boolean).join(" ") || "Kontakt") : "";
   const kontaktTelefon = (k) => k ? (k.telefon || k.mobil || k.tel || "") : "";
+  const kontaktEmail = (k) => {
+    if (!k) return "";
+    if (k.email) return k.email;
+    const liste = Array.isArray(k.emails) ? k.emails : [];
+    const erste = liste[0];
+    return erste ? (erste.email || erste) : "";
+  };
+  const kontaktAdresse = (k) => {
+    if (!k) return "";
+    if (k.adresse) return k.adresse;
+    const plzOrt = k.plzOrt || [k.plz, k.ort].filter(Boolean).join(" ");
+    return [k.strasse, plzOrt].filter(Boolean).join(", ");
+  };
+  // Eigentümer-Kontakte einer Einheit (alle, in Reihenfolge). Aus einheit.eigentuemer[].
+  const eigentuemerKontakteVon = (einheit) => {
+    const liste = (einheit && Array.isArray(einheit.eigentuemer)) ? einheit.eigentuemer : [];
+    return liste.map(e => (e && e.kontaktId != null) ? kontaktById(e.kontaktId) : null).filter(Boolean);
+  };
+  // Mieter-Kontakte einer Einheit (alle benannten Mieter der aktiven Belegung).
+  const mieterKontakteVon = (einheit) => {
+    const teil = aktiverTeil(einheit);
+    const beleg = teil ? (heuteLaufendeBelegung(teil) || aktiveBelegung(teil)) : null;
+    const mitglieder = (beleg && beleg.haushalt && Array.isArray(beleg.haushalt.mitglieder))
+      ? beleg.haushalt.mitglieder : [];
+    return mitglieder.filter(m => m && m.kontaktId != null)
+      .map(m => kontaktById(m.kontaktId)).filter(Boolean);
+  };
+  // Kommagetrennte Liste eines Feldes über mehrere Kontakte (leere weglassen).
+  const kontaktFeldListe = (kontakte, fn) =>
+    kontakte.map(fn).filter(Boolean).join(", ");
   const spalteDef = (id) => SPALTEN_KATALOG.find(s => s.id === id) || null;
 
   const toggleSpalte = (id) => {
@@ -861,50 +919,40 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     if (sid === "lage")    return einheit.lage || "";
     if (sid === "mea")     return einheit.mea || "";
     if (sid === "flaeche") return flaecheVon(einheit) ? String(flaecheVon(einheit)) : (einheit.flaeche || "");
+    if (sid === "heizflaeche") return heizflaecheVon(einheit);
     if (sid === "mieter")  { const id = mieterKontaktIdVon(einheit); return id == null ? "" : String(id); }
     if (sid === "telefon") { const id = mieterKontaktIdVon(einheit); return kontaktTelefon(kontaktById(id)); }
-    if (sid === "einzug")  { const m = mieterMitgliedVon(einheit); return (m && m.von) || ""; }
-    if (sid === "auszug")  { const m = mieterMitgliedVon(einheit); return (m && m.bis) || ""; }
+    // Eigentümer-Kontaktdaten (alle Eigentümer, kommagetrennt).
+    if (sid === "eig_name") return kontaktFeldListe(eigentuemerKontakteVon(einheit), kontaktName);
+    if (sid === "eig_tel")  return kontaktFeldListe(eigentuemerKontakteVon(einheit), kontaktTelefon);
+    if (sid === "eig_mail") return kontaktFeldListe(eigentuemerKontakteVon(einheit), kontaktEmail);
+    if (sid === "eig_adr")  return kontaktFeldListe(eigentuemerKontakteVon(einheit), kontaktAdresse);
+    // Mieter-Kontaktdaten (alle Mieter, kommagetrennt).
+    if (sid === "mie_mail") return kontaktFeldListe(mieterKontakteVon(einheit), kontaktEmail);
+    if (sid === "mie_adr")  return kontaktFeldListe(mieterKontakteVon(einheit), kontaktAdresse);
+    // Verteilerschlüssel (dynamisch): vs_<id> → Wert für die Einheit.
+    if (sid.indexOf("vs_") === 0) {
+      const sdef = spalteDef(sid);
+      const schluessel = (sdef && ve) ? effVerteilerschluessel(ve).find(s => s.id === sdef.vsId) : null;
+      if (!schluessel) return "";
+      const wj = { von: `${ptJahr}-01-01`, bis: `${ptJahr}-12-31` };
+      const wert = vsWertVon(schluessel, einheit, wj);
+      return (wert != null && wert !== 0) ? String(wert) : (wert === 0 ? "0" : "");
+    }
     return "";
   };
 
   // ── Wert einer Zelle schreiben ──
   const schreibeWert = (einheitId, sid, wert) => {
     if (sid === "mieter") { schreibeMieter(einheitId, wert === "" ? null : wert); return; }
-    if (sid === "einzug" || sid === "auszug") { schreibeMeldedatum(einheitId, sid, wert); return; }
     patchEinheit(einheitId, (e) => {
       if (sid === "nr")      return { ...e, nr: wert };
       if (sid === "typ")     return { ...e, typ: wert };
       if (sid === "lage")    return { ...e, lage: wert };
       if (sid === "mea")     return setzeEinheitMea(e, wert);
       if (sid === "flaeche") return setzeEinheitFlaeche(e, wert);
+      if (sid === "heizflaeche") return setzeEinheitHeizflaeche(e, wert);
       return e;
-    });
-  };
-
-  // ── Meldedatum (Einzug=von / Auszug=bis) am Mieter-Mitglied der aktiven
-  //    Belegung setzen. Grundlage für den Personen-Tage-Verteilerschlüssel.
-  //    Setzt nur, wenn ein benanntes Mieter-Mitglied existiert (sonst no-op —
-  //    erst Mieter wählen). Schreibt in dieselbe Belegung wie schreibeMieter. ──
-  const schreibeMeldedatum = (einheitId, sid, wert) => {
-    patchEinheit(einheitId, (e) => {
-      if (isStellplatzTyp(e.typ)) return e;
-      const aktiv = aktiverTeil(e);
-      if (!aktiv) return e;
-      const beleg = heuteLaufendeBelegung(aktiv) || aktiveBelegung(aktiv);
-      if (!beleg || !beleg.haushalt || !Array.isArray(beleg.haushalt.mitglieder)) return e;
-      const feld = sid === "einzug" ? "von" : "bis";
-      const idx = beleg.haushalt.mitglieder.findIndex(
-        m => m && m.kontaktId != null && m.recht === "mieter");
-      const ziel = idx >= 0 ? idx
-        : beleg.haushalt.mitglieder.findIndex(m => m && m.kontaktId != null);
-      if (ziel < 0) return e; // kein benannter Mieter → erst Mieter wählen
-      const neueMitglieder = beleg.haushalt.mitglieder.map((m, i) =>
-        i === ziel ? { ...m, [feld]: wert || "" } : m);
-      const neuHh = { ...beleg.haushalt, mitglieder: neueMitglieder };
-      const neueBelegungen = aktiv.belegungen.map(b => b === beleg ? { ...b, haushalt: neuHh } : b);
-      const neueTeile = e.teile.map(teil => teil === aktiv ? { ...aktiv, belegungen: neueBelegungen } : teil);
-      return { ...e, teile: neueTeile };
     });
   };
 
@@ -999,32 +1047,14 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         </select>
       );
     }
-    // Telefon — abgeleitet aus dem verknüpften Mieter-Kontakt, nur Anzeige.
-    if (sdef.art === "ablesen") {
+    // Abgeleitete Werte (Kontaktdaten, Verteilerschlüssel) — nur Anzeige.
+    if (sdef.art === "ablesen" || sdef.art === "vs") {
       return (
         <div style={{ fontSize: FS.m, color: wert ? t.text : t.muted,
           padding: "6px 2px", whiteSpace: "nowrap", overflow: "hidden",
           textOverflow: "ellipsis" }}>
           {wert || "—"}
         </div>
-      );
-    }
-    // Einzug/Auszug — Meldedatum des Mieters (Grundlage Personen-Tage). Nutzt
-    // die kanonische DatumFeld-Komponente (Tastatur + Picker, iso). Bei
-    // Stellplätzen kein Haushalt; ohne benannten Mieter gibt es kein Mitglied,
-    // an das geschrieben werden könnte → dezenter Hinweis statt totem Feld.
-    if (sdef.art === "datum") {
-      if (isStellplatzTyp(einheit.typ)) {
-        return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
-      }
-      const hatMieter = mieterMitgliedVon(einheit) != null;
-      if (!hatMieter) {
-        return <span style={{ fontSize: FS.xs, color: t.muted, fontStyle: "italic" }}>erst Mieter</span>;
-      }
-      return (
-        <DatumFeld value={wert || null}
-          onChange={d => schreibeWert(einheit.id, sdef.id, d || "")}
-          t={t} accent={accent} iso defaultHeute={false}/>
       );
     }
     return (
@@ -1039,11 +1069,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   };
 
   // Lese-Darstellung einer Tabellen-Zelle (Anzeige-Modus, ptEdit=false): zeigt
-  // den reinen Wert ohne Eingabefeld. Mieter/Typ → Klartext, Datum → de-Format.
-  const isoZuDe = (s) => {
-    const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
-    return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || "");
-  };
+  // den reinen Wert ohne Eingabefeld.
   const zellText = (einheit, sdef) => {
     const wert = leseWert(einheit, sdef.id);
     if (sdef.art === "ptage") {
@@ -1068,12 +1094,6 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
       }
       const k = wert ? kontaktById(wert) : null;
       return <span style={{ fontSize: FS.m, color: k ? t.text : t.muted }}>{k ? kontaktName(k) : "—"}</span>;
-    }
-    if (sdef.art === "datum") {
-      if (isStellplatzTyp(einheit.typ)) {
-        return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
-      }
-      return <span style={{ fontSize: FS.m, color: wert ? t.text : t.muted, whiteSpace: "nowrap" }}>{wert ? isoZuDe(wert) : "—"}</span>;
     }
     return (
       <span style={{ fontSize: FS.m, color: wert ? t.text : t.muted, whiteSpace: "nowrap",
@@ -1223,6 +1243,52 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   ) : null;
 
   // Maske-Inhalt (Detail) — gemeinsam für Desktop-Detail und Mobil-Vollbild.
+  // Spalten-Pillen, gruppiert nach Kategorie (§-Konzept Schnelleingabe-Spalten).
+  // Jede Kategorie mit eigener kleiner Überschrift; nur Kategorien mit Spalten
+  // werden gezeigt. Eine Pille = eine Spalte zuschalten (Nummer = Position in der
+  // Tabelle). Als const vorab gebaut (keine IIFE in JSX, §14).
+  const pilleNode = (s) => {
+    const an = spalten.indexOf(s.id) >= 0;
+    const pos = spalten.indexOf(s.id) + 1;
+    return (
+      <button key={s.id} onClick={() => toggleSpalte(s.id)}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "6px 12px", borderRadius: RAD.pill, cursor: "pointer",
+          fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+          border: `1px solid ${an ? accent : t.border}`,
+          background: an ? accent : "none",
+          color: an ? getContrastColor(accent) : t.sub }}>
+        {an && (
+          <span style={{ fontSize: FS.xxs, fontWeight: FW.bold,
+            background: getContrastColor(accent) + "33", borderRadius: RAD.pill,
+            padding: "0 5px" }}>{pos}</span>
+        )}
+        {s.label}
+      </button>
+    );
+  };
+  const pillenGruppenNode = (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+        textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+        Spalten wählen
+      </div>
+      {SPALTEN_KATEGORIEN.map(kat => {
+        const spaltenDerKat = SPALTEN_KATALOG.filter(s => s.kat === kat.id);
+        if (spaltenDerKat.length === 0) return null;
+        return (
+          <div key={kat.id} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: FS.xxs, fontWeight: FW.bold, color: t.sub,
+              marginBottom: 5 }}>{kat.label}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {spaltenDerKat.map(s => pilleNode(s))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   const seMaske = (
       <>
         {/* Detail-Titelzeile aus dem zentralen DetailKopf-Baustein (§76) — exakt
@@ -1236,7 +1302,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         {/* Wirtschaftsjahr-Umschalter — steuert die Personen-Tage-Spalte. Bleibt
             immer sichtbar (der Tabelle/Personen-Tage-Umschalter entfällt; Personen-
             Tage sind jetzt eine Spalte in der Tabelle). */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end",
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
           gap: 10, marginBottom: 14 }}>
           <button onClick={() => setPtJahr(j => j - 1)}
             title="Jahr zurück" aria-label="Jahr zurück"
@@ -1253,38 +1319,10 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
         </div>
 
         <>
-        {/* Pillen: Spalten zuschalten — nur im Bearbeiten-Modus (Spaltenwahl
-            ist Bearbeiten). Im Anzeige-Modus erscheint nur die fertige Tabelle. */}
-        {ptEdit && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
-            textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-            Spalten wählen
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {SPALTEN_KATALOG.map(s => {
-              const an = spalten.indexOf(s.id) >= 0;
-              const pos = spalten.indexOf(s.id) + 1;
-              return (
-                <button key={s.id} onClick={() => toggleSpalte(s.id)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "6px 12px", borderRadius: RAD.pill, cursor: "pointer",
-                    fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
-                    border: `1px solid ${an ? accent : t.border}`,
-                    background: an ? accent : "none",
-                    color: an ? getContrastColor(accent) : t.sub }}>
-                  {an && (
-                    <span style={{ fontSize: FS.xxs, fontWeight: FW.bold,
-                      background: getContrastColor(accent) + "33", borderRadius: RAD.pill,
-                      padding: "0 5px" }}>{pos}</span>
-                  )}
-                  {s.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        )}
+        {/* Pillen: Spalten zuschalten — IMMER sichtbar (auch im Lese-Modus), nach
+            Kategorie gruppiert. Das Eintippen der Zellwerte bleibt dem Bearbeiten-
+            Modus vorbehalten (zellInput vs zellText). */}
+        {pillenGruppenNode}
 
         {/* Tabelle: Zeilen = Einheiten, Spalte 1 fix = Einheit, dann gewählte Spalten */}
         {einheiten.length === 0 ? (
@@ -1314,7 +1352,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
                     <th style={{ textAlign: "left", padding: "10px 12px",
                       borderBottom: `1px solid ${t.border}`, fontWeight: FW.regular,
                       color: t.muted, fontStyle: "italic" }}>
-                      {ptEdit ? "Oben Spalten wählen …" : "Noch keine Spalten — zum Bearbeiten tippen"}
+                      Oben Spalten wählen …
                     </th>
                   )}
                 </tr>

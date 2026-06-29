@@ -1051,6 +1051,23 @@ function setzeEinheitFlaeche(einheit, wert) {
   return { ...einheit, teile: neueTeile, flaeche: "" };
 }
 
+// ── Heizfläche (eigenes Feld pro Einheit) ───────────────────────────────────
+// Anders als Wohn-/Nutzfläche (die sich aus Typ + flaeche ergeben) ist die
+// Heizfläche ein separater, frei pflegbarer Wert: die beheizte Fläche für
+// Heizkostenabrechnungen, die von der reinen Wohnfläche abweichen kann.
+// Liegt flach an der Einheit (einheit.heizflaeche, String).
+function heizflaecheVon(einheit) {
+  if (!einheit) return "";
+  return einheit.heizflaeche != null ? String(einheit.heizflaeche) : "";
+}
+function setzeEinheitHeizflaeche(einheit, wert) {
+  if (!einheit) return einheit;
+  const wertStr = String(wert == null ? "" : wert).replace(",", ".");
+  const out = { ...einheit };
+  if (wertStr === "") delete out.heizflaeche; else out.heizflaeche = wertStr;
+  return out;
+}
+
 // Eine frische Belegung eines bestimmten Typs (Standard: Leerstand = lückenfüllend).
 function neueBelegung(typ, von, bis) {
   const t = BELEGUNG_TYPEN.indexOf(typ) >= 0 ? typ : "leerstand";
@@ -2318,6 +2335,8 @@ export {
   setzeEinheitKopfzahl,
   setzeEinheitMea,
   setzeEinheitFlaeche,
+  heizflaecheVon,
+  setzeEinheitHeizflaeche,
   darfFlaecheImVsEditieren,
   effVerteilerschluessel,
   vsWertVon,
