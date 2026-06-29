@@ -3350,26 +3350,41 @@ function HeaderZurueck({ onClick, label = "Zurück", t }) {
 
 function ScreenKopf({ t, accent, titel, titelAktiv = true, onTitelClick = null,
   mitte = null, rechts = null }) {
+  const titelNode = (typeof titel === "string") ? (
+    <div onClick={onTitelClick || undefined}
+      title={onTitelClick ? "Alle anzeigen" : undefined}
+      style={{ fontSize: FS.xxl, fontWeight: FW.heavy,
+        color: titelAktiv ? t.text : t.sub,
+        cursor: onTitelClick ? "pointer" : "default",
+        userSelect: "none", transition: "color 0.15s",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      {titel}
+    </div>
+  ) : titel;
+
+  // Titel + Bedienelemente in EINER Zeile, ohne Umbruch. Wird der Titel zu lang,
+  // schweben die rechten Bedienelemente (mitte+rechts) über dem Titelende: sie
+  // liegen absolut rechts mit einem t.bg→transparent-Verlauf, der den Titel weich
+  // ausblendet statt hart abzuschneiden oder umzubrechen. Bei kurzen Titeln liegt
+  // der Verlauf über leerem Raum und ist unsichtbar. Zentral hier → alle Screens
+  // (Listengenerator, Schnelleingabe, Statistik …) erben dasselbe Verhalten (§76).
+  const hatRechts = mitte != null || rechts != null;
   return (
     <StickySectionHeader t={t} accent={accent}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minWidth: 0 }}>
-        {(typeof titel === "string") ? (
-          <div onClick={onTitelClick || undefined}
-            title={onTitelClick ? "Alle anzeigen" : undefined}
-            style={{ fontSize: FS.xxl, fontWeight: FW.heavy, flexShrink: 0,
-              color: titelAktiv ? t.text : t.sub,
-              cursor: onTitelClick ? "pointer" : "default",
-              userSelect: "none", transition: "color 0.15s" }}>
-            {titel}
-          </div>
-        ) : titel}
-        {mitte}
-        {rechts ? (
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center",
-            gap: 8, flexShrink: 0 }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center",
+        width: "100%", minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+          {titelNode}
+        </div>
+        {hatRechts && (
+          <div style={{ position: "absolute", top: 0, bottom: 0, right: 0,
+            display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
+            paddingLeft: 32,
+            background: `linear-gradient(to right, ${t.bg}00 0%, ${t.bg} 24px, ${t.bg} 100%)` }}>
+            {mitte}
             {rechts}
           </div>
-        ) : null}
+        )}
       </div>
     </StickySectionHeader>
   );
