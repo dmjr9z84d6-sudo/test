@@ -883,6 +883,73 @@ function personenTageAufschluesselung(einheit, wjVon, wjBis) {
   return out;
 }
 
+// ── Personen-Tage: manueller Override schlägt Berechnung (§76) ───────────────
+// Der manuelle Wert liegt pro Jahr unter einheit.personenTageManuell[jahr]
+// (Zahl) — ist er gesetzt, gilt er; sonst wird aus der Belegung berechnet.
+// JEDE Stelle (Tabelle, Auswertung, später Abrechnung) holt den Wert NUR hier,
+// damit „manuell vor berechnet" überall identisch gilt und nicht driftet.
+function personenTageManuellVon(einheit, jahr) {
+  if (!einheit || jahr == null) return null;
+  const m = einheit.personenTageManuell;
+  if (!m || typeof m !== "object") return null;
+  const v = m[String(jahr)];
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return (isFinite(n) && n >= 0) ? n : null;
+}
+
+// Liefert { wert, manuell, berechnet } für eine Einheit + Jahr.
+//   manuell  = der Override (oder null)
+//   berechnet = die Belegungs-Summe
+//   wert     = manuell falls gesetzt, sonst berechnet
+function personenTageWert(einheit, jahr) {
+  const wjVon = `${jahr}-01-01`;
+  const wjBis = `${jahr}-12-31`;
+  const auf = personenTageAufschluesselung(einheit, wjVon, wjBis);
+  const berechnet = (auf && typeof auf.summe === "number") ? auf.summe : 0;
+  const manuell = personenTageManuellVon(einheit, jahr);
+  return {
+    wert: (manuell != null) ? manuell : berechnet,
+    manuell, berechnet,
+    istManuell: manuell != null,
+  };
+}
+
+// Setzt/löscht den manuellen Personen-Tage-Wert einer Einheit für ein Jahr.
+// wert == null oder "" → Override entfernen (zurück zur Berechnung).
+function setzePersonenTageManuell(einheit, jahr, wert) {
+  const alt = (einheit && einheit.personenTageManuell && typeof einheit.personenTageManuell === "object")
+    ? einheit.personenTageManuell : {};
+  const neu = { ...alt };
+  const key = String(jahr);
+  if (wert == null || wert === "") {
+    delete neu[key];
+  } else {
+    const n = Number(wert);
+    if (isFinite(n) && n >= 0) neu[key] = n; else delete neu[key];
+  }
+  const hatWerte = Object.keys(neu).length > 0;
+  const out = { ...einheit };
+  if (hatWerte) out.personenTageManuell = neu; else delete out.personenTageManuell;
+  return out;
+}
+
+// Folgejahr-Kontext (§76): Wenn das aktuelle Jahr KEINEN manuellen Wert hat,
+// aber das Vorjahr einen hatte, ist eine Entscheidung nötig (rot markieren).
+// Liefert { vorjahr, vorjahrWert, entscheidungNoetig }:
+//   entscheidungNoetig = true  → aktuelles Jahr ohne Override, Vorjahr mit.
+// Dient nur der Anzeige/Markierung; ändert nichts an personenTageWert.
+function personenTageFolgejahr(einheit, jahr) {
+  const vorjahr = jahr - 1;
+  const aktuellManuell = personenTageManuellVon(einheit, jahr);
+  const vorjahrWert = personenTageManuellVon(einheit, vorjahr);
+  return {
+    vorjahr,
+    vorjahrWert,
+    entscheidungNoetig: (aktuellManuell == null && vorjahrWert != null),
+  };
+}
+
 // Mieter-/Vertragspartei-Name einer Belegung für die Anzeige (kurz).
 function mieterNameVon(beleg) {
   if (!beleg) return "";
@@ -2241,6 +2308,10 @@ export {
   belegungPersonenTage,
   abschnittPersonenTage,
   personenTageAufschluesselung,
+  personenTageWert,
+  personenTageManuellVon,
+  personenTageFolgejahr,
+  setzePersonenTageManuell,
   neuerPersonenAbschnitt,
   mieterNameVon,
   mitgliedPersonenTage,

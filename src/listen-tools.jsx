@@ -4,12 +4,12 @@ import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
   VERWALTUNGSARTEN, aktiveBelegung, aktiverTeil, belegungsTyp, bewohnerRecht,
   eigStatus, extractNachname, flaecheVon, heuteLaufendeBelegung, isStellplatzTyp, neueBelegung,
-  neuesHhMitglied, objektInGruppe, objektOrt, parseFlaeche, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
+  neuesHhMitglied, objektInGruppe, objektOrt, parseFlaeche, personenTageWert, personenTageFolgejahr, setzePersonenTageManuell, setzeEinheitFlaeche, setzeEinheitMea, teileVon, wirtschaftsjahrZeitraum
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, I, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
-import { DatumFeld, DetailKopf, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, SegmentControl } from "./components.jsx";
+import { DatumFeld, DetailKopf, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -727,10 +727,6 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   // Spalte „Einheit" steht immer ganz links und ist NICHT in dieser Liste.
   const [spalten, setSpalten] = useState([]); // z.B. ["nr","typ","mea"]
 
-  // Modus der Bearbeitung: "tabelle" = Spalten-Schnelleingabe (Default),
-  // "personentage" = Personen-Tage-Aufschlüsselung je Einheit (Weg A).
-  const [modus, setModus] = useState("tabelle");
-
   const ve = (ves || []).find(v => v && v.id === objektId) || null;
   const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
 
@@ -758,6 +754,13 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   };
   const ptEditFertig = () => { ptSnapshotRef.current = null; setPtEdit(false); };
 
+  // Personen-Tage-Berechnungs-Fenster (Modal): welche Einheit ist offen?
+  const [ptModalEinheitId, setPtModalEinheitId] = useState(null);
+  // Manuellen Personen-Tage-Wert (Override fürs aktuelle Jahr) setzen/löschen.
+  const setzePtManuell = (einheitId, wert) => {
+    patchEinheit(einheitId, (e) => setzePersonenTageManuell(e, ptJahr, wert));
+  };
+
   // ── Verfügbare Spalten (Pillen). Welle 1: direkt an der Einheit tippbare
   //    Felder. Eigentümer/Mieter/Telefon folgen in Welle 2. ──
   const SPALTEN_KATALOG = [
@@ -770,6 +773,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     { id: "telefon", label: "Telefon", breite: 160, art: "ablesen" },
     { id: "einzug",  label: "Einzug",  breite: 150, art: "datum" },
     { id: "auszug",  label: "Auszug",  breite: 150, art: "datum" },
+    { id: "ptage",   label: "Personen-Tage", breite: 200, art: "ptage" },
   ];
   const kontakteListe = Array.isArray(kontakte) ? kontakte : [];
   const kontaktById = (id) => kontakteListe.find(k => k && String(k.id) === String(id)) || null;
@@ -907,6 +911,55 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   // Zell-Eingabe — je nach Spalten-Art Text/Zahl/Dropdown.
   const zellInput = (einheit, sdef) => {
     const wert = leseWert(einheit, sdef.id);
+    // Personen-Tage: Zahl-Eingabe = manueller Override fürs aktuelle Jahr; der
+    // Platzhalter zeigt den berechneten Wert. Button daneben öffnet das
+    // Berechnungs-Fenster (Belegungs-Aufschlüsselung).
+    if (sdef.art === "ptage") {
+      if (isStellplatzTyp(einheit.typ)) {
+        return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
+      }
+      const pt = personenTageWert(einheit, ptJahr);
+      const fj = personenTageFolgejahr(einheit, ptJahr);
+      const rot = fj.entscheidungNoetig;
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              inputMode="numeric"
+              value={pt.manuell != null ? String(pt.manuell) : ""}
+              placeholder={`${pt.berechnet} (ber.)`}
+              onChange={e => setzePtManuell(einheit.id, e.target.value.replace(/[^0-9]/g, ""))}
+              style={{ width: "100%", minWidth: 0, boxSizing: "border-box", background: t.card,
+                border: `1px solid ${rot ? "#EF4444" : (pt.istManuell ? accent : t.border)}`, borderRadius: RAD.sm,
+                padding: "6px 8px", fontSize: FS.input, color: t.text,
+                outline: "none", fontFamily: "inherit" }}/>
+            <button onClick={() => setPtModalEinheitId(einheit.id)}
+              title="Personen-Tage berechnen" aria-label="Personen-Tage berechnen"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                width: 32, height: 32, flexShrink: 0, background: "none",
+                border: `1px solid ${t.border}`, borderRadius: RAD.sm, cursor: "pointer",
+                color: t.sub }}>
+              <I name="calc" size={15} color={t.sub}/>
+            </button>
+          </div>
+          {rot && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: FS.xxs, color: "#EF4444" }}>
+                Vorjahr {fj.vorjahr}: {fj.vorjahrWert} — entscheiden
+              </span>
+              <button onClick={() => setzePtManuell(einheit.id, fj.vorjahrWert)}
+                title="Vorjahreswert übernehmen"
+                style={{ display: "inline-flex", alignItems: "center", gap: 4,
+                  background: "none", border: `1px solid ${accent}`, borderRadius: RAD.sm,
+                  color: accent, cursor: "pointer", fontFamily: "inherit",
+                  fontSize: FS.xxs, padding: "2px 8px" }}>
+                <I name="check" size={11} color={accent}/> übernehmen
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
     if (sdef.art === "typ") {
       const isTG = isStellplatzTyp(einheit.typ);
       return (
@@ -993,6 +1046,22 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   };
   const zellText = (einheit, sdef) => {
     const wert = leseWert(einheit, sdef.id);
+    if (sdef.art === "ptage") {
+      if (isStellplatzTyp(einheit.typ)) {
+        return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
+      }
+      const pt = personenTageWert(einheit, ptJahr);
+      const fj = personenTageFolgejahr(einheit, ptJahr);
+      const rot = fj.entscheidungNoetig;
+      return (
+        <span style={{ fontSize: FS.m, color: rot ? "#EF4444" : t.text, whiteSpace: "nowrap" }}>
+          <b>{pt.wert}</b>
+          <span style={{ fontSize: FS.xxs, color: rot ? "#EF4444" : (pt.istManuell ? accent : t.muted), marginLeft: 6 }}>
+            {rot ? `Vorjahr ${fj.vorjahrWert} — prüfen` : (pt.istManuell ? "manuell" : "berechnet")}
+          </span>
+        </span>
+      );
+    }
     if (sdef.art === "kontakt") {
       if (isStellplatzTyp(einheit.typ)) {
         return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
@@ -1092,6 +1161,67 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     )
   ) : null;
 
+  // Personen-Tage-Berechnungs-Fenster (Modal) — als const vorab (keine IIFE in
+  // JSX). Öffnet die Belegungs-Aufschlüsselung der gewählten Einheit. Pflegt man
+  // hier die Belegung, kann der manuelle Override fürs Jahr entfernt werden.
+  const ptModalEinheit = ptModalEinheitId != null
+    ? einheiten.find(e => e.id === ptModalEinheitId) : null;
+  const ptModalPt = ptModalEinheit ? personenTageWert(ptModalEinheit, ptJahr) : null;
+  const ptModalNode = ptModalEinheit ? (
+    <div onClick={() => setPtModalEinheitId(null)}
+      style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.6)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16, paddingTop: "max(env(safe-area-inset-top, 0px), 16px)",
+        paddingBottom: "max(env(safe-area-inset-bottom, 0px), 16px)" }}>
+      <div onClick={ev => ev.stopPropagation()}
+        style={{ background: t.surface || t.card, borderRadius: RAD.xl,
+          border: `1px solid ${t.border}`, width: "100%", maxWidth: 560,
+          maxHeight: "90dvh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10,
+          padding: "12px 14px", borderBottom: `1px solid ${t.border}`, flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>
+              Personen-Tage berechnen
+            </div>
+            <div style={{ fontSize: FS.xs, color: t.muted }}>
+              {(ptModalEinheit.nr || "Einheit") + (ptModalEinheit.lage ? ` · ${ptModalEinheit.lage}` : "")} · Jahr {ptJahr}
+            </div>
+          </div>
+          <button onClick={() => setPtModalEinheitId(null)}
+            title="Schließen" aria-label="Schließen"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
+              borderRadius: RAD.pill, cursor: "pointer" }}>
+            <I name="x" size={16} color={getContrastColor(accent)}/>
+          </button>
+        </div>
+        <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 14px" }}>
+          {ptModalPt.istManuell && (
+            <div style={{ fontSize: FS.s, color: accent, background: accent + "12",
+              border: `1px solid ${accent}55`, borderRadius: RAD.sm,
+              padding: "8px 10px", marginBottom: 12 }}>
+              Aktuell manuell gesetzt: <b>{ptModalPt.manuell}</b>.
+              Wenn du hier die Belegung pflegst, gilt wieder die Berechnung.
+              <div style={{ marginTop: 8 }}>
+                <button onClick={() => setzePtManuell(ptModalEinheit.id, "")}
+                  style={{ background: "none", border: `1px solid ${accent}`,
+                    borderRadius: RAD.sm, color: accent, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: FS.s, padding: "5px 10px" }}>
+                  Manuellen Wert entfernen
+                </button>
+              </div>
+            </div>
+          )}
+          <PersonenTageUebersicht einheit={ptModalEinheit} t={t} accent={accent}
+            jahrExtern={ptJahr} immerOffen titel={`Personen-Tage ${ptJahr}`}
+            einheitLabel={`${ptModalEinheit.nr || ptModalEinheit.lage || "Einheit"}${ptModalEinheit.nr && ptModalEinheit.lage ? ` · ${ptModalEinheit.lage}` : ""}`}
+            bearbeiten={true}
+            onUpdate={(neuE) => patchEinheit(ptModalEinheit.id, () => neuE)}/>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // Maske-Inhalt (Detail) — gemeinsam für Desktop-Detail und Mobil-Vollbild.
   const seMaske = (
       <>
@@ -1103,33 +1233,25 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
             aktion={editAktion}/>
         )}
 
-        {/* Modus-Umschalter (Auswahl INNERHALB der Maske → SegmentControl, §73).
-            Jahr-Umschalter (nur Personen-Tage) sitzt rechts daneben. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12,
-          flexWrap: "wrap", marginBottom: 14 }}>
-          <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-            <SegmentControl t={t} accent={accent} value={modus} onChange={setModus}
-              options={[{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]}/>
+        {/* Wirtschaftsjahr-Umschalter — steuert die Personen-Tage-Spalte. Bleibt
+            immer sichtbar (der Tabelle/Personen-Tage-Umschalter entfällt; Personen-
+            Tage sind jetzt eine Spalte in der Tabelle). */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end",
+          gap: 10, marginBottom: 14 }}>
+          <button onClick={() => setPtJahr(j => j - 1)}
+            title="Jahr zurück" aria-label="Jahr zurück"
+            style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+              color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>‹</button>
+          <div style={{ textAlign: "center", minWidth: 84 }}>
+            <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
+            <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
           </div>
-          {modus === "personentage" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-              <button onClick={() => setPtJahr(j => j - 1)}
-                title="Jahr zurück" aria-label="Jahr zurück"
-                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                  color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>‹</button>
-              <div style={{ textAlign: "center", minWidth: 84 }}>
-                <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>Jahr {ptJahr}</div>
-                <div style={{ fontSize: FS.xxs, color: t.muted }}>Wirtschaftsjahr</div>
-              </div>
-              <button onClick={() => setPtJahr(j => j + 1)}
-                title="Jahr vor" aria-label="Jahr vor"
-                style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                  color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
-            </div>
-          )}
+          <button onClick={() => setPtJahr(j => j + 1)}
+            title="Jahr vor" aria-label="Jahr vor"
+            style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+              color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
         </div>
 
-        {modus === "tabelle" ? (
         <>
         {/* Pillen: Spalten zuschalten — nur im Bearbeiten-Modus (Spaltenwahl
             ist Bearbeiten). Im Anzeige-Modus erscheint nur die fertige Tabelle. */}
@@ -1225,29 +1347,12 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
           </div>
         )}
         </>
-        ) : (
-          /* ── MODUS: Personen-Tage-Aufschlüsselung je Einheit (Weg A) ── */
-          <div>
-            {einheiten.length === 0 ? (
-              <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 }}>
-                Dieses Objekt hat noch keine Einheiten.
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {einheiten.filter(e => !isStellplatzTyp(e.typ)).map(e => (
-                  <div key={e.id} style={{ background: t.card, border: `1px solid ${t.border}`,
-                    borderRadius: RAD.lg, padding: "4px 12px 8px" }}>
-                    <PersonenTageUebersicht einheit={e} t={t} accent={accent}
-                      jahrExtern={ptJahr} immerOffen titel={`Personen-Tage ${ptJahr}`}
-                      einheitLabel={`${e.nr || e.lage || "Einheit"}${e.nr && e.lage ? ` · ${e.lage}` : ""}`}
-                      bearbeiten={ptEdit}
-                      onUpdate={(neuE) => patchEinheit(e.id, () => neuE)}/>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+
+        {/* Personen-Tage-Berechnungs-Fenster (Modal) — öffnet die Belegungs-
+            Aufschlüsselung der gewählten Einheit. Wer hier die Belegung pflegt,
+            dessen manueller Override fürs Jahr wird entfernt (zurück zur
+            Berechnung). Muster: überlagerter Dialog (Modal-Baustein §76.2). */}
+        {ptModalNode}
       </>
   );
 
