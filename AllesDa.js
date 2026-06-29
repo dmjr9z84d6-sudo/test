@@ -23621,6 +23621,18 @@
       gap: 10
     };
   }
+  function kartenGridStyle(layout, extra) {
+    const lay = layout || {};
+    const zusatz = extra || {};
+    if (lay.einspaltig) {
+      return { display: "grid", gridTemplateColumns: "1fr", justifyContent: "stretch", gap: 10, ...zusatz };
+    }
+    if (lay.nurMaster) {
+      return { ...kachelGridBreite(lay.kartenMaxBreite, false), ...zusatz };
+    }
+    const cols = Math.max(1, lay.cols || 1);
+    return { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${lay.kartenBreite}px)`, ...zusatz };
+  }
   function feldInput(t, opts) {
     const o = opts || {};
     return {
@@ -23646,7 +23658,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.08";
+  var APP_VERSION = "13.10";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -42390,7 +42402,7 @@
         boxSizing: "border-box",
         overflowY: "auto",
         padding: 2
-      } }, kalLegende, /* @__PURE__ */ import_react4.default.createElement("div", { style: listenAnsicht === "liste" ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" } : festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID }, (ves || []).map((veObj) => listenAnsicht === "liste" ? /* @__PURE__ */ import_react4.default.createElement(
+      } }, kalLegende, /* @__PURE__ */ import_react4.default.createElement("div", { style: listenAnsicht === "liste" ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" } : festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : kartenGridStyle({ einspaltig: !kalIstDesktop, nurMaster: true, kartenMaxBreite: KACHEL_W }) }, (ves || []).map((veObj) => listenAnsicht === "liste" ? /* @__PURE__ */ import_react4.default.createElement(
         VEListenZeile,
         {
           key: veObj.id,
@@ -43539,7 +43551,7 @@
         display: "block"
       } }, wert || "\u2014");
     };
-    const seMasterInhalt = (layout) => (ves || []).length === 0 ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 } }, "Noch keine Objekte vorhanden.") : /* @__PURE__ */ import_react5.default.createElement("div", { style: istListeSE ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, (ves || []).map((v) => istListeSE ? /* @__PURE__ */ import_react5.default.createElement(
+    const seMasterInhalt = (layout) => (ves || []).length === 0 ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 } }, "Noch keine Objekte vorhanden.") : /* @__PURE__ */ import_react5.default.createElement("div", { style: istListeSE ? { display: "flex", flexDirection: "column", gap: 6 } : kartenGridStyle(layout) }, (ves || []).map((v) => istListeSE ? /* @__PURE__ */ import_react5.default.createElement(
       VEListenZeile,
       {
         key: v.id,
@@ -44093,7 +44105,7 @@
       borderBottom: "1px solid #ddd",
       verticalAlign: "top"
     } }, r[s.id] != null ? r[s.id] : "")))))), fussnote && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginTop: 10, fontSize: fontPx + 1, fontWeight: 600 } }, fussnote)));
-    const lgMasterInhalt = (layout) => lgView === "objekte" ? /* @__PURE__ */ import_react5.default.createElement("div", { style: istListeLG ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, (ves || []).map((v) => istListeLG ? /* @__PURE__ */ import_react5.default.createElement(
+    const lgMasterInhalt = (layout) => lgView === "objekte" ? /* @__PURE__ */ import_react5.default.createElement("div", { style: istListeLG ? { display: "flex", flexDirection: "column", gap: 6 } : kartenGridStyle(layout) }, (ves || []).map((v) => istListeLG ? /* @__PURE__ */ import_react5.default.createElement(
       VEListenZeile,
       {
         key: v.id,
@@ -44162,7 +44174,7 @@
       setObjektId(null);
       setAktGruppe(null);
       setVorlageId(null);
-    }, t })), !vorlage && /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.s, color: t.muted, margin: "0 2px 10px" } }, "Welche Liste m\xF6chtest du erstellen?"), /* @__PURE__ */ import_react5.default.createElement("div", { style: KACHEL_GRID }, sichtbareVorlagen.map((v) => /* @__PURE__ */ import_react5.default.createElement(
+    }, t })), !vorlage && /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.s, color: t.muted, margin: "0 2px 10px" } }, "Welche Liste m\xF6chtest du erstellen?"), /* @__PURE__ */ import_react5.default.createElement("div", { style: kartenGridStyle({ einspaltig: !istDesktopLG, nurMaster: true, kartenMaxBreite: KACHEL_W }) }, sichtbareVorlagen.map((v) => /* @__PURE__ */ import_react5.default.createElement(
       "div",
       {
         key: v.id,
@@ -44354,7 +44366,7 @@
     }
     const hatAuswahl = statView === "objekte" && aktVEId || statView === "gruppen" && aktGruppe;
     const masterInhalt = (layout) => {
-      const masterGridStyle = istListe ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` };
+      const masterGridStyle = istListe ? { display: "flex", flexDirection: "column", gap: 6 } : kartenGridStyle(layout);
       return statView === "objekte" ? /* @__PURE__ */ import_react5.default.createElement("div", { style: masterGridStyle }, ves.map((ve) => istListe ? /* @__PURE__ */ import_react5.default.createElement(
         VEListenZeile,
         {
@@ -46409,7 +46421,7 @@
         onBack: () => setExpandedVEId(null)
       }
     ));
-    const masterListe = (layout) => /* @__PURE__ */ import_react6.default.createElement("div", { style: listenAnsicht === "liste" ? { display: "flex", flexDirection: "column", gap: 6 } : layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` } }, gefiltert.map((ve) => listenAnsicht === "liste" ? /* @__PURE__ */ import_react6.default.createElement(
+    const masterListe = (layout) => /* @__PURE__ */ import_react6.default.createElement("div", { style: listenAnsicht === "liste" ? { display: "flex", flexDirection: "column", gap: 6 } : kartenGridStyle(layout) }, gefiltert.map((ve) => listenAnsicht === "liste" ? /* @__PURE__ */ import_react6.default.createElement(
       VEListenZeile,
       {
         key: ve.id,
@@ -56293,7 +56305,10 @@
     ) : null;
     const windowW = useWindowWidth();
     const istDesktop = windowW >= 900;
-    const wrapStyle = !istDesktop ? { display: "grid", gridTemplateColumns: "1fr", gap: 10 } : festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" } : { ...KACHEL_GRID, gridAutoFlow: "dense" };
+    const wrapStyle = !istDesktop || !festeGridSpec ? kartenGridStyle(
+      { einspaltig: !istDesktop, nurMaster: true, kartenMaxBreite },
+      istDesktop ? { gridAutoFlow: "dense" } : null
+    ) : { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" };
     const hatOffen = aktiv != null && aktivK != null;
     (0, import_react8.useEffect)(() => {
       if (typeof onNurDetail !== "function") return;
@@ -56332,7 +56347,13 @@
       }
     );
     const renderKartenSpalte = (cols, kartenBreite, nurMasterBreite, einspaltig) => {
-      const gridStyle = kartenBreite ? { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${kartenBreite}px)`, alignContent: "start" } : { ...kachelGridBreite(nurMasterBreite, einspaltig), alignContent: "start" };
+      const gridStyle = kartenGridStyle({
+        einspaltig,
+        nurMaster: !kartenBreite,
+        cols,
+        kartenBreite,
+        kartenMaxBreite: nurMasterBreite
+      }, { alignContent: "start" });
       const alphaTrennerAn2 = anzeige.alphaTrenner !== false;
       const renderGruppeMD = (liste, typ, extraStyle) => {
         const listenWrap = { display: "flex", flexDirection: "column", gap: 6, ...extraStyle || {} };
@@ -60486,7 +60507,7 @@
           minWidth: 0,
           width: "100%",
           overflowY: "auto",
-          padding: "8px 2px",
+          padding: "8px 0",
           boxSizing: "border-box"
         } }, md);
       }
@@ -60496,7 +60517,7 @@
         minWidth: 0,
         width: "100%",
         overflowY: "auto",
-        padding: "8px 2px",
+        padding: "8px 0",
         boxSizing: "border-box"
       } }, masterNode);
     }
