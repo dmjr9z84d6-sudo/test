@@ -1261,7 +1261,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
           }/>
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
-          {seMaske}
+          {ve ? <DetailRahmen t={t} accent={accent}>{seMaske}</DetailRahmen> : seMaske}
         </div>
       </div>
     );
@@ -1587,11 +1587,6 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   // Zurück-Button. Rahmen-Dekoration nur, wenn etwas ausgewählt ist.
   const lgDetailKern = lgHatAuswahl ? (
     <>
-      {!istDesktopLG && (
-        <div style={{ marginBottom: 12 }}>
-          <HeaderZurueck onClick={() => { setObjektId(null); setAktGruppe(null); setVorlageId(null); }} t={t}/>
-        </div>
-      )}
       {/* Vorlagenauswahl (bereichsgefiltert) — solange keine Vorlage gewählt. */}
       {!vorlage && (
         <div>
@@ -1630,7 +1625,6 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
                 {vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " · " + ve.adresse : "") : vorlage.sub}
               </div>
             </div>
-            <HeaderZurueck onClick={() => setVorlageId(null)} t={t}/>
           </div>
 
           {vorlage.bereich === "objekt" && hausWaehlbar && (
@@ -1769,8 +1763,11 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
             optionen={[{ id: "objekte", label: "Objekte" }, { id: "gruppen", label: "Gruppen" }]}
             aktiv={lgView} onWaehle={(id) => { setLgView(id); setVorlageId(null); }}/>
         }
-        rechts={(lgHatAuswahl && lgNurDetail) ? (
-          <HeaderZurueck onClick={() => setVorlageId(null)} t={t}/>
+        rechts={lgHatAuswahl ? (
+          <HeaderZurueck onClick={() => {
+            if (vorlage) { setVorlageId(null); }
+            else { setObjektId(null); setAktGruppe(null); setVorlageId(null); }
+          }} t={t}/>
         ) : null}/>
 
       {lgView === "objekte" && legendeEl ? (
@@ -1779,7 +1776,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
       <MasterDetailRahmen
         master={lgMasterInhalt}
         detail={lgDetailInhalt}
-        mobilDetail={lgDetailKern}
+        mobilDetail={lgDetailInhalt}
         istDesktop={istDesktopLG}
         listenAnsicht={listenAnsicht} listeOpt={listeOpt}
         kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
