@@ -23661,7 +23661,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.16";
+  var APP_VERSION = "13.18";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -25524,6 +25524,55 @@
       });
     });
     return out;
+  }
+  function personenTageManuellVon(einheit, jahr) {
+    if (!einheit || jahr == null) return null;
+    const m = einheit.personenTageManuell;
+    if (!m || typeof m !== "object") return null;
+    const v = m[String(jahr)];
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return isFinite(n) && n >= 0 ? n : null;
+  }
+  function personenTageWert(einheit, jahr) {
+    const wjVon = `${jahr}-01-01`;
+    const wjBis = `${jahr}-12-31`;
+    const auf = personenTageAufschluesselung(einheit, wjVon, wjBis);
+    const berechnet = auf && typeof auf.summe === "number" ? auf.summe : 0;
+    const manuell = personenTageManuellVon(einheit, jahr);
+    return {
+      wert: manuell != null ? manuell : berechnet,
+      manuell,
+      berechnet,
+      istManuell: manuell != null
+    };
+  }
+  function setzePersonenTageManuell(einheit, jahr, wert) {
+    const alt = einheit && einheit.personenTageManuell && typeof einheit.personenTageManuell === "object" ? einheit.personenTageManuell : {};
+    const neu = { ...alt };
+    const key = String(jahr);
+    if (wert == null || wert === "") {
+      delete neu[key];
+    } else {
+      const n = Number(wert);
+      if (isFinite(n) && n >= 0) neu[key] = n;
+      else delete neu[key];
+    }
+    const hatWerte = Object.keys(neu).length > 0;
+    const out = { ...einheit };
+    if (hatWerte) out.personenTageManuell = neu;
+    else delete out.personenTageManuell;
+    return out;
+  }
+  function personenTageFolgejahr(einheit, jahr) {
+    const vorjahr = jahr - 1;
+    const aktuellManuell = personenTageManuellVon(einheit, jahr);
+    const vorjahrWert = personenTageManuellVon(einheit, vorjahr);
+    return {
+      vorjahr,
+      vorjahrWert,
+      entscheidungNoetig: aktuellManuell == null && vorjahrWert != null
+    };
   }
   function mieterNameVon(beleg) {
     if (!beleg) return "";
@@ -43259,7 +43308,6 @@
     const [seNurDetail, setSeNurDetail] = (0, import_react5.useState)(false);
     const istListeSE = listenAnsicht === "liste";
     const [spalten, setSpalten] = (0, import_react5.useState)([]);
-    const [modus, setModus] = (0, import_react5.useState)("tabelle");
     const ve = (ves || []).find((v) => v && v.id === objektId) || null;
     const einheiten = ve && Array.isArray(ve.einheiten) ? ve.einheiten : [];
     const wjDefault = wirtschaftsjahrZeitraum(ve && ve.etvStamm && ve.etvStamm.wirtschaftsjahr || "");
@@ -43284,6 +43332,10 @@
       ptSnapshotRef.current = null;
       setPtEdit(false);
     };
+    const [ptModalEinheitId, setPtModalEinheitId] = (0, import_react5.useState)(null);
+    const setzePtManuell = (einheitId, wert) => {
+      patchEinheit(einheitId, (e) => setzePersonenTageManuell(e, ptJahr, wert));
+    };
     const SPALTEN_KATALOG = [
       { id: "nr", label: "Nr.", breite: 120, art: "text" },
       { id: "typ", label: "Typ", breite: 170, art: "typ" },
@@ -43293,7 +43345,8 @@
       { id: "mieter", label: "Mieter", breite: 200, art: "kontakt" },
       { id: "telefon", label: "Telefon", breite: 160, art: "ablesen" },
       { id: "einzug", label: "Einzug", breite: 150, art: "datum" },
-      { id: "auszug", label: "Auszug", breite: 150, art: "datum" }
+      { id: "auszug", label: "Auszug", breite: 150, art: "datum" },
+      { id: "ptage", label: "Personen-Tage", breite: 200, art: "ptage" }
     ];
     const kontakteListe = Array.isArray(kontakte) ? kontakte : [];
     const kontaktById = (id) => kontakteListe.find((k) => k && String(k.id) === String(id)) || null;
@@ -43417,6 +43470,78 @@
     };
     const zellInput = (einheit, sdef) => {
       const wert = leseWert(einheit, sdef.id);
+      if (sdef.art === "ptage") {
+        if (isStellplatzTyp(einheit.typ)) {
+          return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.s, color: t.muted, fontStyle: "italic" } }, "\u2014");
+        }
+        const pt = personenTageWert(einheit, ptJahr);
+        const fj = personenTageFolgejahr(einheit, ptJahr);
+        const rot = fj.entscheidungNoetig;
+        return /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ import_react5.default.createElement(
+          "input",
+          {
+            inputMode: "numeric",
+            value: pt.manuell != null ? String(pt.manuell) : "",
+            placeholder: `${pt.berechnet} (ber.)`,
+            onChange: (e) => setzePtManuell(einheit.id, e.target.value.replace(/[^0-9]/g, "")),
+            style: {
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
+              background: t.card,
+              border: `1px solid ${rot ? "#EF4444" : pt.istManuell ? accent : t.border}`,
+              borderRadius: RAD.sm,
+              padding: "6px 8px",
+              fontSize: FS.input,
+              color: t.text,
+              outline: "none",
+              fontFamily: "inherit"
+            }
+          }
+        ), /* @__PURE__ */ import_react5.default.createElement(
+          "button",
+          {
+            onClick: () => setPtModalEinheitId(einheit.id),
+            title: "Personen-Tage berechnen",
+            "aria-label": "Personen-Tage berechnen",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 32,
+              height: 32,
+              flexShrink: 0,
+              background: "none",
+              border: `1px solid ${t.border}`,
+              borderRadius: RAD.sm,
+              cursor: "pointer",
+              color: t.sub
+            }
+          },
+          /* @__PURE__ */ import_react5.default.createElement(I, { name: "calc", size: 15, color: t.sub })
+        )), rot && /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.xxs, color: "#EF4444" } }, "Vorjahr ", fj.vorjahr, ": ", fj.vorjahrWert, " \u2014 entscheiden"), /* @__PURE__ */ import_react5.default.createElement(
+          "button",
+          {
+            onClick: () => setzePtManuell(einheit.id, fj.vorjahrWert),
+            title: "Vorjahreswert \xFCbernehmen",
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: "none",
+              border: `1px solid ${accent}`,
+              borderRadius: RAD.sm,
+              color: accent,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: FS.xxs,
+              padding: "2px 8px"
+            }
+          },
+          /* @__PURE__ */ import_react5.default.createElement(I, { name: "check", size: 11, color: accent }),
+          " \xFCbernehmen"
+        )));
+      }
       if (sdef.art === "typ") {
         const isTG = isStellplatzTyp(einheit.typ);
         return /* @__PURE__ */ import_react5.default.createElement(
@@ -43532,6 +43657,15 @@
     };
     const zellText = (einheit, sdef) => {
       const wert = leseWert(einheit, sdef.id);
+      if (sdef.art === "ptage") {
+        if (isStellplatzTyp(einheit.typ)) {
+          return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.s, color: t.muted, fontStyle: "italic" } }, "\u2014");
+        }
+        const pt = personenTageWert(einheit, ptJahr);
+        const fj = personenTageFolgejahr(einheit, ptJahr);
+        const rot = fj.entscheidungNoetig;
+        return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.m, color: rot ? "#EF4444" : t.text, whiteSpace: "nowrap" } }, /* @__PURE__ */ import_react5.default.createElement("b", null, pt.wert), /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.xxs, color: rot ? "#EF4444" : pt.istManuell ? accent : t.muted, marginLeft: 6 } }, rot ? `Vorjahr ${fj.vorjahrWert} \u2014 pr\xFCfen` : pt.istManuell ? "manuell" : "berechnet"));
+      }
       if (sdef.art === "kontakt") {
         if (isStellplatzTyp(einheit.typ)) {
           return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.s, color: t.muted, fontStyle: "italic" } }, "\u2014");
@@ -43639,6 +43773,109 @@
       },
       /* @__PURE__ */ import_react5.default.createElement(I, { name: "pencil", size: 14, color: getContrastColor(accent) })
     ) : null;
+    const ptModalEinheit = ptModalEinheitId != null ? einheiten.find((e) => e.id === ptModalEinheitId) : null;
+    const ptModalPt = ptModalEinheit ? personenTageWert(ptModalEinheit, ptJahr) : null;
+    const ptModalNode = ptModalEinheit ? /* @__PURE__ */ import_react5.default.createElement(
+      "div",
+      {
+        onClick: () => setPtModalEinheitId(null),
+        style: {
+          position: "fixed",
+          inset: 0,
+          zIndex: 300,
+          background: "rgba(0,0,0,0.6)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 16,
+          paddingTop: "max(env(safe-area-inset-top, 0px), 16px)",
+          paddingBottom: "max(env(safe-area-inset-bottom, 0px), 16px)"
+        }
+      },
+      /* @__PURE__ */ import_react5.default.createElement(
+        "div",
+        {
+          onClick: (ev) => ev.stopPropagation(),
+          style: {
+            background: t.surface || t.card,
+            borderRadius: RAD.xl,
+            border: `1px solid ${t.border}`,
+            width: "100%",
+            maxWidth: 560,
+            maxHeight: "90dvh",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden"
+          }
+        },
+        /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "12px 14px",
+          borderBottom: `1px solid ${t.border}`,
+          flexShrink: 0
+        } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.l, fontWeight: FW.bold, color: t.text } }, "Personen-Tage berechnen"), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.xs, color: t.muted } }, (ptModalEinheit.nr || "Einheit") + (ptModalEinheit.lage ? ` \xB7 ${ptModalEinheit.lage}` : ""), " \xB7 Jahr ", ptJahr)), /* @__PURE__ */ import_react5.default.createElement(
+          "button",
+          {
+            onClick: () => setPtModalEinheitId(null),
+            title: "Schlie\xDFen",
+            "aria-label": "Schlie\xDFen",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              background: accent,
+              border: "none",
+              borderRadius: RAD.pill,
+              cursor: "pointer"
+            }
+          },
+          /* @__PURE__ */ import_react5.default.createElement(I, { name: "x", size: 16, color: getContrastColor(accent) })
+        )),
+        /* @__PURE__ */ import_react5.default.createElement("div", { "data-ad-scroll": "y", style: { flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 14px" } }, ptModalPt.istManuell && /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+          fontSize: FS.s,
+          color: accent,
+          background: accent + "12",
+          border: `1px solid ${accent}55`,
+          borderRadius: RAD.sm,
+          padding: "8px 10px",
+          marginBottom: 12
+        } }, "Aktuell manuell gesetzt: ", /* @__PURE__ */ import_react5.default.createElement("b", null, ptModalPt.manuell), ". Wenn du hier die Belegung pflegst, gilt wieder die Berechnung.", /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react5.default.createElement(
+          "button",
+          {
+            onClick: () => setzePtManuell(ptModalEinheit.id, ""),
+            style: {
+              background: "none",
+              border: `1px solid ${accent}`,
+              borderRadius: RAD.sm,
+              color: accent,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: FS.s,
+              padding: "5px 10px"
+            }
+          },
+          "Manuellen Wert entfernen"
+        ))), /* @__PURE__ */ import_react5.default.createElement(
+          PersonenTageUebersicht,
+          {
+            einheit: ptModalEinheit,
+            t,
+            accent,
+            jahrExtern: ptJahr,
+            immerOffen: true,
+            titel: `Personen-Tage ${ptJahr}`,
+            einheitLabel: `${ptModalEinheit.nr || ptModalEinheit.lage || "Einheit"}${ptModalEinheit.nr && ptModalEinheit.lage ? ` \xB7 ${ptModalEinheit.lage}` : ""}`,
+            bearbeiten: true,
+            onUpdate: (neuE) => patchEinheit(ptModalEinheit.id, () => neuE)
+          }
+        ))
+      )
+    ) : null;
     const seMaske = /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ve && /* @__PURE__ */ import_react5.default.createElement(
       DetailKopf,
       {
@@ -43651,19 +43888,10 @@
     ), /* @__PURE__ */ import_react5.default.createElement("div", { style: {
       display: "flex",
       alignItems: "center",
-      gap: 12,
-      flexWrap: "wrap",
+      justifyContent: "flex-end",
+      gap: 10,
       marginBottom: 14
-    } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: "1 1 200px", minWidth: 0 } }, /* @__PURE__ */ import_react5.default.createElement(
-      SegmentControl,
-      {
-        t,
-        accent,
-        value: modus,
-        onChange: setModus,
-        options: [{ id: "tabelle", label: "Tabelle" }, { id: "personentage", label: "Personen-Tage" }]
-      }
-    )), modus === "personentage" && /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 } }, /* @__PURE__ */ import_react5.default.createElement(
+    } }, /* @__PURE__ */ import_react5.default.createElement(
       "button",
       {
         onClick: () => setPtJahr((j) => j - 1),
@@ -43699,7 +43927,7 @@
         }
       },
       "\u203A"
-    ))), modus === "tabelle" ? /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ptEdit && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+    )), /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ptEdit && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
       fontSize: FS.xs,
       fontWeight: FW.bold,
       color: t.muted,
@@ -43797,28 +44025,7 @@
       padding: "6px 12px",
       borderBottom: `1px solid ${t.border}40`,
       color: t.muted
-    } }, "\u2014"))))))) : (
-      /* ── MODUS: Personen-Tage-Aufschlüsselung je Einheit (Weg A) ── */
-      /* @__PURE__ */ import_react5.default.createElement("div", null, einheiten.length === 0 ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 } }, "Dieses Objekt hat noch keine Einheiten.") : /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, einheiten.filter((e) => !isStellplatzTyp(e.typ)).map((e) => /* @__PURE__ */ import_react5.default.createElement("div", { key: e.id, style: {
-        background: t.card,
-        border: `1px solid ${t.border}`,
-        borderRadius: RAD.lg,
-        padding: "4px 12px 8px"
-      } }, /* @__PURE__ */ import_react5.default.createElement(
-        PersonenTageUebersicht,
-        {
-          einheit: e,
-          t,
-          accent,
-          jahrExtern: ptJahr,
-          immerOffen: true,
-          titel: `Personen-Tage ${ptJahr}`,
-          einheitLabel: `${e.nr || e.lage || "Einheit"}${e.nr && e.lage ? ` \xB7 ${e.lage}` : ""}`,
-          bearbeiten: ptEdit,
-          onUpdate: (neuE) => patchEinheit(e.id, () => neuE)
-        }
-      )))))
-    ));
+    } }, "\u2014"))))))), ptModalNode);
     if (!istDesktop) {
       return /* @__PURE__ */ import_react5.default.createElement("div", { style: { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } }, /* @__PURE__ */ import_react5.default.createElement(
         ScreenKopf,
