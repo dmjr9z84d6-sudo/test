@@ -112,7 +112,7 @@ import React, { useState, useRef, useEffect, createContext, useContext, Fragment
 // ═════════════════════════════════════════════════════════════════════════════
 
 import {
-  ACCENT, APP_VERSION, DARK, DEFAULT_GEWERKE_LISTE, DEFAULT_KATEGORIEN, DEFAULT_LEISTUNGEN, DEFAULT_ROLLEN, DEFAULT_VERWENDUNGEN, FIRMEN_FARBE, FONT, FONT_URL, FS, FW, KACHEL_GRID, KACHEL_W, kachelGridBreite, KONTAKTE_FARBE, LIGHT, PALETTE_FARBEN, RAD, SERIOES_GRAU, SLOT_TO_ECK, effColor, effKuerzel, feldInput, feldLabel, formatKontaktName, getContrastColor, iconAufBg, kategorieVon, mischeRichtungGrau, rolleBadgeSichtbar, rolleEckPosition, rolleEckSichtbar, setFarbIntensitaet, sortKontakte, toGrau, verwendungBadgeSichtbar, verwendungEckPosition, verwendungEckSichtbar
+  ACCENT, APP_VERSION, DARK, DEFAULT_GEWERKE_LISTE, DEFAULT_KATEGORIEN, DEFAULT_LEISTUNGEN, DEFAULT_ROLLEN, DEFAULT_VERWENDUNGEN, FIRMEN_FARBE, FONT, FONT_URL, FS, FW, KACHEL_GRID, KACHEL_W, kartenGridStyle, KONTAKTE_FARBE, LIGHT, PALETTE_FARBEN, RAD, SERIOES_GRAU, SLOT_TO_ECK, effColor, effKuerzel, feldInput, feldLabel, formatKontaktName, getContrastColor, iconAufBg, kategorieVon, mischeRichtungGrau, rolleBadgeSichtbar, rolleEckPosition, rolleEckSichtbar, setFarbIntensitaet, sortKontakte, toGrau, verwendungBadgeSichtbar, verwendungEckPosition, verwendungEckSichtbar
 } from "./constants.js";
 import {
   datumDe, isoHeute, istDatumGueltig, istEmailGueltig, istIbanGueltig,
@@ -551,8 +551,8 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
           ? { display: "grid", alignContent: "start", gridTemplateColumns: "1fr", gap: 8 }
           : { display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: listeBreiteAus(listeOpt), width: "100%" })
       : (alsMaster
-          ? { ...KACHEL_GRID, alignContent: "start", gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` }
-          : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID))}>
+          ? kartenGridStyle({ einspaltig: !istDesktop, nurMaster: false, cols: layout.cols, kartenBreite: layout.kartenBreite }, { alignContent: "start" })
+          : kartenGridStyle({ einspaltig: !istDesktop, nurMaster: true, kartenMaxBreite: KACHEL_W, festeGridSpec: festeGridSpec }))}>
       {sortierteSektionen.map((s) => (
         <SektionKachel key={s.id} sektion={s}
           aktiv={offenSektion && offenSektion.id === s.id} t={t} id={"set-" + s.id}
@@ -1178,7 +1178,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
         )}
         <div style={listenAnsicht === "liste"
           ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" }
-          : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+          : kartenGridStyle({ einspaltig: !istDesktop, nurMaster: true, kartenMaxBreite: KACHEL_W, festeGridSpec: festeGridSpec })}>
           {(ves || []).map(veObj => listenAnsicht === "liste" ? (
             <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={accent}
               aktiv={false} kbItem id={"objliste-" + veObj.id}
@@ -2209,7 +2209,7 @@ export default function App() {
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           <div style={istListe
             ? { display: "flex", flexDirection: "column", gap: 6, maxWidth: listeBreiteAus(listeOpt), width: "100%" }
-            : (festeGridSpec ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec } : KACHEL_GRID)}>
+            : kartenGridStyle({ einspaltig: !istDesktop, nurMaster: true, kartenMaxBreite: KACHEL_W, festeGridSpec: festeGridSpec })}>
             {gefiltert.map(ve => istListe ? (
               <VEListenZeile key={ve.id} ve={ve} t={t} accent={objektAccent}
                 aktiv={false} kbItem id={"obj-" + ve.id}
@@ -2969,7 +2969,7 @@ export default function App() {
           const masterInhalt = (layout) => auftragView === "objekt" ? (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
-              : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+              : kartenGridStyle(layout)}>
               {(vesSichtbar || []).map(v => istListeA ? (
                 <VEListenZeile key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
@@ -2985,7 +2985,7 @@ export default function App() {
           ) : (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
-              : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+              : kartenGridStyle(layout)}>
               {firmen.length === 0 ? (
                 <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 12 }}>
                   Keine Firmen-Kontakte vorhanden.

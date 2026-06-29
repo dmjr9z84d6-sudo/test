@@ -83,9 +83,13 @@ export function kachelGridBreite(kartenBreite, einspaltig) {
 // (genau der Bug, der Objekte/Kontakte unterschiedlich breit machte).
 //
 // Erwartet das `layout`-Objekt aus MasterDetailRahmen/passendeMasterSpalten:
-//   { einspaltig, nurMaster, cols, kartenBreite, kartenMaxBreite }
-// Regeln:
-//   • einspaltig (Mobil)      → hartes 1fr, EINE Spalte volle Breite.
+//   { einspaltig, nurMaster, cols, kartenBreite, kartenMaxBreite, festeGridSpec }
+// Regeln (Reihenfolge = Priorität):
+//   • einspaltig (Mobil)      → hartes 1fr, EINE Spalte volle Breite. GEWINNT
+//                               IMMER, auch über festeGridSpec — sonst greift auf
+//                               Mobil fälschlich das feste repeat(N,…px)-Raster
+//                               (linksbündig, Leerraum rechts = genau der Bug).
+//   • festeGridSpec (Desktop) → explizit vorgegebene Spalten-Spezifikation.
 //   • nurMaster (Übersicht)   → auto-fill mit kartenMaxBreite (volle Breite füllen).
 //   • Detail offen (Desktop)  → feste Spaltenzahl × kartenBreite.
 // extra = optionale Zusatz-Styles (z. B. alignContent:"start").
@@ -94,6 +98,9 @@ export function kartenGridStyle(layout, extra) {
   const zusatz = extra || {};
   if (lay.einspaltig) {
     return { display: "grid", gridTemplateColumns: "1fr", justifyContent: "stretch", gap: 10, ...zusatz };
+  }
+  if (lay.festeGridSpec) {
+    return { ...KACHEL_GRID, gridTemplateColumns: lay.festeGridSpec, ...zusatz };
   }
   if (lay.nurMaster) {
     return { ...kachelGridBreite(lay.kartenMaxBreite, false), ...zusatz };
@@ -127,7 +134,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "13.10";
+export const APP_VERSION = "13.11";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────

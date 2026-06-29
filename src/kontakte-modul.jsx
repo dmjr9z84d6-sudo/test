@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  ACCENT, FS, FW, RAD, KACHEL_GRID, kartenGridStyle, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
+  ACCENT, FS, FW, RAD, kartenGridStyle, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
 } from "./constants.js";
 import {
   datumDe, istEmailGueltig, istPlzGueltig, istTelefonGueltig, istUrlGueltig, joinPlzOrt, listeBreiteAus
@@ -4243,14 +4243,12 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
   const windowW = useWindowWidth();
   const istDesktop = windowW >= 900;
 
-  // Karten-Raster der Vollbild-Übersicht — zentral aus kartenGridStyle (§76),
-  // damit es identisch zu Objekten/Schnelleingabe läuft (Mobil = 1fr volle
-  // Breite). SONDERFALL: festeGridSpec (Desktop, explizit vorgegebene Spalten-
-  // Spezifikation) + gridAutoFlow:dense bleibt lokal — das nutzt nur Kontakte.
-  const wrapStyle = (!istDesktop || !festeGridSpec)
-    ? kartenGridStyle({ einspaltig: !istDesktop, nurMaster: true, kartenMaxBreite: kartenMaxBreite },
-        istDesktop ? { gridAutoFlow: "dense" } : null)
-    : { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" }; // SONDERFALL: feste Spaltenspez (nur Kontakte-Desktop)
+  // Karten-Raster der Vollbild-Übersicht — zentral aus kartenGridStyle (§76).
+  // Mobil (einspaltig) gewinnt IMMER über festeGridSpec (sonst Leerraum rechts).
+  // gridAutoFlow:dense ist Kontakte-spezifisch und kommt als extra-Style dazu.
+  const wrapStyle = kartenGridStyle(
+    { einspaltig: !istDesktop, nurMaster: true, kartenMaxBreite: kartenMaxBreite, festeGridSpec: festeGridSpec },
+    istDesktop ? { gridAutoFlow: "dense" } : null);
 
   // Master-Detail: linke schmale Spalte mit Karten, rechts Detail
   const hatOffen = aktiv != null && aktivK != null;
