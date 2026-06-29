@@ -23661,7 +23661,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.22";
+  var APP_VERSION = "13.25";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -25640,6 +25640,18 @@
     const neuerTeilObj = { ...aktiv, flaeche: wertStr };
     const neueTeile = einheit.teile.map((teil) => teil === aktiv ? neuerTeilObj : teil);
     return { ...einheit, teile: neueTeile, flaeche: "" };
+  }
+  function heizflaecheVon(einheit) {
+    if (!einheit) return "";
+    return einheit.heizflaeche != null ? String(einheit.heizflaeche) : "";
+  }
+  function setzeEinheitHeizflaeche(einheit, wert) {
+    if (!einheit) return einheit;
+    const wertStr = String(wert == null ? "" : wert).replace(",", ".");
+    const out = { ...einheit };
+    if (wertStr === "") delete out.heizflaeche;
+    else out.heizflaeche = wertStr;
+    return out;
   }
   function neueBelegung(typ, von, bis) {
     const t = BELEGUNG_TYPEN.indexOf(typ) >= 0 ? typ : "leerstand";
@@ -43336,22 +43348,70 @@
     const setzePtManuell = (einheitId, wert) => {
       patchEinheit(einheitId, (e) => setzePersonenTageManuell(e, ptJahr, wert));
     };
-    const SPALTEN_KATALOG = [
-      { id: "nr", label: "Nr.", breite: 120, art: "text" },
-      { id: "typ", label: "Typ", breite: 170, art: "typ" },
-      { id: "lage", label: "Lage", breite: 160, art: "text" },
-      { id: "mea", label: "MEA", breite: 110, art: "num" },
-      { id: "flaeche", label: "Fl\xE4che", breite: 110, art: "num" },
-      { id: "mieter", label: "Mieter", breite: 200, art: "kontakt" },
-      { id: "telefon", label: "Telefon", breite: 160, art: "ablesen" },
-      { id: "einzug", label: "Einzug", breite: 150, art: "datum" },
-      { id: "auszug", label: "Auszug", breite: 150, art: "datum" },
-      { id: "ptage", label: "Personen-Tage", breite: 200, art: "ptage" }
+    const SPALTEN_KATALOG_STATISCH = [
+      { id: "nr", label: "Nr.", breite: 120, art: "text", kat: "einheit" },
+      { id: "typ", label: "Typ", breite: 170, art: "typ", kat: "einheit" },
+      { id: "lage", label: "Lage", breite: 160, art: "text", kat: "einheit" },
+      { id: "flaeche", label: "Fl\xE4che", breite: 110, art: "num", kat: "einheit" },
+      { id: "heizflaeche", label: "Heizfl\xE4che", breite: 120, art: "num", kat: "einheit" },
+      { id: "mea", label: "MEA", breite: 110, art: "num", kat: "einheit" },
+      // Eigentümer-Kontaktdaten (alle Eigentümer kommagetrennt) — Anzeige-only.
+      { id: "eig_name", label: "Eigent\xFCmer", breite: 200, art: "ablesen", kat: "eigentuemer" },
+      { id: "eig_tel", label: "Telefon", breite: 160, art: "ablesen", kat: "eigentuemer" },
+      { id: "eig_mail", label: "E-Mail", breite: 220, art: "ablesen", kat: "eigentuemer" },
+      { id: "eig_adr", label: "Adresse", breite: 240, art: "ablesen", kat: "eigentuemer" },
+      // Mieter/Pächter — Name editierbar (kontakt), Kontaktdaten abgeleitet.
+      { id: "mieter", label: "Mieter", breite: 200, art: "kontakt", kat: "mieter" },
+      { id: "telefon", label: "Telefon", breite: 160, art: "ablesen", kat: "mieter" },
+      { id: "mie_mail", label: "E-Mail", breite: 220, art: "ablesen", kat: "mieter" },
+      { id: "mie_adr", label: "Adresse", breite: 240, art: "ablesen", kat: "mieter" },
+      { id: "ptage", label: "Personen-Tage", breite: 200, art: "ptage", kat: "ptage" }
+    ];
+    const eigeneVS = ve ? effVerteilerschluessel(ve).filter((s) => s && !s.fix) : [];
+    const vsSpalten = eigeneVS.map((s) => ({
+      id: "vs_" + s.id,
+      label: s.name || "Schl\xFCssel",
+      breite: 130,
+      art: "vs",
+      kat: "vs",
+      vsId: s.id
+    }));
+    const SPALTEN_KATALOG = [...SPALTEN_KATALOG_STATISCH, ...vsSpalten];
+    const SPALTEN_KATEGORIEN = [
+      { id: "einheit", label: "Einheit" },
+      { id: "eigentuemer", label: "Eigent\xFCmer" },
+      { id: "mieter", label: "Mieter / P\xE4chter" },
+      { id: "vs", label: "Verteilerschl\xFCssel" },
+      { id: "ptage", label: "Personen-Tage" }
     ];
     const kontakteListe = Array.isArray(kontakte) ? kontakte : [];
     const kontaktById = (id) => kontakteListe.find((k) => k && String(k.id) === String(id)) || null;
     const kontaktName = (k) => k ? k.name || [k.vorname, k.nachname].filter(Boolean).join(" ") || "Kontakt" : "";
     const kontaktTelefon = (k) => k ? k.telefon || k.mobil || k.tel || "" : "";
+    const kontaktEmail = (k) => {
+      if (!k) return "";
+      if (k.email) return k.email;
+      const liste = Array.isArray(k.emails) ? k.emails : [];
+      const erste = liste[0];
+      return erste ? erste.email || erste : "";
+    };
+    const kontaktAdresse = (k) => {
+      if (!k) return "";
+      if (k.adresse) return k.adresse;
+      const plzOrt = k.plzOrt || [k.plz, k.ort].filter(Boolean).join(" ");
+      return [k.strasse, plzOrt].filter(Boolean).join(", ");
+    };
+    const eigentuemerKontakteVon = (einheit) => {
+      const liste = einheit && Array.isArray(einheit.eigentuemer) ? einheit.eigentuemer : [];
+      return liste.map((e) => e && e.kontaktId != null ? kontaktById(e.kontaktId) : null).filter(Boolean);
+    };
+    const mieterKontakteVon = (einheit) => {
+      const teil = aktiverTeil(einheit);
+      const beleg = teil ? heuteLaufendeBelegung(teil) || aktiveBelegung(teil) : null;
+      const mitglieder = beleg && beleg.haushalt && Array.isArray(beleg.haushalt.mitglieder) ? beleg.haushalt.mitglieder : [];
+      return mitglieder.filter((m) => m && m.kontaktId != null).map((m) => kontaktById(m.kontaktId)).filter(Boolean);
+    };
+    const kontaktFeldListe = (kontakte2, fn) => kontakte2.map(fn).filter(Boolean).join(", ");
     const spalteDef = (id) => SPALTEN_KATALOG.find((s) => s.id === id) || null;
     const toggleSpalte = (id) => {
       setSpalten((prev) => prev.indexOf(id) >= 0 ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -43412,6 +43472,7 @@
       if (sid === "lage") return einheit.lage || "";
       if (sid === "mea") return einheit.mea || "";
       if (sid === "flaeche") return flaecheVon(einheit) ? String(flaecheVon(einheit)) : einheit.flaeche || "";
+      if (sid === "heizflaeche") return heizflaecheVon(einheit);
       if (sid === "mieter") {
         const id = mieterKontaktIdVon(einheit);
         return id == null ? "" : String(id);
@@ -43420,13 +43481,19 @@
         const id = mieterKontaktIdVon(einheit);
         return kontaktTelefon(kontaktById(id));
       }
-      if (sid === "einzug") {
-        const m = mieterMitgliedVon(einheit);
-        return m && m.von || "";
-      }
-      if (sid === "auszug") {
-        const m = mieterMitgliedVon(einheit);
-        return m && m.bis || "";
+      if (sid === "eig_name") return kontaktFeldListe(eigentuemerKontakteVon(einheit), kontaktName);
+      if (sid === "eig_tel") return kontaktFeldListe(eigentuemerKontakteVon(einheit), kontaktTelefon);
+      if (sid === "eig_mail") return kontaktFeldListe(eigentuemerKontakteVon(einheit), kontaktEmail);
+      if (sid === "eig_adr") return kontaktFeldListe(eigentuemerKontakteVon(einheit), kontaktAdresse);
+      if (sid === "mie_mail") return kontaktFeldListe(mieterKontakteVon(einheit), kontaktEmail);
+      if (sid === "mie_adr") return kontaktFeldListe(mieterKontakteVon(einheit), kontaktAdresse);
+      if (sid.indexOf("vs_") === 0) {
+        const sdef = spalteDef(sid);
+        const schluessel = sdef && ve ? effVerteilerschluessel(ve).find((s) => s.id === sdef.vsId) : null;
+        if (!schluessel) return "";
+        const wj = { von: `${ptJahr}-01-01`, bis: `${ptJahr}-12-31` };
+        const wert = vsWertVon(schluessel, einheit, wj);
+        return wert != null && wert !== 0 ? String(wert) : wert === 0 ? "0" : "";
       }
       return "";
     };
@@ -43435,37 +43502,14 @@
         schreibeMieter(einheitId, wert === "" ? null : wert);
         return;
       }
-      if (sid === "einzug" || sid === "auszug") {
-        schreibeMeldedatum(einheitId, sid, wert);
-        return;
-      }
       patchEinheit(einheitId, (e) => {
         if (sid === "nr") return { ...e, nr: wert };
         if (sid === "typ") return { ...e, typ: wert };
         if (sid === "lage") return { ...e, lage: wert };
         if (sid === "mea") return setzeEinheitMea(e, wert);
         if (sid === "flaeche") return setzeEinheitFlaeche(e, wert);
+        if (sid === "heizflaeche") return setzeEinheitHeizflaeche(e, wert);
         return e;
-      });
-    };
-    const schreibeMeldedatum = (einheitId, sid, wert) => {
-      patchEinheit(einheitId, (e) => {
-        if (isStellplatzTyp(e.typ)) return e;
-        const aktiv = aktiverTeil(e);
-        if (!aktiv) return e;
-        const beleg = heuteLaufendeBelegung(aktiv) || aktiveBelegung(aktiv);
-        if (!beleg || !beleg.haushalt || !Array.isArray(beleg.haushalt.mitglieder)) return e;
-        const feld = sid === "einzug" ? "von" : "bis";
-        const idx = beleg.haushalt.mitglieder.findIndex(
-          (m) => m && m.kontaktId != null && m.recht === "mieter"
-        );
-        const ziel = idx >= 0 ? idx : beleg.haushalt.mitglieder.findIndex((m) => m && m.kontaktId != null);
-        if (ziel < 0) return e;
-        const neueMitglieder = beleg.haushalt.mitglieder.map((m, i) => i === ziel ? { ...m, [feld]: wert || "" } : m);
-        const neuHh = { ...beleg.haushalt, mitglieder: neueMitglieder };
-        const neueBelegungen = aktiv.belegungen.map((b) => b === beleg ? { ...b, haushalt: neuHh } : b);
-        const neueTeile = e.teile.map((teil) => teil === aktiv ? { ...aktiv, belegungen: neueBelegungen } : teil);
-        return { ...e, teile: neueTeile };
       });
     };
     const zellInput = (einheit, sdef) => {
@@ -43600,7 +43644,7 @@
           kontakteListe.map((k) => /* @__PURE__ */ import_react5.default.createElement("option", { key: k.id, value: String(k.id) }, kontaktName(k)))
         );
       }
-      if (sdef.art === "ablesen") {
+      if (sdef.art === "ablesen" || sdef.art === "vs") {
         return /* @__PURE__ */ import_react5.default.createElement("div", { style: {
           fontSize: FS.m,
           color: wert ? t.text : t.muted,
@@ -43609,26 +43653,6 @@
           overflow: "hidden",
           textOverflow: "ellipsis"
         } }, wert || "\u2014");
-      }
-      if (sdef.art === "datum") {
-        if (isStellplatzTyp(einheit.typ)) {
-          return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.s, color: t.muted, fontStyle: "italic" } }, "\u2014");
-        }
-        const hatMieter = mieterMitgliedVon(einheit) != null;
-        if (!hatMieter) {
-          return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.xs, color: t.muted, fontStyle: "italic" } }, "erst Mieter");
-        }
-        return /* @__PURE__ */ import_react5.default.createElement(
-          DatumFeld,
-          {
-            value: wert || null,
-            onChange: (d) => schreibeWert(einheit.id, sdef.id, d || ""),
-            t,
-            accent,
-            iso: true,
-            defaultHeute: false
-          }
-        );
       }
       return /* @__PURE__ */ import_react5.default.createElement(
         "input",
@@ -43651,10 +43675,6 @@
         }
       );
     };
-    const isoZuDe = (s) => {
-      const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
-      return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || "");
-    };
     const zellText = (einheit, sdef) => {
       const wert = leseWert(einheit, sdef.id);
       if (sdef.art === "ptage") {
@@ -43672,12 +43692,6 @@
         }
         const k = wert ? kontaktById(wert) : null;
         return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.m, color: k ? t.text : t.muted } }, k ? kontaktName(k) : "\u2014");
-      }
-      if (sdef.art === "datum") {
-        if (isStellplatzTyp(einheit.typ)) {
-          return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.s, color: t.muted, fontStyle: "italic" } }, "\u2014");
-        }
-        return /* @__PURE__ */ import_react5.default.createElement("span", { style: { fontSize: FS.m, color: wert ? t.text : t.muted, whiteSpace: "nowrap" } }, wert ? isoZuDe(wert) : "\u2014");
       }
       return /* @__PURE__ */ import_react5.default.createElement("span", { style: {
         fontSize: FS.m,
@@ -43876,6 +43890,56 @@
         ))
       )
     ) : null;
+    const pilleNode = (s) => {
+      const an = spalten.indexOf(s.id) >= 0;
+      const pos = spalten.indexOf(s.id) + 1;
+      return /* @__PURE__ */ import_react5.default.createElement(
+        "button",
+        {
+          key: s.id,
+          onClick: () => toggleSpalte(s.id),
+          style: {
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 12px",
+            borderRadius: RAD.pill,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontSize: FS.m,
+            fontWeight: FW.medium,
+            border: `1px solid ${an ? accent : t.border}`,
+            background: an ? accent : "none",
+            color: an ? getContrastColor(accent) : t.sub
+          }
+        },
+        an && /* @__PURE__ */ import_react5.default.createElement("span", { style: {
+          fontSize: FS.xxs,
+          fontWeight: FW.bold,
+          background: getContrastColor(accent) + "33",
+          borderRadius: RAD.pill,
+          padding: "0 5px"
+        } }, pos),
+        s.label
+      );
+    };
+    const pillenGruppenNode = /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+      fontSize: FS.xs,
+      fontWeight: FW.bold,
+      color: t.muted,
+      textTransform: "uppercase",
+      letterSpacing: "0.05em",
+      marginBottom: 8
+    } }, "Spalten w\xE4hlen"), SPALTEN_KATEGORIEN.map((kat) => {
+      const spaltenDerKat = SPALTEN_KATALOG.filter((s) => s.kat === kat.id);
+      if (spaltenDerKat.length === 0) return null;
+      return /* @__PURE__ */ import_react5.default.createElement("div", { key: kat.id, style: { marginBottom: 10 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+        fontSize: FS.xxs,
+        fontWeight: FW.bold,
+        color: t.sub,
+        marginBottom: 5
+      } }, kat.label), /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, spaltenDerKat.map((s) => pilleNode(s))));
+    }));
     const seMaske = /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ve && /* @__PURE__ */ import_react5.default.createElement(
       DetailKopf,
       {
@@ -43888,7 +43952,7 @@
     ), /* @__PURE__ */ import_react5.default.createElement("div", { style: {
       display: "flex",
       alignItems: "center",
-      justifyContent: "flex-end",
+      justifyContent: "center",
       gap: 10,
       marginBottom: 14
     } }, /* @__PURE__ */ import_react5.default.createElement(
@@ -43927,46 +43991,7 @@
         }
       },
       "\u203A"
-    )), /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ptEdit && /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 8 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
-      fontSize: FS.xs,
-      fontWeight: FW.bold,
-      color: t.muted,
-      textTransform: "uppercase",
-      letterSpacing: "0.05em",
-      marginBottom: 6
-    } }, "Spalten w\xE4hlen"), /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, SPALTEN_KATALOG.map((s) => {
-      const an = spalten.indexOf(s.id) >= 0;
-      const pos = spalten.indexOf(s.id) + 1;
-      return /* @__PURE__ */ import_react5.default.createElement(
-        "button",
-        {
-          key: s.id,
-          onClick: () => toggleSpalte(s.id),
-          style: {
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 12px",
-            borderRadius: RAD.pill,
-            cursor: "pointer",
-            fontFamily: "inherit",
-            fontSize: FS.m,
-            fontWeight: FW.medium,
-            border: `1px solid ${an ? accent : t.border}`,
-            background: an ? accent : "none",
-            color: an ? getContrastColor(accent) : t.sub
-          }
-        },
-        an && /* @__PURE__ */ import_react5.default.createElement("span", { style: {
-          fontSize: FS.xxs,
-          fontWeight: FW.bold,
-          background: getContrastColor(accent) + "33",
-          borderRadius: RAD.pill,
-          padding: "0 5px"
-        } }, pos),
-        s.label
-      );
-    }))), einheiten.length === 0 ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 } }, "Dieses Objekt hat noch keine Einheiten.") : /* @__PURE__ */ import_react5.default.createElement("div", { style: {
+    )), /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, pillenGruppenNode, einheiten.length === 0 ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 16 } }, "Dieses Objekt hat noch keine Einheiten.") : /* @__PURE__ */ import_react5.default.createElement("div", { style: {
       overflowX: "auto",
       border: `1px solid ${t.border}`,
       borderRadius: RAD.lg,
@@ -44005,7 +44030,7 @@
       fontWeight: FW.regular,
       color: t.muted,
       fontStyle: "italic"
-    } }, ptEdit ? "Oben Spalten w\xE4hlen \u2026" : "Noch keine Spalten \u2014 zum Bearbeiten tippen"))), /* @__PURE__ */ import_react5.default.createElement("tbody", null, einheiten.map((e, ri) => /* @__PURE__ */ import_react5.default.createElement("tr", { key: e.id, style: { background: ri % 2 ? t.card : "transparent" } }, /* @__PURE__ */ import_react5.default.createElement("td", { style: {
+    } }, "Oben Spalten w\xE4hlen \u2026"))), /* @__PURE__ */ import_react5.default.createElement("tbody", null, einheiten.map((e, ri) => /* @__PURE__ */ import_react5.default.createElement("tr", { key: e.id, style: { background: ri % 2 ? t.card : "transparent" } }, /* @__PURE__ */ import_react5.default.createElement("td", { style: {
       padding: "6px 12px",
       borderBottom: `1px solid ${t.border}40`,
       position: "sticky",
