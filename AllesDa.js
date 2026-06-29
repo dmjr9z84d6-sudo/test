@@ -23661,7 +23661,7 @@
     }
     return base;
   }
-  var APP_VERSION = "13.11";
+  var APP_VERSION = "13.12";
   var FIRMEN_FARBE = KONTAKTE_FARBE;
   var SERIOES_GRAU = "#6B7280";
   var _farbIntensitaet = 1;
@@ -43639,70 +43639,52 @@
       },
       /* @__PURE__ */ import_react5.default.createElement(I, { name: "pencil", size: 14, color: getContrastColor(accent) })
     ) : null;
-    const seMaske = /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ve && /* @__PURE__ */ import_react5.default.createElement("div", { style: {
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-      marginBottom: 14,
-      minWidth: 0,
-      flexWrap: "wrap"
-    } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: {
-      flex: "1 1 200px",
-      minWidth: 0,
-      display: "flex",
-      alignItems: "baseline",
-      gap: 10,
-      overflow: "hidden"
-    } }, /* @__PURE__ */ import_react5.default.createElement("span", { style: {
-      fontSize: FS.xxl,
-      fontWeight: FW.heavy,
-      color: accent,
-      whiteSpace: "nowrap",
-      flexShrink: 0
-    } }, ve.nr), ve.adresse ? /* @__PURE__ */ import_react5.default.createElement("span", { style: {
-      fontSize: FS.s,
-      color: t.text,
-      minWidth: 0,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap"
-    } }, ve.adresse) : null), modus === "personentage" && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ import_react5.default.createElement(
-      "button",
+    const seMaske = /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, ve && /* @__PURE__ */ import_react5.default.createElement(
+      DetailKopf,
       {
-        onClick: () => setPtJahr((j) => j - 1),
-        title: "Jahr zur\xFCck",
-        "aria-label": "Jahr zur\xFCck",
-        style: {
-          background: "none",
-          border: `1px solid ${t.border}`,
-          borderRadius: RAD.sm,
-          color: t.sub,
-          fontSize: 18,
-          cursor: "pointer",
-          width: 38,
-          height: 34
-        }
-      },
-      "\u2039"
-    ), /* @__PURE__ */ import_react5.default.createElement("div", { style: { textAlign: "center", minWidth: 84 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, fontWeight: FW.bold, color: t.text } }, "Jahr ", ptJahr), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.xxs, color: t.muted } }, "Wirtschaftsjahr")), /* @__PURE__ */ import_react5.default.createElement(
-      "button",
-      {
-        onClick: () => setPtJahr((j) => j + 1),
-        title: "Jahr vor",
-        "aria-label": "Jahr vor",
-        style: {
-          background: "none",
-          border: `1px solid ${t.border}`,
-          borderRadius: RAD.sm,
-          color: t.sub,
-          fontSize: 18,
-          cursor: "pointer",
-          width: 38,
-          height: 34
-        }
-      },
-      "\u203A"
-    )))), /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react5.default.createElement(
+        t,
+        accent,
+        titel: ve.nr,
+        sub: ve.adresse || null,
+        aktion: modus === "personentage" ? /* @__PURE__ */ import_react5.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ import_react5.default.createElement(
+          "button",
+          {
+            onClick: () => setPtJahr((j) => j - 1),
+            title: "Jahr zur\xFCck",
+            "aria-label": "Jahr zur\xFCck",
+            style: {
+              background: "none",
+              border: `1px solid ${t.border}`,
+              borderRadius: RAD.sm,
+              color: t.sub,
+              fontSize: 18,
+              cursor: "pointer",
+              width: 38,
+              height: 34
+            }
+          },
+          "\u2039"
+        ), /* @__PURE__ */ import_react5.default.createElement("div", { style: { textAlign: "center", minWidth: 84 } }, /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.m, fontWeight: FW.bold, color: t.text } }, "Jahr ", ptJahr), /* @__PURE__ */ import_react5.default.createElement("div", { style: { fontSize: FS.xxs, color: t.muted } }, "Wirtschaftsjahr")), /* @__PURE__ */ import_react5.default.createElement(
+          "button",
+          {
+            onClick: () => setPtJahr((j) => j + 1),
+            title: "Jahr vor",
+            "aria-label": "Jahr vor",
+            style: {
+              background: "none",
+              border: `1px solid ${t.border}`,
+              borderRadius: RAD.sm,
+              color: t.sub,
+              fontSize: 18,
+              cursor: "pointer",
+              width: 38,
+              height: 34
+            }
+          },
+          "\u203A"
+        )) : null
+      }
+    ), /* @__PURE__ */ import_react5.default.createElement("div", { style: { marginBottom: 14 } }, /* @__PURE__ */ import_react5.default.createElement(
       SegmentControl,
       {
         t,
@@ -45991,111 +45973,93 @@
       ).filter(Boolean)
     )];
     const beteiligte = beteiligteIds.map((id) => kontakte.find((k) => k.id === id)).filter(Boolean);
-    return /* @__PURE__ */ import_react6.default.createElement(EinheitOffenContext.Provider, { value: { offen: einheitOffen, setOffen: setEinheitOffen } }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12, minWidth: 0 } }, /* @__PURE__ */ import_react6.default.createElement(
-      "div",
+    return /* @__PURE__ */ import_react6.default.createElement(EinheitOffenContext.Provider, { value: { offen: einheitOffen, setOffen: setEinheitOffen } }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement(
+      DetailKopf,
       {
-        onClick: headerOhneEditBtn && onBack ? onBack : void 0,
-        style: {
-          flex: 1,
-          minWidth: 0,
-          display: "flex",
-          alignItems: "baseline",
-          gap: 10,
-          overflow: "hidden",
-          cursor: headerOhneEditBtn && onBack ? "pointer" : "default"
-        }
-      },
-      /* @__PURE__ */ import_react6.default.createElement("span", { style: {
-        fontSize: FS.xxl,
-        fontWeight: FW.heavy,
-        color: accent,
-        whiteSpace: "nowrap",
-        flexShrink: 0
-      } }, ve.nr),
-      ve.adresse ? /* @__PURE__ */ import_react6.default.createElement("span", { style: {
-        fontSize: FS.s,
-        color: t.text,
-        minWidth: 0,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap"
-      } }, ve.adresse) : null
-    ), !headerOhneEditBtn && !(einheitOffen && !editMode) && (editMode ? /* @__PURE__ */ import_react6.default.createElement("div", { style: { display: "flex", gap: 6, flexShrink: 0 } }, loeschenErlaubt.objekte && setVes && /* @__PURE__ */ import_react6.default.createElement(
-      AktionsButton,
-      {
-        rolle: "loeschen",
-        onClick: handleObjektLoeschen,
-        farbe: accent,
-        confirm: loeschConfirm,
-        label: loeschConfirm ? "Wirklich l\xF6schen?" : null,
-        title: loeschConfirm ? "Nochmal klicken zum L\xF6schen" : "Objekt l\xF6schen",
         t,
-        accent
+        accent,
+        titel: ve.nr,
+        sub: ve.adresse || null,
+        marginBottom: 12,
+        onTitelClick: headerOhneEditBtn && onBack ? onBack : null,
+        aktion: !headerOhneEditBtn && !(einheitOffen && !editMode) ? editMode ? /* @__PURE__ */ import_react6.default.createElement("div", { style: { display: "flex", gap: 6, flexShrink: 0 } }, loeschenErlaubt.objekte && setVes && /* @__PURE__ */ import_react6.default.createElement(
+          AktionsButton,
+          {
+            rolle: "loeschen",
+            onClick: handleObjektLoeschen,
+            farbe: accent,
+            confirm: loeschConfirm,
+            label: loeschConfirm ? "Wirklich l\xF6schen?" : null,
+            title: loeschConfirm ? "Nochmal klicken zum L\xF6schen" : "Objekt l\xF6schen",
+            t,
+            accent
+          }
+        ), /* @__PURE__ */ import_react6.default.createElement(
+          "button",
+          {
+            onClick: bearbeitenAbbrechen,
+            title: "Abbrechen \u2014 \xC4nderungen verwerfen",
+            "aria-label": "Abbrechen",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              background: accent,
+              border: "none",
+              borderRadius: RAD.pill,
+              cursor: "pointer",
+              boxShadow: `0 1px 2px ${accent}40`
+            }
+          },
+          /* @__PURE__ */ import_react6.default.createElement(I, { name: "x", size: 16, color: "#EF4444" })
+        ), /* @__PURE__ */ import_react6.default.createElement(
+          "button",
+          {
+            onClick: bearbeitenFertig,
+            title: "Fertig \u2014 \xC4nderungen behalten",
+            "aria-label": "Fertig",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              background: accent,
+              border: "none",
+              borderRadius: RAD.pill,
+              cursor: "pointer",
+              boxShadow: `0 1px 2px ${accent}40`
+            }
+          },
+          /* @__PURE__ */ import_react6.default.createElement(I, { name: "check", size: 14, color: "#FFFFFF" })
+        )) : /* @__PURE__ */ import_react6.default.createElement(
+          "button",
+          {
+            onClick: () => setEditMode(true),
+            title: "Bearbeiten",
+            "aria-label": "Bearbeiten",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              background: accent,
+              border: "none",
+              borderRadius: RAD.pill,
+              cursor: "pointer",
+              boxShadow: `0 1px 2px ${accent}40`
+            }
+          },
+          /* @__PURE__ */ import_react6.default.createElement(I, { name: "pencil", size: 14, color: getContrastColor(accent) })
+        ) : null
       }
-    ), /* @__PURE__ */ import_react6.default.createElement(
-      "button",
-      {
-        onClick: bearbeitenAbbrechen,
-        title: "Abbrechen \u2014 \xC4nderungen verwerfen",
-        "aria-label": "Abbrechen",
-        style: {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 36,
-          height: 36,
-          flexShrink: 0,
-          background: accent,
-          border: "none",
-          borderRadius: RAD.pill,
-          cursor: "pointer",
-          boxShadow: `0 1px 2px ${accent}40`
-        }
-      },
-      /* @__PURE__ */ import_react6.default.createElement(I, { name: "x", size: 16, color: "#EF4444" })
-    ), /* @__PURE__ */ import_react6.default.createElement(
-      "button",
-      {
-        onClick: bearbeitenFertig,
-        title: "Fertig \u2014 \xC4nderungen behalten",
-        "aria-label": "Fertig",
-        style: {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 36,
-          height: 36,
-          flexShrink: 0,
-          background: accent,
-          border: "none",
-          borderRadius: RAD.pill,
-          cursor: "pointer",
-          boxShadow: `0 1px 2px ${accent}40`
-        }
-      },
-      /* @__PURE__ */ import_react6.default.createElement(I, { name: "check", size: 14, color: "#FFFFFF" })
-    )) : /* @__PURE__ */ import_react6.default.createElement(
-      "button",
-      {
-        onClick: () => setEditMode(true),
-        title: "Bearbeiten",
-        "aria-label": "Bearbeiten",
-        style: {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 36,
-          height: 36,
-          flexShrink: 0,
-          background: accent,
-          border: "none",
-          borderRadius: RAD.pill,
-          cursor: "pointer",
-          boxShadow: `0 1px 2px ${accent}40`
-        }
-      },
-      /* @__PURE__ */ import_react6.default.createElement(I, { name: "pencil", size: 14, color: getContrastColor(accent) })
-    ))), /* @__PURE__ */ import_react6.default.createElement("div", { ref: tabLeisteRef, style: {
+    ), /* @__PURE__ */ import_react6.default.createElement("div", { ref: tabLeisteRef, style: {
       display: "flex",
       background: t.card,
       border: `1px solid ${t.border}`,
@@ -60423,6 +60387,40 @@
       flexShrink: 0
     } }, rechts) : null));
   }
+  function DetailKopf({ t, accent, titel = null, sub = null, aktion = null, onTitelClick = null, marginBottom = 14 }) {
+    if (titel == null && aktion == null) return null;
+    return /* @__PURE__ */ import_react9.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom, minWidth: 0 } }, /* @__PURE__ */ import_react9.default.createElement(
+      "div",
+      {
+        onClick: onTitelClick || void 0,
+        style: {
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          alignItems: "baseline",
+          gap: 10,
+          overflow: "hidden",
+          cursor: onTitelClick ? "pointer" : "default"
+        }
+      },
+      titel != null && /* @__PURE__ */ import_react9.default.createElement("span", { style: {
+        fontSize: FS.xxl,
+        fontWeight: FW.heavy,
+        color: accent,
+        lineHeight: 1.1,
+        whiteSpace: "nowrap",
+        flexShrink: 0
+      } }, titel),
+      sub != null && /* @__PURE__ */ import_react9.default.createElement("span", { style: {
+        fontSize: FS.s,
+        color: t.text,
+        minWidth: 0,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap"
+      } }, sub)
+    ), aktion != null && /* @__PURE__ */ import_react9.default.createElement("div", { style: { flexShrink: 0, display: "flex", alignItems: "center", gap: 6 } }, aktion));
+  }
   function DetailRahmen({ t, accent, titel = null, sub = null, aktion = null, children }) {
     const hatKopf = titel != null || aktion != null;
     return /* @__PURE__ */ import_react9.default.createElement("div", { style: {
@@ -60434,28 +60432,7 @@
       width: "100%",
       minWidth: 0,
       overflowWrap: "anywhere"
-    } }, hatKopf && /* @__PURE__ */ import_react9.default.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14, minWidth: 0 } }, /* @__PURE__ */ import_react9.default.createElement("div", { style: {
-      flex: 1,
-      minWidth: 0,
-      display: "flex",
-      alignItems: "baseline",
-      gap: 10,
-      overflow: "hidden"
-    } }, titel != null && /* @__PURE__ */ import_react9.default.createElement("span", { style: {
-      fontSize: FS.xxl,
-      fontWeight: FW.heavy,
-      color: accent,
-      lineHeight: 1.1,
-      whiteSpace: "nowrap",
-      flexShrink: 0
-    } }, titel), sub != null && /* @__PURE__ */ import_react9.default.createElement("span", { style: {
-      fontSize: FS.s,
-      color: t.text,
-      minWidth: 0,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap"
-    } }, sub)), aktion != null && /* @__PURE__ */ import_react9.default.createElement("div", { style: { flexShrink: 0, display: "flex", alignItems: "center", gap: 6 } }, aktion)), children);
+    } }, hatKopf && /* @__PURE__ */ import_react9.default.createElement(DetailKopf, { t, accent, titel, sub, aktion }), children);
   }
   function MasterDetailRahmen({
     master,
