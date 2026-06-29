@@ -3763,7 +3763,7 @@ function KontakteMasterDetail({ cardWidth, detailMinBreite = 300, kartenMaxBreit
   return (
     <MasterDetailRahmen
       master={(layout) => layout.nurMaster
-        ? renderKartenSpalte(Math.max(1, layout.cols), null, layout.kartenMaxBreite)
+        ? renderKartenSpalte(Math.max(1, layout.cols), null, layout.kartenMaxBreite, layout.einspaltig)
         : renderKartenSpalte(Math.max(1, layout.cols), layout.kartenBreite)}
       detail={detailKarte}
       mobilDetail={detailKarte}
@@ -4239,16 +4239,22 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
       }}/>
   ) : null;
 
-  // Einheitliches KACHEL_GRID (feste Kachelbreite, nie gedehnt) — identisch zu
-  // Objekten/Einstellungen. Bei wenig Inhalt bleibt rechts Abstand statt
-  // breitgezogener Karten.
-  const wrapStyle = festeGridSpec
-    ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" }
-    : { ...KACHEL_GRID, gridAutoFlow: "dense" };
-
-  // Master-Detail: linke schmale Spalte mit Karten, rechts Detail
+  // Breite zuerst — wird für das Mobil-Einspalten-Grid gebraucht.
   const windowW = useWindowWidth();
   const istDesktop = windowW >= 900;
+
+  // Einheitliches KACHEL_GRID (feste Kachelbreite, nie gedehnt) — identisch zu
+  // Objekten/Einstellungen. Bei wenig Inhalt bleibt rechts Abstand statt
+  // breitgezogener Karten. MOBIL: hartes 1fr (EINE Spalte, volle Breite) —
+  // bewusst NICHT über var(--ad-kg), damit es unabhängig von der Klassenregel
+  // sicher greift (Mobil-Overflow-Fix, sonst zweispaltig + Querscroll).
+  const wrapStyle = !istDesktop
+    ? { display: "grid", gridTemplateColumns: "1fr", gap: 10 }
+    : (festeGridSpec
+        ? { ...KACHEL_GRID, gridTemplateColumns: festeGridSpec, gridAutoFlow: "dense" }
+        : { ...KACHEL_GRID, gridAutoFlow: "dense" });
+
+  // Master-Detail: linke schmale Spalte mit Karten, rechts Detail
   const hatOffen = aktiv != null && aktivK != null;
 
   // nurDetail an die App-Ebene melden (Header tauscht +Button ↔ Zurück).
@@ -4271,10 +4277,10 @@ function KontakteScreen({ t, accent, initialKontaktId, onVEClick, filter = "alle
       id={"kon-" + k.id} onClick={onClick}/>
   );
 
-  const renderKartenSpalte = (cols, kartenBreite, nurMasterBreite) => {
+  const renderKartenSpalte = (cols, kartenBreite, nurMasterBreite, einspaltig) => {
     const gridStyle = kartenBreite
       ? { ...KACHEL_GRID, gridTemplateColumns: `repeat(${cols}, ${kartenBreite}px)`, alignContent: "start" }
-      : { ...kachelGridBreite(nurMasterBreite), alignContent: "start" };
+      : { ...kachelGridBreite(nurMasterBreite, einspaltig), alignContent: "start" };
     const alphaTrennerAn = anzeige.alphaTrenner !== false;
     // EINE Gruppe rendern — identisch zur Vollbild-Logik (renderGruppe), nur mit
     // dem Master-Detail-Grid und Toggle-Klick. So gibt es die Buchstaben-Einteilung

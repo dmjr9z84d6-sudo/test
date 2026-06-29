@@ -1582,7 +1582,7 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = nul
     <div style={listenAnsicht === "liste"
       ? { display: "flex", flexDirection: "column", gap: 6 }
       : (layout.nurMaster
-          ? kachelGridBreite(layout.kartenMaxBreite)
+          ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig)
           : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
       {gefiltert.map(ve => listenAnsicht === "liste" ? (
         <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}

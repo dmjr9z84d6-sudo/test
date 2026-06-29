@@ -3466,7 +3466,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   // dieselbe Kartenbreite nutzt wie der Detail-Fall (sonst laufen die Breiten
   // auseinander: Übersicht 340 vs Detail-Fall die eingestellte Breite).
   const layout = { ...layoutRaw, nurMaster: !hatDetail,
-    kartenMaxBreite, kartenMin };
+    kartenMaxBreite, kartenMin, einspaltig: !istDesktop };
   const masterBreite = layout.masterBreite;
   const detailBreite = layout.detailBreite || detailMinBreite;
   // master darf Node ODER Funktion(layout) sein — so kann die Master-Liste im

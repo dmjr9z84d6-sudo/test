@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { FS, FW, RAD, KACHEL_GRID, kachelGridBreite, getContrastColor } from "./constants.js";
 import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
@@ -742,6 +742,21 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
   // Stift im Kopf: schaltet ALLE Einheiten der Personen-Tage-Ansicht zugleich
   // auf Bearbeiten (Felder editierbar). Aus = reine Anzeige.
   const [ptEdit, setPtEdit] = useState(false);
+  // Snapshot für „Abbrechen" (X): beim Start des Bearbeitens wird der aktuelle
+  // ves-Stand gesichert; X stellt ihn wieder her (Eingaben zurücksetzen),
+  // Haken behält die Änderungen. Muster wie im Objekte-Detail (§86.6).
+  const ptSnapshotRef = useRef(null);
+  const ptEditStart = () => {
+    try { ptSnapshotRef.current = JSON.parse(JSON.stringify(ves || [])); }
+    catch (e) { ptSnapshotRef.current = null; }
+    setPtEdit(true);
+  };
+  const ptEditAbbrechen = () => {
+    if (ptSnapshotRef.current && setVes) setVes(ptSnapshotRef.current);
+    ptSnapshotRef.current = null;
+    setPtEdit(false);
+  };
+  const ptEditFertig = () => { ptSnapshotRef.current = null; setPtEdit(false); };
 
   // ── Verfügbare Spalten (Pillen). Welle 1: direkt an der Einheit tippbare
   //    Felder. Eigentümer/Mieter/Telefon folgen in Welle 2. ──
@@ -970,6 +985,33 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     );
   };
 
+  // Lese-Darstellung einer Tabellen-Zelle (Anzeige-Modus, ptEdit=false): zeigt
+  // den reinen Wert ohne Eingabefeld. Mieter/Typ → Klartext, Datum → de-Format.
+  const isoZuDe = (s) => {
+    const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || "");
+  };
+  const zellText = (einheit, sdef) => {
+    const wert = leseWert(einheit, sdef.id);
+    if (sdef.art === "kontakt") {
+      if (isStellplatzTyp(einheit.typ)) {
+        return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
+      }
+      const k = wert ? kontaktById(wert) : null;
+      return <span style={{ fontSize: FS.m, color: k ? t.text : t.muted }}>{k ? kontaktName(k) : "—"}</span>;
+    }
+    if (sdef.art === "datum") {
+      if (isStellplatzTyp(einheit.typ)) {
+        return <span style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>—</span>;
+      }
+      return <span style={{ fontSize: FS.m, color: wert ? t.text : t.muted, whiteSpace: "nowrap" }}>{wert ? isoZuDe(wert) : "—"}</span>;
+    }
+    return (
+      <span style={{ fontSize: FS.m, color: wert ? t.text : t.muted, whiteSpace: "nowrap",
+        overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{wert || "—"}</span>
+    );
+  };
+
   // ── MASTER-DETAIL (Benny v12.35): links Objektauswahl (Karte/Liste, festes
   //    Schema), rechts die Schnelleingabe-Maske an gleicher x-Position. Mobil:
   //    Vollbild-Wechsel mit „Zurück". ──
@@ -981,7 +1023,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     ) : (
       <div style={istListeSE
         ? { display: "flex", flexDirection: "column", gap: 6 }
-        : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+        : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
         {(ves || []).map(v => istListeSE ? (
           <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
             aktiv={objektId === v.id} kbItem id={"se-" + v.id}
@@ -1018,6 +1060,38 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
     );
   }
 
+  // Header-Aktion rechts (§86.6): Anzeige-Modus = runder Stift; Bearbeiten-Modus
+  // = X (Abbrechen, setzt Eingaben zurück) + Haken (Fertig, behält). Rund 36×36,
+  // accent-Hintergrund — identisch zum Objekte-Detail. Auf BEIDEN Modi (Tabelle
+  // + Personen-Tage) sichtbar, sobald ein Objekt gewählt ist.
+  const rundBtnStyle = {
+    display: "flex", alignItems: "center", justifyContent: "center",
+    width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
+    borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40`,
+  };
+  const editAktion = ve ? (
+    ptEdit ? (
+      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        <button onClick={ptEditAbbrechen}
+          title="Abbrechen — Eingaben zurücksetzen" aria-label="Abbrechen"
+          style={rundBtnStyle}>
+          <I name="x" size={16} color="#EF4444"/>
+        </button>
+        <button onClick={ptEditFertig}
+          title="Fertig — Änderungen behalten" aria-label="Fertig"
+          style={rundBtnStyle}>
+          <I name="check" size={14} color="#FFFFFF"/>
+        </button>
+      </div>
+    ) : (
+      <button onClick={ptEditStart}
+        title="Bearbeiten" aria-label="Bearbeiten"
+        style={rundBtnStyle}>
+        <I name="pencil" size={14} color={getContrastColor(accent)}/>
+      </button>
+    )
+  ) : null;
+
   // Maske-Inhalt (Detail) — gemeinsam für Desktop-Detail und Mobil-Vollbild.
   const seMaske = (
       <>
@@ -1053,15 +1127,6 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
                   style={{ background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
                     color: t.sub, fontSize: 18, cursor: "pointer", width: 38, height: 34 }}>›</button>
               </div>
-              <button onClick={() => setPtEdit(e => !e)}
-                title={ptEdit ? "Fertig — Anzeige" : "Bearbeiten — alle Einheiten"}
-                aria-label={ptEdit ? "Fertig" : "Bearbeiten"}
-                style={{ display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
-                  borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
-                <I name={ptEdit ? "check" : "pencil"} size={ptEdit ? 14 : 14}
-                  color={getContrastColor(accent)}/>
-              </button>
             </>
           )}
         </div>
@@ -1075,7 +1140,9 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
 
         {modus === "tabelle" ? (
         <>
-        {/* Pillen: Spalten zuschalten (Klick-Reihenfolge = links→rechts) */}
+        {/* Pillen: Spalten zuschalten — nur im Bearbeiten-Modus (Spaltenwahl
+            ist Bearbeiten). Im Anzeige-Modus erscheint nur die fertige Tabelle. */}
+        {ptEdit && (
         <div style={{ marginBottom: 8 }}>
           <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
             textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
@@ -1104,6 +1171,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
             })}
           </div>
         </div>
+        )}
 
         {/* Tabelle: Zeilen = Einheiten, Spalte 1 fix = Einheit, dann gewählte Spalten */}
         {einheiten.length === 0 ? (
@@ -1133,7 +1201,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
                     <th style={{ textAlign: "left", padding: "10px 12px",
                       borderBottom: `1px solid ${t.border}`, fontWeight: FW.regular,
                       color: t.muted, fontStyle: "italic" }}>
-                      Oben Spalten wählen …
+                      {ptEdit ? "Oben Spalten wählen …" : "Noch keine Spalten — zum Bearbeiten tippen"}
                     </th>
                   )}
                 </tr>
@@ -1151,7 +1219,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
                       return sd ? (
                         <td key={sid} style={{ padding: "6px 8px",
                           borderBottom: `1px solid ${t.border}40`, verticalAlign: "middle" }}>
-                          {zellInput(e, sd)}
+                          {ptEdit ? zellInput(e, sd) : zellText(e, sd)}
                         </td>
                       ) : null;
                     })}
@@ -1198,7 +1266,10 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <ScreenKopf t={t} accent={accent} titel="Schnelleingabe"
           rechts={
-            <HeaderZurueck onClick={() => setObjektId(null)} t={t}/>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              {editAktion}
+              <HeaderZurueck onClick={() => setObjektId(null)} t={t}/>
+            </div>
           }/>
         <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 80px)" }}>
@@ -1490,7 +1561,7 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
     lgView === "objekte" ? (
       <div style={istListeLG
         ? { display: "flex", flexDirection: "column", gap: 6 }
-        : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
+        : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` })}>
         {(ves || []).map(v => istListeLG ? (
           <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
             aktiv={objektId === v.id} kbItem id={"lg-" + v.id}
@@ -1778,7 +1849,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   const masterInhalt = (layout) => {
     const masterGridStyle = istListe
       ? { display: "flex", flexDirection: "column", gap: 6 }
-      : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` });
+      : (layout.nurMaster ? kachelGridBreite(layout.kartenMaxBreite, layout.einspaltig) : { ...KACHEL_GRID, gridTemplateColumns: `repeat(${Math.max(1, layout.cols)}, ${layout.kartenBreite}px)` });
     return statView === "objekte" ? (
     <div style={masterGridStyle}>
       {ves.map(ve => istListe ? (

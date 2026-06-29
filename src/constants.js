@@ -59,7 +59,13 @@ export const KACHEL_GRID = {
 // dieselbe Breite haben wie die berechneten Karten im Detail-Fall — sonst
 // laufen die Breiten auseinander (Übersicht 340 vs Detail-Fall die eingestellte
 // Breite). Respektiert weiterhin die CSS-Variable --ad-kg (Mobil = 1 Spalte).
-export function kachelGridBreite(kartenBreite) {
+export function kachelGridBreite(kartenBreite, einspaltig) {
+  // einspaltig=true → hartes 1fr (EINE Spalte, volle Breite). Bewusst NICHT über
+  // var(--ad-kg): Inline-Style gewinnt immer und ist unabhängig davon, ob die
+  // .ad-root-mobile-Klassenregel auf dem Gerät greift (Mobil-Overflow-Fix).
+  if (einspaltig) {
+    return { display: "grid", gridTemplateColumns: "1fr", justifyContent: "stretch", gap: 10 };
+  }
   const w = Math.max(160, kartenBreite || KACHEL_W);
   return {
     display: "grid",
@@ -94,7 +100,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "13.07";
+export const APP_VERSION = "13.08";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
