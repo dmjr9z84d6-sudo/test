@@ -1468,15 +1468,19 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
       if (w > 0) setBuehneMess(w);
     };
     mess();
+    // nochmal nach dem Paint messen (clientWidth ist beim 1. Lauf oft 0)
+    var raf = (typeof window !== "undefined" && window.requestAnimationFrame)
+      ? window.requestAnimationFrame(mess) : null;
     var RO = typeof window !== "undefined" ? window.ResizeObserver : null;
-    if (RO) {
-      var ro = new RO(mess);
-      ro.observe(el);
-      return function () { ro.disconnect(); };
-    }
-    window.addEventListener("resize", mess);
-    return function () { window.removeEventListener("resize", mess); };
-  }, []);
+    var ro = null;
+    if (RO) { ro = new RO(mess); ro.observe(el); }
+    else { window.addEventListener("resize", mess); }
+    return function () {
+      if (raf && window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      else window.removeEventListener("resize", mess);
+    };
+  }, [vorlageId, quer, lgNurDetail]);
 
   // Master-Detail-Gerüst wie Statistik: links Objekt-/Gruppenauswahl, rechts
   // Vorlagenauswahl + Aufbau-Bereich. Detail an gleicher x-Position.
@@ -1644,11 +1648,13 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   const a4Pad    = quer ? 36 : 40;          // Innenrand px (≈10mm)
   // Sichtbare Bühnenbreite = gemessene Detail-Breite (Fallback bis Messung da).
   // Nie breiter als das echte Blatt (kein Hochskalieren über 100 %).
-  const buehneRoh = buehneMess > 0 ? buehneMess : (quer ? 940 : 720);
-  const buehneBreite = Math.min(buehneRoh, a4Breite);
+  const buehnePad = 12;                      // grauer Rand links/rechts
+  const buehneRoh = buehneMess > 0 ? (buehneMess - buehnePad * 2) : (quer ? 940 : 360);
+  const buehneBreite = Math.max(120, Math.min(buehneRoh, a4Breite));
   const a4Scale = buehneBreite / a4Breite;
   const blattVorschau = vorlage && (
-    <div ref={buehneRef} style={{ background: "#e9eaec", borderRadius: 8, padding: "18px 0",
+    <div ref={buehneRef} style={{ background: "#e9eaec", borderRadius: 8,
+      padding: "18px " + buehnePad + "px", width: "100%", boxSizing: "border-box",
       overflowX: "hidden", display: "flex", justifyContent: "center" }}>
     <div style={{ width: buehneBreite }}>
     <div style={{ width: a4Breite, transformOrigin: "top left",
