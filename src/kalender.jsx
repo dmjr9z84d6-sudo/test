@@ -6,7 +6,7 @@ import {
   istAnonymesMitglied, sevStatus, teileVon
 } from "./datenmodell.js";
 import {
-  Avatar, DatumFeld, DatumKalender, DetailRahmen, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, HeaderPlus,
+  Avatar, DatumFeld, DatumKalender, DetailRahmen, objektKopfProps, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, HeaderPlus,
   Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat
 } from "./components.jsx";
 import {
@@ -2859,7 +2859,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
             if (!veObj) return null;
             const objTermine = sammleTermine([veObj], kontakte, KAL_FENSTER_MONATE, 0, freieTermine);
             return (
-              <DetailRahmen t={t} accent={kalFarbe} titel={veObj.nr} sub={veObj.adresse}>
+              <DetailRahmen t={t} accent={kalFarbe} {...objektKopfProps(veObj)}>
                 {objTermine.length === 0 ? (
                   <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "8px 2px" }}>
                     Keine Termine oder Fristen für dieses Objekt.

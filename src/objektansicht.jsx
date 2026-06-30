@@ -10,7 +10,7 @@ import {
 } from "./utils-icons.jsx";
 import {
   Avatar, DATUM_MONATE_KURZ, DatumFeld, FeldKontaktKarte, LEGIONELLEN_BEFUNDE,
-  LEGIONELLEN_STATUS_FARBE, DetailKopf, DetailRahmen, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
+  LEGIONELLEN_STATUS_FARBE, DetailKopf, ObjektDetailKopf, DetailRahmen, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
@@ -1315,7 +1315,7 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
           Slot: Stift bzw. X+Haken (+ Löschen im Edit). headerOhneEditBtn=true im
           Mobile-Detail (Button sitzt im Sticky-Header) → kein Aktions-Slot hier,
           Klick auf den Titel geht zurück. */}
-      <DetailKopf t={t} accent={accent} titel={ve.nr} sub={ve.adresse || null}
+      <ObjektDetailKopf t={t} accent={accent} ve={ve}
         onTitelClick={(headerOhneEditBtn && onBack) ? onBack : null}
         aktion={(!headerOhneEditBtn && !(einheitOffen && !editMode)) ? (
           editMode ? (

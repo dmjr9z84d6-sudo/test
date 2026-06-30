@@ -277,7 +277,7 @@ import {
   CopyBtn,
   DATUM_MONATE_KURZ,
   DatumFeld,
-  DetailRahmen,
+  DetailRahmen, objektKopfProps,
   KopfPille,
   MasterDetailRahmen,
   ScreenKopf,
@@ -1120,7 +1120,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   const renderDetailOverride = (veObj) => {
     if (!veObj) return null;
     return (
-      <DetailRahmen t={t} accent={accent} titel={veObj.nr} sub={veObj.adresse}
+      <DetailRahmen t={t} accent={accent} {...objektKopfProps(veObj)}
         aktion={detailAktion ? detailAktion(veObj) : null}>
         {renderDetail ? renderDetail(veObj) : (
           <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "8px 2px" }}>

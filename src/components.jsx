@@ -3430,6 +3430,27 @@ function DetailKopf({ t, accent, titel = null, sub = null, aktion = null, onTite
   );
 }
 
+// ── Objekt-Kopf — DIE kanonische Quelle für „VE-Nr + Anschrift" (§76) ────────
+// Vorher rief jeder Detail-Screen DetailKopf bzw. DetailRahmen einzeln mit
+// titel={ve.nr} sub={ve.adresse} auf (Schnelleingabe, Objekt-Detail, VE-Detail,
+// Kalender, Listengenerator, Statistik) → fünf verstreute Stellen, der
+// Listengenerator vergaß ihn ganz. Jetzt liegt das Format an EINER Stelle.
+//
+// objektKopfProps(ve): liefert { titel, sub } für Stellen, die einen
+//   DetailRahmen mit titel/sub befüllen (Rahmen rendert den Kopf intern).
+// ObjektDetailKopf: rendert den Kopf direkt (für Stellen ohne DetailRahmen-Kopf).
+function objektKopfProps(ve) {
+  if (!ve) return { titel: null, sub: null };
+  return { titel: ve.nr || "Objekt", sub: ve.adresse || null };
+}
+function ObjektDetailKopf({ t, accent, ve, aktion = null, onTitelClick = null, marginBottom = 14 }) {
+  const p = objektKopfProps(ve);
+  return (
+    <DetailKopf t={t} accent={accent} titel={p.titel} sub={p.sub}
+      aktion={aktion} onTitelClick={onTitelClick} marginBottom={marginBottom}/>
+  );
+}
+
 function DetailRahmen({ t, accent, titel = null, sub = null, aktion = null, children }) {
   const hatKopf = titel != null || aktion != null;
   return (
@@ -3590,6 +3611,8 @@ export {
   HeaderZurueck,
   HeaderPlus,
   DetailKopf,
+  ObjektDetailKopf,
+  objektKopfProps,
   DetailRahmen,
   MasterDetailRahmen,
   Toggle,

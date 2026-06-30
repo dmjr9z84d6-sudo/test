@@ -11,7 +11,7 @@ import {
 import {
   DESKTOP_MIN_WIDTH, I, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
-import { DetailKopf, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck } from "./components.jsx";
+import { DetailKopf, ObjektDetailKopf, DetailRahmen, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck } from "./components.jsx";
 import {
   VerteilerSchluesselBlock, buildInitialKarten,
   buildInitialVerwaltungsKarten, ergaenzeTechnikGeraetFelder, gemeinschaftName,
@@ -1295,7 +1295,7 @@ function SchnelleingabeScreen({ ves, setVes, kontakte, t, accent, settings = nul
             wie Objekt-Detail: VE-Nr + Adresse links, Bearbeiten-Stift (bzw. X+Haken)
             rechts in DERSELBEN Zeile. */}
         {ve && (
-          <DetailKopf t={t} accent={accent} titel={ve.nr} sub={ve.adresse || null}
+          <ObjektDetailKopf t={t} accent={accent} ve={ve}
             aktion={editAktion}/>
         )}
 
@@ -1906,8 +1906,16 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
     </>
   ) : null;
   // Detail-Hülle: bei Auswahl mit Akzent-Rahmen (DetailRahmen), sonst null.
+  // Kopf: bei Objekt-Auswahl der kanonische ObjektDetailKopf (§76 — VE-Nr +
+  // Anschrift wie überall), bei Gruppen-Auswahl der Gruppen-Titel via DetailKopf.
+  const lgGruppeAkt = (lgView === "gruppen" && aktGruppe)
+    ? lgGruppen.find(g => g.kind + ":" + g.id === aktGruppe) || null : null;
+  const lgKopf = (lgView === "objekte" && ve)
+    ? <ObjektDetailKopf t={t} accent={accent} ve={ve}/>
+    : (lgGruppeAkt ? <DetailKopf t={t} accent={accent} titel={lgGruppeAkt.label} sub={lgGruppeAkt.sub || null}/> : null);
   const lgDetailInhalt = lgHatAuswahl ? (
     <DetailRahmen t={t} accent={accent}>
+      {lgKopf}
       {lgDetailKern}
     </DetailRahmen>
   ) : null;
@@ -1976,10 +1984,12 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   // Aktuelle Auswahl → ves-Teilmenge für StatistikInhalt.
   let auswahlVes = ves;
   let auswahlTitel = "";
+  let auswahlVe = null;   // gewähltes Objekt (für ObjektDetailKopf §76)
   if (statView === "objekte") {
     const vo = ves.find(v => v.id === aktVEId) || null;
     auswahlVes = vo ? [vo] : [];
     auswahlTitel = vo ? (vo.nr || "Objekt") : "";
+    auswahlVe = vo;
   } else {
     const g = gruppenOptionen.find(x => x.kind + ":" + x.id === aktGruppe) || null;
     auswahlVes = g ? ves.filter(g.filter) : [];
@@ -2028,7 +2038,10 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
   };
 
   const detailInhalt = hatAuswahl && auswahlVes.length > 0 ? (
-    <DetailRahmen t={t} accent={accent} titel={auswahlTitel}>
+    <DetailRahmen t={t} accent={accent}>
+      {auswahlVe
+        ? <ObjektDetailKopf t={t} accent={accent} ve={auswahlVe}/>
+        : <DetailKopf t={t} accent={accent} titel={auswahlTitel}/>}
       <StatistikInhalt ves={auswahlVes} kontakte={kontakte} t={t} accent={accent}/>
     </DetailRahmen>
   ) : null;
