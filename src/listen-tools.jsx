@@ -1652,13 +1652,16 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   const buehneBreite = Math.max(120, Math.min(buehneRoh, a4Breite));
   const a4Scale = buehneBreite / a4Breite;
 
-  // Höhen-Heuristik (px): nutzbare Inhaltshöhe = Blatt − Innenränder − Fußzeile.
+  // Höhen-Heuristik (px): nutzbare Inhaltshöhe = Blatt − Innenränder − Fußzone.
+  // fussZone = reservierter Schutzbereich unten: Seitennummer + Sicherheitsabstand,
+  // damit keine Tabellenzeile in die Seitennummer läuft (Druck-/Überlauf-Schutz).
   const zeilenH = (padPx * 2) + (fontPx + 1) + 2;   // Datenzeile inkl. Padding
   const kopfH1 = 42 + (zeigeHv ? 56 : 0);           // voller Kopf (Seite 1)
   const kopfHn = 26;                                // schmale Kopfzeile (ab S.2)
   const tabKopfH = (padPx * 2) + (fontPx + 1) + 4;  // Spaltenüberschrift
-  const fussH = 22;                                 // Seitennummer unten
-  const nutzbar = a4Hoehe - a4Pad * 2 - fussH;
+  const fussZone = 48;                              // Seitennr. + Sicherheitsabstand
+  const sicherPuffer = zeilenH;                     // 1 Zeile Reserve gegen Überlauf
+  const nutzbar = a4Hoehe - a4Pad * 2 - fussZone - sicherPuffer;
   const proSeite1 = Math.max(1, Math.floor((nutzbar - kopfH1 - tabKopfH) / zeilenH));
   const proSeiteN = Math.max(1, Math.floor((nutzbar - kopfHn - tabKopfH) / zeilenH));
   // Schilder bleiben einseitig-fortlaufend (kein Tabellen-Splitting nötig).
@@ -1740,7 +1743,9 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
       </tbody>
     </table>
   );
-  // Eine A4-Seite (Index 0-basiert).
+  // Eine A4-Seite (Index 0-basiert). Der Inhalt sitzt im oberen Bereich,
+  // die Fußzone (fussZone px) ist unten fest reserviert für die Seitennummer —
+  // der Inhalt endet darüber (kein Überdrucken).
   const a4Seite = (inhalt, seitenNr) => (
     <div key={seitenNr} style={{ background: "#FFFFFF", color: "#111111",
       boxShadow: "0 3px 18px rgba(0,0,0,0.28)",
@@ -1748,9 +1753,12 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
       padding: a4Pad, marginBottom: seitenNr < seitenGesamt ? 20 / a4Scale : 0,
       position: "relative", display: "flex", flexDirection: "column",
       overflow: "hidden" }}>
-      <div style={{ flex: 1, minHeight: 0 }}>{inhalt}</div>
-      <div style={{ position: "absolute", left: a4Pad, right: a4Pad, bottom: a4Pad / 2,
-        textAlign: "center", fontSize: 10, color: "#888" }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden",
+        paddingBottom: fussZone }}>{inhalt}</div>
+      <div style={{ position: "absolute", left: a4Pad, right: a4Pad,
+        bottom: a4Pad, height: fussZone - 12, display: "flex",
+        alignItems: "center", justifyContent: "center",
+        borderTop: "1px solid #e2e2e2", color: "#888", fontSize: 10 }}>
         Seite {seitenNr} / {seitenGesamt}
       </div>
     </div>
