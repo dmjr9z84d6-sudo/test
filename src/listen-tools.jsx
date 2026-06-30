@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { FS, FW, RAD, KACHEL_W, kartenGridStyle, getContrastColor } from "./constants.js";
 import { joinPlzOrt, parseDatumWert } from "./utils-basis.js";
 import {
@@ -1456,6 +1456,28 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   const [mitHv, setMitHv] = useState(true);
   const [mitLogo, setMitLogo] = useState(true);
 
+  // Blatt-Vorschau passt sich der Detail-Breite an: gemessene Bühnenbreite
+  // (statt fixer 720/940 px) → A4-Blatt skaliert auf den verfügbaren Platz.
+  const buehneRef = useRef(null);
+  const [buehneMess, setBuehneMess] = useState(0);
+  useEffect(function () {
+    var el = buehneRef.current;
+    if (!el) return;
+    var mess = function () {
+      var w = el.clientWidth || 0;
+      if (w > 0) setBuehneMess(w);
+    };
+    mess();
+    var RO = typeof window !== "undefined" ? window.ResizeObserver : null;
+    if (RO) {
+      var ro = new RO(mess);
+      ro.observe(el);
+      return function () { ro.disconnect(); };
+    }
+    window.addEventListener("resize", mess);
+    return function () { window.removeEventListener("resize", mess); };
+  }, []);
+
   // Master-Detail-Gerüst wie Statistik: links Objekt-/Gruppenauswahl, rechts
   // Vorlagenauswahl + Aufbau-Bereich. Detail an gleicher x-Position.
   const istDesktopLG = useWindowWidth() >= DESKTOP_MIN_WIDTH;
@@ -1620,13 +1642,15 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   const a4Breite = quer ? 1123 : 794;       // px Roh-Blattbreite
   const a4Hoehe  = quer ? 794 : 1123;       // px Roh-Blatthöhe (eine Seite)
   const a4Pad    = quer ? 36 : 40;          // Innenrand px (≈10mm)
-  // Sichtbare Breite der Bühne; Blatt wird per scale eingepasst.
-  const buehneBreite = quer ? 940 : 720;
+  // Sichtbare Bühnenbreite = gemessene Detail-Breite (Fallback bis Messung da).
+  // Nie breiter als das echte Blatt (kein Hochskalieren über 100 %).
+  const buehneRoh = buehneMess > 0 ? buehneMess : (quer ? 940 : 720);
+  const buehneBreite = Math.min(buehneRoh, a4Breite);
   const a4Scale = buehneBreite / a4Breite;
   const blattVorschau = vorlage && (
-    <div style={{ background: "#e9eaec", borderRadius: 8, padding: "18px 0",
-      overflowX: "auto", display: "flex", justifyContent: "center" }}>
-    <div style={{ width: buehneBreite, transform: "scale(1)" }}>
+    <div ref={buehneRef} style={{ background: "#e9eaec", borderRadius: 8, padding: "18px 0",
+      overflowX: "hidden", display: "flex", justifyContent: "center" }}>
+    <div style={{ width: buehneBreite }}>
     <div style={{ width: a4Breite, transformOrigin: "top left",
       transform: "scale(" + a4Scale + ")",
       marginBottom: a4Hoehe * a4Scale - a4Hoehe }}>
@@ -1756,34 +1780,24 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   // Zurück-Button. Rahmen-Dekoration nur, wenn etwas ausgewählt ist.
   const lgDetailKern = lgHatAuswahl ? (
     <>
-      {/* Vorlagenauswahl (bereichsgefiltert) — solange keine Vorlage gewählt. */}
-      {!vorlage && (
-        <div>
-          <div style={labelStyle}>Welche Liste?</div>
-          <select value=""
-            onChange={e => { const id = e.target.value; if (id) { setVorlageId(id); setHausId(null); } }}
-            style={selectStyle}>
-            <option value="">Liste wählen …</option>
-            {sichtbareVorlagen.map(v => (
-              <option key={v.id} value={v.id}>{v.label}</option>
-            ))}
-          </select>
-        </div>
-      )}
+      {/* Listenauswahl (bereichsgefiltert) — bleibt IMMER oben stehen; die
+          gewählte Vorlage ist der aktive Wert. Volle Breite. Darunter füllt
+          sich nur die Konfiguration (kein Screen-Wechsel). */}
+      <div>
+        <div style={labelStyle}>Welche Liste?</div>
+        <select value={vorlage ? vorlage.id : ""}
+          onChange={e => { const id = e.target.value; setVorlageId(id || null); setHausId(null); }}
+          style={{ ...selectStyle, width: "100%" }}>
+          <option value="">Liste wählen …</option>
+          {sichtbareVorlagen.map(v => (
+            <option key={v.id} value={v.id}>{v.label}</option>
+          ))}
+        </select>
+      </div>
 
-      {/* Schritt 2: Konfiguration + Blatt-Vorschau */}
+      {/* Konfiguration + Blatt-Vorschau — erscheint unter dem Dropdown. */}
       {vorlage && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 22 }}>{vorlage.icon}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text }}>{vorlage.label}</div>
-              <div style={{ fontSize: FS.s, color: t.sub }}>
-                {vorlage.bereich === "objekt" && ve ? (ve.nr || "Objekt") + (ve.adresse ? " · " + ve.adresse : "") : vorlage.sub}
-              </div>
-            </div>
-          </div>
-
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
           {vorlage.bereich === "objekt" && hausWaehlbar && (
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <div>
