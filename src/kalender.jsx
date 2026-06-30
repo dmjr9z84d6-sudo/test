@@ -2676,6 +2676,16 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
   // Wenn das Dock aktiv ist, ist der Vollansicht-Plus ausgeblendet — ein evtl.
   // offenes Inline-Anlegeformular dann schließen, damit es nicht hängenbleibt.
   useEffect(() => { if (dockAktiv && anlegenOffen) setAnlegenOffen(false); }, [dockAktiv]);
+  // kalNurDetail kann „stale true" hängen bleiben, wenn der meldende Master-Detail-
+  // Baustein nicht mehr gerendert wird (View-Wechsel Timeline↔Objekte, oder kein
+  // Detail offen). Dann zeigt der Header einen toten „Zurück". Hier zentral
+  // steuern: true nur wenn wirklich ein Detail offen ist (inkl. Mobil-Timeline,
+  // dessen Master-Detail-Baustein nicht gerendert wird), sonst false.
+  useEffect(() => {
+    const mobilTimelineDetail = !kalIstDesktop && kalView === "timeline" && !!offenTerminKey;
+    if (mobilTimelineDetail) { if (!kalNurDetail) setKalNurDetail(true); return; }
+    if (!offenTerminKey && !kalViewVEId && kalNurDetail) setKalNurDetail(false);
+  }, [offenTerminKey, kalViewVEId, kalView, kalIstDesktop, kalNurDetail]);
   const panelTermine = (panelOffen && !dockAktiv)
     ? sammleTermine(ves, kontakte, KAL_FENSTER_MONATE, 12, freieTermine) : termine;
   const gefiltert = typFilter === "alle" ? termine : termine.filter(function(x) { return x.typ === typFilter; });
@@ -3101,15 +3111,13 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
             {baueZeile(offenerTermin, terminKey(offenerTermin), "detail", true, () => {})}
           </DetailRahmen>
         ) : null;
-        // MOBIL: Detail ersetzt die Liste + „Zurück".
+        // MOBIL: Detail ersetzt die Liste. Zurück sitzt im Header-rechts-Slot
+        // (kalNurDetail-Effect schaltet ihn), kein eigener Body-Zurück mehr.
         if (!kalIstDesktop) {
           if (offenerTermin) {
             return (
               <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0, minWidth: 0,
                 width: "100%", overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
-                <div style={{ marginBottom: 12 }}>
-                  <HeaderZurueck onClick={() => setOffenTerminKey(null)} t={t}/>
-                </div>
                 {detailInhalt}
               </div>
             );
