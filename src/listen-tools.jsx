@@ -1613,11 +1613,31 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   const labelStyle = { fontSize: FS.xs, fontWeight: FW.bold, color: t.sub,
     textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
 
-  // ── Blatt-Vorschau (fest hell wie Papier, unabhängig vom App-Theme) ──
+  // ── Blatt-Vorschau: echtes A4-Blatt (Seitenverhältnis 1:√2), volle Seite
+  //    skaliert eingepasst. Läuft der Inhalt über, wachsen weitere A4-Seiten
+  //    untereinander; Seitenumbrüche werden als gestrichelte Marker gezeigt. ──
+  // A4 bei 96dpi: 210mm=794px, 297mm=1123px.  Quer = gedreht.
+  const a4Breite = quer ? 1123 : 794;       // px Roh-Blattbreite
+  const a4Hoehe  = quer ? 794 : 1123;       // px Roh-Blatthöhe (eine Seite)
+  const a4Pad    = quer ? 36 : 40;          // Innenrand px (≈10mm)
+  // Sichtbare Breite der Bühne; Blatt wird per scale eingepasst.
+  const buehneBreite = quer ? 940 : 720;
+  const a4Scale = buehneBreite / a4Breite;
   const blattVorschau = vorlage && (
-    <div style={{ background: "#FFFFFF", color: "#111111", borderRadius: 6,
-      boxShadow: "0 2px 14px rgba(0,0,0,0.25)", padding: "22px 24px",
-      maxWidth: quer ? 980 : 760, overflowX: "auto" }}>
+    <div style={{ background: "#e9eaec", borderRadius: 8, padding: "18px 0",
+      overflowX: "auto", display: "flex", justifyContent: "center" }}>
+    <div style={{ width: buehneBreite, transform: "scale(1)" }}>
+    <div style={{ width: a4Breite, transformOrigin: "top left",
+      transform: "scale(" + a4Scale + ")",
+      marginBottom: a4Hoehe * a4Scale - a4Hoehe }}>
+    <div style={{ background: "#FFFFFF", color: "#111111",
+      boxShadow: "0 3px 18px rgba(0,0,0,0.28)",
+      width: a4Breite, minHeight: a4Hoehe, boxSizing: "border-box",
+      padding: a4Pad,
+      backgroundImage: "repeating-linear-gradient(transparent 0," +
+        "transparent " + (a4Hoehe - 1) + "px,#c9ccd1 " + (a4Hoehe - 1) + "px," +
+        "#c9ccd1 " + a4Hoehe + "px)",
+      backgroundSize: "100% " + a4Hoehe + "px" }}>
       <div style={{ display: "flex", alignItems: "flex-start",
         justifyContent: "space-between", gap: 16 }}>
         <div style={{ minWidth: 0 }}>
@@ -1689,6 +1709,9 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
         </>
       )}
     </div>
+    </div>
+    </div>
+    </div>
   );
 
   const lgMasterInhalt = (layout) => (
@@ -1736,27 +1759,15 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
       {/* Vorlagenauswahl (bereichsgefiltert) — solange keine Vorlage gewählt. */}
       {!vorlage && (
         <div>
-          <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px 10px" }}>
-            Welche Liste möchtest du erstellen?
-          </div>
-          <div style={kartenGridStyle({ einspaltig: !istDesktopLG, nurMaster: true, kartenMaxBreite: KACHEL_W })}>
+          <div style={labelStyle}>Welche Liste?</div>
+          <select value=""
+            onChange={e => { const id = e.target.value; if (id) { setVorlageId(id); setHausId(null); } }}
+            style={selectStyle}>
+            <option value="">Liste wählen …</option>
             {sichtbareVorlagen.map(v => (
-              <div key={v.id} onClick={() => { setVorlageId(v.id); setHausId(null); }} data-kb-item="1"
-                style={{ display: "flex", flexDirection: "column", cursor: "pointer",
-                  background: t.card, height: "100%",
-                  border: `1px solid ${t.border}`,
-                  borderRadius: RAD.lg, overflow: "hidden", transition: "all 0.15s" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12,
-                  padding: "12px 14px", flex: 1, minHeight: 0 }}>
-                  <span style={{ fontSize: 22, flexShrink: 0 }}>{v.icon}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{v.label}</div>
-                    <div style={{ fontSize: FS.s, color: t.sub }}>{v.sub}</div>
-                  </div>
-                </div>
-              </div>
+              <option key={v.id} value={v.id}>{v.label}</option>
             ))}
-          </div>
+          </select>
         </div>
       )}
 
