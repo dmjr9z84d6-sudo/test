@@ -1639,35 +1639,45 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
   const labelStyle = { fontSize: FS.xs, fontWeight: FW.bold, color: t.sub,
     textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
 
-  // ── Blatt-Vorschau: echtes A4-Blatt (Seitenverhältnis 1:√2), volle Seite
-  //    skaliert eingepasst. Läuft der Inhalt über, wachsen weitere A4-Seiten
-  //    untereinander; Seitenumbrüche werden als gestrichelte Marker gezeigt. ──
+  // ── Blatt-Vorschau: echte einzelne A4-Seiten (1:√2), je Seite separat
+  //    dargestellt wie im Ausdruck. Seite 1 voller Kopf, ab Seite 2 schmale
+  //    Kopfzeile; Spaltenüberschrift auf jeder Seite; Seitennr. „1/3" unten. ──
   // A4 bei 96dpi: 210mm=794px, 297mm=1123px.  Quer = gedreht.
   const a4Breite = quer ? 1123 : 794;       // px Roh-Blattbreite
   const a4Hoehe  = quer ? 794 : 1123;       // px Roh-Blatthöhe (eine Seite)
   const a4Pad    = quer ? 36 : 40;          // Innenrand px (≈10mm)
   // Sichtbare Bühnenbreite = gemessene Detail-Breite (Fallback bis Messung da).
-  // Nie breiter als das echte Blatt (kein Hochskalieren über 100 %).
   const buehnePad = 12;                      // grauer Rand links/rechts
   const buehneRoh = buehneMess > 0 ? (buehneMess - buehnePad * 2) : (quer ? 940 : 360);
   const buehneBreite = Math.max(120, Math.min(buehneRoh, a4Breite));
   const a4Scale = buehneBreite / a4Breite;
-  const blattVorschau = vorlage && (
-    <div ref={buehneRef} style={{ background: "#e9eaec", borderRadius: 8,
-      padding: "18px " + buehnePad + "px", width: "100%", boxSizing: "border-box",
-      overflowX: "hidden", display: "flex", justifyContent: "center" }}>
-    <div style={{ width: buehneBreite }}>
-    <div style={{ width: a4Breite, transformOrigin: "top left",
-      transform: "scale(" + a4Scale + ")",
-      marginBottom: a4Hoehe * a4Scale - a4Hoehe }}>
-    <div style={{ background: "#FFFFFF", color: "#111111",
-      boxShadow: "0 3px 18px rgba(0,0,0,0.28)",
-      width: a4Breite, minHeight: a4Hoehe, boxSizing: "border-box",
-      padding: a4Pad,
-      backgroundImage: "repeating-linear-gradient(transparent 0," +
-        "transparent " + (a4Hoehe - 1) + "px,#c9ccd1 " + (a4Hoehe - 1) + "px," +
-        "#c9ccd1 " + a4Hoehe + "px)",
-      backgroundSize: "100% " + a4Hoehe + "px" }}>
+
+  // Höhen-Heuristik (px): nutzbare Inhaltshöhe = Blatt − Innenränder − Fußzeile.
+  const zeilenH = (padPx * 2) + (fontPx + 1) + 2;   // Datenzeile inkl. Padding
+  const kopfH1 = 42 + (zeigeHv ? 56 : 0);           // voller Kopf (Seite 1)
+  const kopfHn = 26;                                // schmale Kopfzeile (ab S.2)
+  const tabKopfH = (padPx * 2) + (fontPx + 1) + 4;  // Spaltenüberschrift
+  const fussH = 22;                                 // Seitennummer unten
+  const nutzbar = a4Hoehe - a4Pad * 2 - fussH;
+  const proSeite1 = Math.max(1, Math.floor((nutzbar - kopfH1 - tabKopfH) / zeilenH));
+  const proSeiteN = Math.max(1, Math.floor((nutzbar - kopfHn - tabKopfH) / zeilenH));
+  // Schilder bleiben einseitig-fortlaufend (kein Tabellen-Splitting nötig).
+  // Tabellen: rows auf Seiten verteilen.
+  const seitenRows = [];
+  if (!istSchilder) {
+    var rest = rows.slice();
+    seitenRows.push(rest.slice(0, proSeite1));
+    rest = rest.slice(proSeite1);
+    while (rest.length > 0) {
+      seitenRows.push(rest.slice(0, proSeiteN));
+      rest = rest.slice(proSeiteN);
+    }
+  }
+  const seitenGesamt = istSchilder ? 1 : Math.max(1, seitenRows.length);
+
+  // Voller Kopf (Seite 1): Titel + Stand + Logo + HV-Block.
+  const vollKopf = (
+    <>
       <div style={{ display: "flex", alignItems: "flex-start",
         justifyContent: "space-between", gap: 16 }}>
         <div style={{ minWidth: 0 }}>
@@ -1694,7 +1704,64 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
           )}
         </div>
       )}
-      {istSchilder ? (
+    </>
+  );
+  // Schmale Kopfzeile (ab Seite 2): nur Titel.
+  const schmalKopf = (
+    <div style={{ borderBottom: "1px solid #ccc", paddingBottom: 4, marginBottom: 8 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: "#444" }}>{druckTitel}</span>
+    </div>
+  );
+  // Tabelle für eine Teilmenge Zeilen (Spaltenkopf wird je Seite wiederholt).
+  const tabelleFuer = (teilRows) => (
+    <table style={{ width: "100%", borderCollapse: "collapse",
+      fontSize: fontPx + 1, marginTop: 4 }}>
+      <thead>
+        <tr>
+          {aktiveSpalten.map(s => (
+            <th key={s.id} style={{ textAlign: "left",
+              padding: `${padPx}px 6px`, borderBottom: "1.5px solid #333",
+              fontWeight: 700, whiteSpace: "nowrap",
+              width: s.id === "unterschrift" ? "30%" : undefined }}>{s.label}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {teilRows.map((r, i) => (
+          <tr key={i}>
+            {aktiveSpalten.map(s => (
+              <td key={s.id} style={{ padding: `${padPx}px 6px`,
+                borderBottom: "1px solid #ddd", verticalAlign: "top" }}>
+                {r[s.id] != null ? r[s.id] : ""}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+  // Eine A4-Seite (Index 0-basiert).
+  const a4Seite = (inhalt, seitenNr) => (
+    <div key={seitenNr} style={{ background: "#FFFFFF", color: "#111111",
+      boxShadow: "0 3px 18px rgba(0,0,0,0.28)",
+      width: a4Breite, height: a4Hoehe, boxSizing: "border-box",
+      padding: a4Pad, marginBottom: seitenNr < seitenGesamt ? 20 / a4Scale : 0,
+      position: "relative", display: "flex", flexDirection: "column",
+      overflow: "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0 }}>{inhalt}</div>
+      <div style={{ position: "absolute", left: a4Pad, right: a4Pad, bottom: a4Pad / 2,
+        textAlign: "center", fontSize: 10, color: "#888" }}>
+        Seite {seitenNr} / {seitenGesamt}
+      </div>
+    </div>
+  );
+
+  // Seiten zusammenbauen.
+  const seitenNodes = [];
+  if (istSchilder) {
+    seitenNodes.push(a4Seite(
+      <>
+        {vollKopf}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
           gap: padPx + 8, marginTop: 14 }}>
           {rows.map((r, i) => (
@@ -1706,39 +1773,31 @@ function ListenGeneratorScreen({ ves, kontakte, t, accent, settings,
             </div>
           ))}
         </div>
-      ) : (
+      </>, 1));
+  } else {
+    seitenRows.forEach((teil, idx) => {
+      const istLetzte = idx === seitenRows.length - 1;
+      seitenNodes.push(a4Seite(
         <>
-          <table style={{ width: "100%", borderCollapse: "collapse",
-            fontSize: fontPx + 1, marginTop: 12 }}>
-            <thead>
-              <tr>
-                {aktiveSpalten.map(s => (
-                  <th key={s.id} style={{ textAlign: "left",
-                    padding: `${padPx}px 6px`, borderBottom: "1.5px solid #333",
-                    fontWeight: 700, whiteSpace: "nowrap",
-                    width: s.id === "unterschrift" ? "30%" : undefined }}>{s.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  {aktiveSpalten.map(s => (
-                    <td key={s.id} style={{ padding: `${padPx}px 6px`,
-                      borderBottom: "1px solid #ddd", verticalAlign: "top" }}>
-                      {r[s.id] != null ? r[s.id] : ""}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {fussnote && (
+          {idx === 0 ? vollKopf : schmalKopf}
+          {tabelleFuer(teil)}
+          {istLetzte && fussnote && (
             <div style={{ marginTop: 10, fontSize: fontPx + 1, fontWeight: 600 }}>{fussnote}</div>
           )}
-        </>
-      )}
-    </div>
+        </>, idx + 1));
+    });
+  }
+
+  const blattVorschau = vorlage && (
+    <div ref={buehneRef} style={{ background: "#e9eaec", borderRadius: 8,
+      padding: "18px " + buehnePad + "px", width: "100%", boxSizing: "border-box",
+      overflowX: "hidden", display: "flex", justifyContent: "center" }}>
+    <div style={{ width: buehneBreite }}>
+    <div style={{ width: a4Breite, transformOrigin: "top left",
+      transform: "scale(" + a4Scale + ")",
+      marginBottom: (a4Hoehe * seitenGesamt + 20 * (seitenGesamt - 1)) * a4Scale
+        - (a4Hoehe * seitenGesamt + 20 * (seitenGesamt - 1)) }}>
+      {seitenNodes}
     </div>
     </div>
     </div>
