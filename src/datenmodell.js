@@ -260,8 +260,8 @@ const DEFAULT_SETTINGS = {
   sucheTippfehlerSchwelle:   2,      // Max. Edit-Distanz (1=streng, 3=sehr tolerant)
   // Reihenfolge der Einstellungs-Sektionen (Array von IDs)
   sektionenReihenfolge: null,  // null = Default-Reihenfolge wie in SEKTIONEN definiert
-  dashboardModus: "immer", // "aus" | "immer" | "home" – nur Homescreen oder überall
-  dashboardSticky: true,   // bei Mobile (Hochkant): Kategorie-Leiste bleibt unter dem Header sticky
+  schnellzugriffModus: "immer", // "aus" | "immer" | "home" – nur Homescreen oder überall
+  schnellzugriffSticky: true,   // bei Mobile (Hochkant): Kategorie-Leiste bleibt unter dem Header sticky
   sidebarBreite: 200,      // Breite der Desktop-Sidebar (px) – wird vom Resize-Handle gesetzt
   rollen: DEFAULT_ROLLEN,  // Editierbare Rollen (Name, Kürzel, Farbe, Aktiv) – Reihenfolge im Array zählt
   firmenRollen: DEFAULT_GEWERKE_LISTE, // GEWERKE der Firma (Sanitär, Elektro, …) – Badge-fähig
@@ -352,7 +352,7 @@ const DEFAULT_SETTINGS = {
   kalArbeitTageAktiv: false, // false = einheitliche Zeit (kalArbeitVon/Bis) für alle Werktage
   listenAnsicht: "karten",   // "karten" | "liste" — Übersicht von Objekten/Kontakten
   kalHeuteInfo: true,     // Datum + Uhrzeit im Heute-Button anzeigen
-  kalSeitenleiste: false, // Desktop: Kalender dauerhaft rechts (wie Dashboard links)
+  kalSeitenleiste: false, // Desktop: Kalender dauerhaft rechts (wie Schnellzugriff links)
   objektGruppen: [],
   filterKontaktarten:     { person: true, firma: true }, // Rollen-Filter (p_…, f_…) werden dynamisch aus settings.rollen/firmenRollen gefüllt
   kacheln: [

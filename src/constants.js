@@ -16,7 +16,7 @@ export const DARK  = { bg:"#07070C", surface:"#0D0D16", card:"#13131F", border:"
 export const LIGHT = { bg:"#ECEEF3", surface:"#F4F6FA", card:"#FFFFFF",  border:"#D8DCE8", text:"#0F1022", sub:"#4A5072", muted:"#737896", header:"#FFFFFF" };
 
 export const ACCENT = "#0E7490"; // Objekte (Cyan)
-export const KONTAKTE_FARBE = "#8B5CF6"; // Personen + Firmen (Violett) — konfigurierbar via Dashboard
+export const KONTAKTE_FARBE = "#8B5CF6"; // Personen + Firmen (Violett) — konfigurierbar via Schnellzugriff
 
 // ── Design-Tokens ───────────────────────────────────────────────────────────
 // Bewusst schlank und an die TATSÄCHLICH im Code verwendeten Cluster-Werte
@@ -134,7 +134,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "13.36";
+export const APP_VERSION = "13.37";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────

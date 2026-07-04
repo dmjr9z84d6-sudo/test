@@ -8181,7 +8181,7 @@ function KategorieKacheln({ settings, t, aktiverScreen, suchAktiv = false, onKli
   );
 }
 
-// ── SeitenleisteKacheln (Dashboard links, resizable für Desktop ≥ 900px) ────
+// ── SeitenleisteKacheln (Schnellzugriff links, resizable für Desktop ≥ 900px) ────
 // Drei Anzeige-Modi je nach Sidebar-Breite:
 //   · breite <  75px: nur Icons
 //   · breite < 145px: Icon + erste 2 Buchstaben

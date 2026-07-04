@@ -567,7 +567,7 @@ function StatusLeiste({ typ, text, t, borderColor, eingebettet = false }) {
 
 // ── FilterButtons ───────────────────────────────────────────────────────────
 // Generische horizontale Button-Leiste mit "Alle" + benutzerdefinierten Arten.
-// Bei wenig Platz (Mobile-Hochkant) horizontal scrollbar — wie das Dashboard.
+// Bei wenig Platz (Mobile-Hochkant) horizontal scrollbar — wie der Schnellzugriff.
 // Jeder Button zeigt das Label und (optional) den Count in einer kleinen Pille.
 //
 // arten:    Array { id, label, kurz } – alle möglichen Arten
@@ -1353,7 +1353,7 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
           )
         ) : null}/>
 
-      {/* Reiter — horizontal scrollbar (wie das Dashboard im Header), damit
+      {/* Reiter — horizontal scrollbar (wie der Schnellzugriff im Header), damit
           auch 6+ Reiter auf Mobile Platz finden. Aktiver Reiter scrollt
           automatisch ins Sichtfeld. */}
       <div ref={tabLeisteRef} style={{ display: "flex", background: t.card, border: `1px solid ${t.border}`,

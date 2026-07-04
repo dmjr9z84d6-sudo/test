@@ -23,7 +23,7 @@ import { STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel, VEKachel, VEListe
 
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ LISTENGENERATOR — Vorlagen-Katalog + generischer Screen + Druck          ║
-// ║ (Dashboard-Kachel „listen"). Druck synchron via window.print (§26.3).   ║
+// ║ (Schnellzugriff-Kachel „listen"). Druck synchron via window.print (§26.3).   ║
 // ╚═════════════════════════════════════════════════════════════════════════╝
 
 // druckeHtml — gemeinsamer Druck-Baustein (DSGVO-Auskunft, Listengenerator,

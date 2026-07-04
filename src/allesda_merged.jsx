@@ -16,7 +16,7 @@ import React, { useState, useRef, useEffect, createContext, useContext, Fragment
 // Diese Datei ist die einzige Hauptdatei der AllesDa-App. Sie wurde
 // konsolidiert aus:
 //   · app-v2.jsx               → Funktionaler Code (Liegenschaft, Kontakte,
-//                                Einstellungen, Suche, Dashboard)
+//                                Einstellungen, Suche, Schnellzugriff)
 //   · bausteine.jsx            → UI-Komponenten (Avatar, KontaktPicker,
 //                                FieldList, WechselModal, PersonCard …)
 //   · allesda_design_playground.html → Design-Tokens & Layout-Referenz
@@ -78,7 +78,7 @@ import React, { useState, useRef, useEffect, createContext, useContext, Fragment
 //   ┌─ 8. EINSTELLUNGEN ──────────────────────────────────────────────────┐
 //   │  · EinstellKarte, EinstellZeile                                     │
 //   │  · FarbPicker                                                       │
-//   │  · Sektionen: Profil, Erscheinung, Header, Filter, Dashboard,       │
+//   │  · Sektionen: Profil, Erscheinung, Header, Filter, Schnellzugriff,       │
 //   │    Suche, HV, Daten                                                 │
 //   │  · EinstellungenZentrale                                            │
 //   └─────────────────────────────────────────────────────────────────────┘
@@ -352,7 +352,7 @@ import {
 // Einstellungen-Modul (S8) — ausgelagert nach einstellungen.jsx. Kein Rück-
 // import aus dieser Datei nötig (EinstellungenZentrale bleibt im App-Rumpf).
 import {
-  SEKTIONEN, SektionDashboard, SektionDaten, SektionDokumente, SektionErscheinungsbild, SektionFilterOpt,
+  SEKTIONEN, SektionSchnellzugriff, SektionDaten, SektionDokumente, SektionErscheinungsbild, SektionFilterOpt,
   SektionHV, SektionKalenderPanel, SektionKontakte, SektionObjekte, SektionProfil,
   SektionStatusleiste, SektionSuche, SektionTastatur, TASTATUR_AKTIONEN,
   dateiZuFotoDataUrl, tastaturBelegungVon, useStorageStatus
@@ -519,7 +519,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
         {s.id === "filter"      && <SektionFilterOpt settings={settings} setSettings={setSettings} t={t} accent={s.farbe} ves={ves} kontakte={kontakte}/>}
         {s.id === "kalender"    && <SektionKalenderPanel settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "dokumente"   && <SektionDokumente settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
-        {s.id === "dashboard"   && <SektionDashboard settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
+        {s.id === "schnellzugriff"   && <SektionSchnellzugriff settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "suche"       && <SektionSuche settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "tastatur"    && <SektionTastatur settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "hv"          && <SektionHV settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
@@ -1409,7 +1409,7 @@ export default function App() {
   }) : settings;
 
   // Akzentfarben aus den Kachel-Einstellungen ableiten. So wirkt die in den
-  // Einstellungen → Dashboard gewählte Farbe sofort auf VE-Karten, Buttons,
+  // Einstellungen → Schnellzugriff gewählte Farbe sofort auf VE-Karten, Buttons,
   // Tab-Underlines etc. Fällt auf die Konstanten zurück, falls die Kachel
   // (noch) keine Farbe hat.
   const objektAccent  = (effectiveSettings.kacheln.find(k => k.id === "objekte")  || {}).farbe || ACCENT;
@@ -1499,7 +1499,7 @@ export default function App() {
         const fehlende = DEFAULT_ROLLEN.filter(r => vorhandeneNamen.indexOf(r.name) < 0);
         if (fehlende.length > 0) sett.rollen = [...sett.rollen, ...fehlende];
       }
-      // Gleiches Muster für Dashboard-Kacheln: neue Default-Kacheln (z. B.
+      // Gleiches Muster für Schnellzugriff-Kacheln: neue Default-Kacheln (z. B.
       // Statistik, Listengenerator, Fotos) hinten anhängen, sonst fehlen sie
       // bei Bestands-Settings nach App-Updates.
       if (Array.isArray(sett.kacheln)) {
@@ -2106,11 +2106,11 @@ export default function App() {
     wechselScreen(id, reset);
   };
 
-  // Soll das Dashboard (Kacheln/Sidebar) angezeigt werden?
+  // Soll der Schnellzugriff (Kacheln/Sidebar) angezeigt werden?
   // Wird nur vom User-Setting gesteuert – auch in den Einstellungen sichtbar.
-  const dashboardSichtbar = (
-    settings.dashboardModus === "immer" ||
-    (settings.dashboardModus === "home" && screen === "home")
+  const schnellzugriffSichtbar = (
+    settings.schnellzugriffModus === "immer" ||
+    (settings.schnellzugriffModus === "home" && screen === "home")
   );
 
   // Screen-Renderer als benannte Funktionen (statt IIFEs im JSX) ───────────────
@@ -2691,7 +2691,7 @@ export default function App() {
         )}
         {/* Wenn Sticky-Modus an: Kachel-Leiste hängt am Header dran und scrollt
             damit nicht weg. */}
-        {!istDesktop && dashboardSichtbar && settings.dashboardSticky && (
+        {!istDesktop && schnellzugriffSichtbar && settings.schnellzugriffSticky && (
           <div style={{ borderTop: `1px solid ${t.border}`, padding: "6px 0" }}>
             <KategorieKacheln settings={effectiveSettings} t={t} aktiverScreen={screen} suchAktiv={!!suchErg} onKlick={navTo}/>
           </div>
@@ -2714,9 +2714,9 @@ export default function App() {
       )}
 
       {/* Horizontale Kachel-Leiste — nur bei Mobile (< 900px).
-          Wenn dashboardSticky=false: außerhalb des Headers (scrollt mit weg).
-          Wenn dashboardSticky=true: integriert in den fixed Header (s.o.). */}
-      {!istDesktop && dashboardSichtbar && !settings.dashboardSticky && (
+          Wenn schnellzugriffSticky=false: außerhalb des Headers (scrollt mit weg).
+          Wenn schnellzugriffSticky=true: integriert in den fixed Header (s.o.). */}
+      {!istDesktop && schnellzugriffSichtbar && !settings.schnellzugriffSticky && (
         <div style={{ background: t.header,
           borderBottom: `1px solid ${t.border}`, padding: "6px 0",
           flexShrink: 0 }}>
@@ -2734,7 +2734,7 @@ export default function App() {
       <div style={istDesktop
         ? { display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }
         : { display: "flex", flexDirection: "column" }}>
-        {istDesktop && dashboardSichtbar && (
+        {istDesktop && schnellzugriffSichtbar && (
           <div style={{
             background: t.surface,
             borderRight: `1px solid ${t.border}`,

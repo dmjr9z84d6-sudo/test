@@ -2070,7 +2070,7 @@ const LoeschenErlaubtContext = createContext({ objekte: false, kontakte: false }
 function useLoeschenErlaubt() { return useContext(LoeschenErlaubtContext); }
 
 // ── KontaktFarbeContext: aktuelle Akzentfarben für alle App-Bereiche ────────
-// Liefert { person, firma, objekt, system }. Wird in der App aus den Dashboard-
+// Liefert { person, firma, objekt, system }. Wird in der App aus den Schnellzugriff-
 // Kachel-Farben gespeist (kontaktAccent für person+firma, objektAccent für
 // objekt, systemAccent für Logo/Zahnrad/Profil/Stift). Im "Weniger Farbe"-Modus
 // mappt die App alle auf neutrales Grau, sodass alle Stellen (Avatar, Namen,

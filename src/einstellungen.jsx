@@ -27,7 +27,7 @@ import { EinheitZeile } from "./liegenschaft.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 8 · EINSTELLUNGEN — ausgelagertes Modul                         ║
 // ║ EinstellKarte · EinstellZeile · FarbPicker · SEKTIONEN                   ║
-// ║ Sektionen: Profil · Erscheinungsbild · Header · Filter · Dashboard ·    ║
+// ║ Sektionen: Profil · Erscheinungsbild · Header · Filter · Schnellzugriff ·    ║
 // ║            Suche · Hausverwaltung · Daten · Tastatur · Kalender         ║
 // ║ TASTATUR_AKTIONEN · useStorageStatus · dateiZuFotoDataUrl               ║
 // ╚═════════════════════════════════════════════════════════════════════════╝
@@ -760,7 +760,7 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
     <EinstellKarte title="Farben" t={t} accent={accent}>
 
       {[
-        { label: "Dashboard-Kacheln", key: "kacheln", art: "kachel",
+        { label: "Schnellzugriff-Kacheln", key: "kacheln", art: "kachel",
           data: [...((rawSettings || settings).kacheln || [])].sort((a, b) => a.reihenfolge - b.reihenfolge) },
         { label: "Personen-Rollen", key: "rollen", art: "rolle",
           data: [...((rawSettings || settings).rollen || DEFAULT_ROLLEN)].sort((a, b) => a.name.localeCompare(b.name, "de")) },
@@ -1563,11 +1563,11 @@ function SektionObjektTabs({ settings, setSettings, t, accent }) {
   );
 }
 
-// ── Sektion: Dashboard ──────────────────────────────────────────────────────
-function SektionDashboard({ settings, setSettings, t, accent }) {
+// ── Sektion: Schnellzugriff ──────────────────────────────────────────────────────
+function SektionSchnellzugriff({ settings, setSettings, t, accent }) {
   const save = (partial) => setSettings(s => ({ ...s, ...partial }));
   const sortierteKacheln = [...settings.kacheln].sort((a, b) => a.reihenfolge - b.reihenfolge);
-  const dashboardAktiv = settings.dashboardModus !== "aus";
+  const schnellzugriffAktiv = settings.schnellzugriffModus !== "aus";
 
   // ── Umsortieren per Pfeil (hoch/runter) ──
   // Vertauscht den Eintrag an Position idx mit seinem Nachbarn (richtung -1/+1)
@@ -1583,22 +1583,22 @@ function SektionDashboard({ settings, setSettings, t, accent }) {
   };
 
   return (
-    <EinstellKarte title="Dashboard" t={t} accent={accent}>
-      <EinstellZeile label="Dashboard anzeigen" sub="Kategorien als Navigationsleiste oben" t={t}>
-        <Toggle value={dashboardAktiv}
-          onChange={v => save({ dashboardModus: v ? "immer" : "aus" })} color={accent}/>
+    <EinstellKarte title="Schnellzugriff" t={t} accent={accent}>
+      <EinstellZeile label="Schnellzugriff anzeigen" sub="Kategorien als Navigationsleiste oben" t={t}>
+        <Toggle value={schnellzugriffAktiv}
+          onChange={v => save({ schnellzugriffModus: v ? "immer" : "aus" })} color={accent}/>
       </EinstellZeile>
-      {dashboardAktiv && (
+      {schnellzugriffAktiv && (
         <EinstellZeile label="Auf allen Seiten" sub="An: immer · Aus: nur Startseite" t={t}>
-          <Toggle value={settings.dashboardModus === "immer"}
-            onChange={v => save({ dashboardModus: v ? "immer" : "home" })} color={accent}/>
+          <Toggle value={settings.schnellzugriffModus === "immer"}
+            onChange={v => save({ schnellzugriffModus: v ? "immer" : "home" })} color={accent}/>
         </EinstellZeile>
       )}
-      {dashboardAktiv && (
+      {schnellzugriffAktiv && (
         <EinstellZeile label="Beim Scrollen sichtbar bleiben"
           sub="An: bleibt im Hochkant unter dem Header · Aus: scrollt mit weg" t={t}>
-          <Toggle value={settings.dashboardSticky === true}
-            onChange={v => save({ dashboardSticky: v })} color={accent}/>
+          <Toggle value={settings.schnellzugriffSticky === true}
+            onChange={v => save({ schnellzugriffSticky: v })} color={accent}/>
         </EinstellZeile>
       )}
       <div style={{ paddingTop: 10, marginTop: 4, borderTop: `1px solid ${t.border}30` }}>
@@ -2421,7 +2421,7 @@ function SektionStatusleiste({ settings, setSettings, t, accent }) {
 
 // ── TerminBezeichnungenEditor: Liste fürs "Neuer Termin"-Dropdown ───────────
 // Lebt INNERHALB der Kalender-Sektion (kein eigenes EinstellKarte). Optik 1:1
-// am Dashboard-Kachel-Muster: Sortier-Pfeile, getöntes Farb-Icon, Trennlinien
+// am Schnellzugriff-Kachel-Muster: Sortier-Pfeile, getöntes Farb-Icon, Trennlinien
 // (keine Boxen), FarbPicker + System-Toggle rechts. Editierbar: Label als
 // dezentes Inline-Input. Liste aus { id, label, farbe, sichtbar }. Sichtbar-
 // Toggle blendet aus dem Dropdown aus, ohne zu löschen. Löschen Zwei-Schritt
@@ -3729,7 +3729,7 @@ function SektionKalenderPanel({ settings, setSettings, t, accent }) {
       <div style={{ fontSize: FS.xs, color: t.muted }}>
         Der Orientierungskalender öffnet sich über den runden Kalender-Button
         im Header (zwischen Dunkelmodus und Profil). Auf breiten Bildschirmen
-        heftet er sich als feste Leiste rechts an — wie das Dashboard links;
+        heftet er sich als feste Leiste rechts an — wie der Schnellzugriff links;
         ein erneuter Klick auf den Kalender-Button blendet ihn wieder aus.
         Auf schmalen Geräten erscheint er kurz als Overlay.
       </div>
@@ -3746,7 +3746,7 @@ const SEKTIONEN = [
   { id: "filter",        icon: "search",   farbe: "#F59E0B", title: "Filter-Optionen",   sub: "Großer Filter im Header" },
   { id: "kalender",      icon: "calendar", farbe: "#F59E0B", title: "Kalender",          sub: "Wochenstart, KW, Termin-Bezeichnungen" },
   { id: "dokumente",     icon: "document", farbe: "#0E7490", title: "Dokumente",         sub: "Dokument-Karten, Anzeige" },
-  { id: "dashboard",     icon: "building", farbe: "#0080FF", title: "Dashboard",         sub: "Kacheln, Reihenfolge, Farben" },
+  { id: "schnellzugriff", icon: "building", farbe: "#0080FF", title: "Schnellzugriff",     sub: "Kacheln, Reihenfolge, Farben" },
   { id: "suche",         icon: "search",   farbe: "#EC4899", title: "Suche",             sub: "Welche Bereiche durchsucht werden" },
   { id: "tastatur",      icon: "settings", farbe: "#10B981", title: "Tastatur",          sub: "Kürzel anpassen und drucken" },
   { id: "hv",            icon: "building", farbe: "#64748B", title: "Hausverwaltung",    sub: "Name und Stammdaten" },
@@ -3802,7 +3802,7 @@ export {
   EinstellZeile,
   FarbPicker,
   SEKTIONEN,
-  SektionDashboard,
+  SektionSchnellzugriff,
   SektionDaten,
   SektionDokumente,
   SektionErscheinungsbild,
