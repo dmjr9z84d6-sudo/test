@@ -3490,7 +3490,8 @@ function DetailRahmen({ t, accent, titel = null, sub = null, aktion = null, chil
 function MasterDetailRahmen({ master, detail = null, istDesktop = true,
   listenAnsicht = "karten", listeOpt = null, kartenSpalten = 2,
   kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 540, detailMin = null,
-  gap = 10, mobilDetail = undefined, onNurDetail = null, t = null }) {
+  gap = 10, mobilDetail = undefined, onNurDetail = null, t = null,
+  uebersichtBreite = "voll" }) {
   const [contentRef, contentW] = useContentWidth();
   const istListe = listenAnsicht === "liste";
   const hatDetail = detail != null;
@@ -3574,7 +3575,11 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
     // Karten-Modus: volle Breite (auto-fill füllt sie). Liste-Modus: Liste auf
     // die eingestellte Listenbreite begrenzen — sonst zieht sie über die ganze
     // Breite. Das gehört in den Baustein, damit ALLE Screens es gleich machen.
-    const maxW = istListe ? listeBreiteAus(listeOpt) : undefined;
+    // uebersichtBreite="master" (z. B. Kalender-Timeline): einspaltige Zeilen-
+    // liste — KEIN auto-fill-Grid, deshalb auf die Master-Breite begrenzen
+    // (genau die Breite, an der später das Detail andockt), linksbündig.
+    let maxW = istListe ? listeBreiteAus(listeOpt) : undefined;
+    if (uebersichtBreite === "master" && masterBreite > 0) maxW = masterBreite;
     return (
       <div ref={contentRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 0",

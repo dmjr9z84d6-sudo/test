@@ -3136,7 +3136,8 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
             listenAnsicht={listenAnsicht} listeOpt={listeOpt}
             kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
             kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
-            gap={10} onNurDetail={setKalNurDetail}/>
+            gap={10} onNurDetail={setKalNurDetail}
+            uebersichtBreite="master"/>
         );
       })()
       )}
