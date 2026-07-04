@@ -410,7 +410,7 @@ const KALENDER_TYPEN = [
 
 function KalenderZeile({ termin, t, offen, onToggle, onZiel, onLoeschen = null, rahmenFarbe = null,
   kontakte = [], ves = [], setKontakte = null, onKontaktClick = null, onVEClick = null,
-  onNotiz = null, onBearbeiten = null }) {
+  onNotiz = null, onBearbeiten = null, imDetail = false }) {
   // Zwei-Schritt-Löschen statt confirm() (DESIGN §25.2): erster Tap macht den
   // Button scharf („Löschen?"), zweiter Tap löscht. Zuklappen entschärft.
   var loeschState = useState(false);
@@ -450,7 +450,9 @@ function KalenderZeile({ termin, t, offen, onToggle, onZiel, onLoeschen = null, 
   return (
     <div onClick={onToggle} data-kb-item="1"
       data-termin-key={(termin.iso || "") + "|" + (termin.titel || "") + "|" + (termin.objektId || termin.kontaktId || "")}
-      style={{ background: t.surface,
+      style={imDetail
+        ? { background: "transparent", cursor: "default" }
+        : { background: t.surface,
         border: "1px solid " + (offen ? rf : t.border),
         borderRadius: offen ? RAD.lg : RAD.md, cursor: "pointer",
         transition: "border-color 0.15s" }}>
@@ -3019,10 +3021,10 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           return null;
         })();
         // Eine KalenderZeile mit allen Standard-Callbacks (DRY für Liste+Detail).
-        const baueZeile = function(termin, key, idElem, offenState, onToggleFn) {
+        const baueZeile = function(termin, key, idElem, offenState, onToggleFn, imDetail) {
           return (
             <KalenderZeile key={key + "-" + idElem} termin={termin} t={t}
-              rahmenFarbe={kalFarbe}
+              rahmenFarbe={kalFarbe} imDetail={imDetail === true}
               kontakte={kontakte} ves={ves} setKontakte={setKontakte}
               onKontaktClick={gotoKontakt} onVEClick={(id) => gotoVE(id)}
               offen={offenState}
@@ -3108,7 +3110,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
         // Ohne Auswahl null — kein Platzhalter, rechts bleibt leer (§75-Regel).
         const detailInhalt = offenerTermin ? (
           <DetailRahmen t={t} accent={kalFarbe}>
-            {baueZeile(offenerTermin, terminKey(offenerTermin), "detail", true, () => {})}
+            {baueZeile(offenerTermin, terminKey(offenerTermin), "detail", true, () => {}, true)}
           </DetailRahmen>
         ) : null;
         // MOBIL: Detail ersetzt die Liste. Zurück sitzt im Header-rechts-Slot

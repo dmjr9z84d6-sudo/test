@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useContext, createContext, Fragment } from "react";
 import {
-  ACCENT, FS, FW, KACHEL_W, KONTAKTE_FARBE, RAD, effColor, effKuerzel, getContrastColor,
+  ACCENT, FS, FW, KONTAKTE_FARBE, RAD, effColor, effKuerzel, getContrastColor,
   rolleEckPosition, rolleEckSichtbar, sortKontakte, toGrau, verwendungBadgeSichtbar,
   verwendungEckPosition, verwendungEckSichtbar
 } from "./constants.js";
@@ -3577,13 +3577,13 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
     // Breite. Das gehört in den Baustein, damit ALLE Screens es gleich machen.
     // uebersichtBreite="master" (z. B. Kalender-Timeline): einspaltige Zeilen-
     // liste — KEIN auto-fill-Grid. Auf die Breite von genau kartenSpalten Karten
-    // begrenzen. WICHTIG: die Vollbild-Übersicht (Kontakte/Objekte) rendert ihre
-    // Karten mit FESTER KACHEL_W-Breite (nicht dem Settings-kartenMaxBreite und
-    // nicht dem im Detail-Fall geschrumpften masterBreite). Damit die Timeline
-    // exakt so breit wird wie zwei dieser Karten, hier aus KACHEL_W rechnen.
+    // begrenzen. WICHTIG: die Kontakte-/Objekte-Übersicht rendert ihre Karten mit
+    // dem durchgereichten kartenMaxBreite (Settings-Wert). GENAU diesen Wert hier
+    // verwenden — sonst wird die Timeline schmaler/breiter als zwei echte Karten
+    // und das Detail dockt an anderer x-Position an als bei Kontakten/Objekten.
     let maxW = istListe ? listeBreiteAus(listeOpt) : undefined;
     if (uebersichtBreite === "master") {
-      maxW = kartenSpalten * KACHEL_W + (kartenSpalten - 1) * gap;
+      maxW = kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * gap;
     }
     return (
       <div ref={contentRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0,
@@ -3596,11 +3596,13 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
     );
   }
   // Master-Breite im Detail-Fall. Bei uebersichtBreite="master" (Timeline) MUSS
-  // sie exakt der Übersichts-Breite entsprechen (kartenSpalten × KACHEL_W + gap),
-  // sonst springt die Liste beim Öffnen eines Det, weil passendeMasterSpalten mit
-  // dem Settings-kartenMaxBreite rechnet statt mit dem festen KACHEL_W der Karten.
+  // sie exakt der Übersichts-Breite entsprechen: kartenSpalten × kartenMaxBreite
+  // + gap — DERSELBE kartenMaxBreite wie die Kontakte-/Objekte-Übersicht nutzt.
+  // So dockt das Detail an derselben x-Position an wie dort und die Liste springt
+  // beim Öffnen nicht (passendeMasterSpalten würde die Breite je nach Fenster und
+  // Detail-Reservierung anders berechnen).
   const masterFix = uebersichtBreite === "master"
-    ? kartenSpalten * KACHEL_W + (kartenSpalten - 1) * gap
+    ? kartenSpalten * kartenMaxBreite + (kartenSpalten - 1) * gap
     : null;
   const masterFlexBreite = masterFix != null ? masterFix : masterBreite;
   return (
