@@ -3595,11 +3595,19 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
       </div>
     );
   }
+  // Master-Breite im Detail-Fall. Bei uebersichtBreite="master" (Timeline) MUSS
+  // sie exakt der Übersichts-Breite entsprechen (kartenSpalten × KACHEL_W + gap),
+  // sonst springt die Liste beim Öffnen eines Det, weil passendeMasterSpalten mit
+  // dem Settings-kartenMaxBreite rechnet statt mit dem festen KACHEL_W der Karten.
+  const masterFix = uebersichtBreite === "master"
+    ? kartenSpalten * KACHEL_W + (kartenSpalten - 1) * gap
+    : null;
+  const masterFlexBreite = masterFix != null ? masterFix : masterBreite;
   return (
     <div ref={contentRef} style={{ display: "flex", flexDirection: "row", flex: 1,
       minHeight: 0, minWidth: 0, width: "100%", boxSizing: "border-box", gap }}>
       <div data-ad-scroll="y" style={{
-        flex: (layout.cols > 0 && masterBreite > 0) ? `0 0 ${masterBreite}px` : "1 1 0%",
+        flex: (layout.cols > 0 && masterFlexBreite > 0) ? `0 0 ${masterFlexBreite}px` : "1 1 0%",
         minWidth: 0, overflowY: "auto", padding: "8px 0", boxSizing: "border-box" }}>
         {masterNode}
       </div>
