@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useContext, createContext, Fragment } from "react";
 import {
-  ACCENT, FS, FW, KONTAKTE_FARBE, RAD, effColor, effKuerzel, getContrastColor,
+  ACCENT, FS, FW, KACHEL_W, KONTAKTE_FARBE, RAD, effColor, effKuerzel, getContrastColor,
   rolleEckPosition, rolleEckSichtbar, sortKontakte, toGrau, verwendungBadgeSichtbar,
   verwendungEckPosition, verwendungEckSichtbar
 } from "./constants.js";
@@ -3576,10 +3576,15 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
     // die eingestellte Listenbreite begrenzen — sonst zieht sie über die ganze
     // Breite. Das gehört in den Baustein, damit ALLE Screens es gleich machen.
     // uebersichtBreite="master" (z. B. Kalender-Timeline): einspaltige Zeilen-
-    // liste — KEIN auto-fill-Grid, deshalb auf die Master-Breite begrenzen
-    // (genau die Breite, an der später das Detail andockt), linksbündig.
+    // liste — KEIN auto-fill-Grid. Auf die Breite von genau kartenSpalten Karten
+    // begrenzen. WICHTIG: die Vollbild-Übersicht (Kontakte/Objekte) rendert ihre
+    // Karten mit FESTER KACHEL_W-Breite (nicht dem Settings-kartenMaxBreite und
+    // nicht dem im Detail-Fall geschrumpften masterBreite). Damit die Timeline
+    // exakt so breit wird wie zwei dieser Karten, hier aus KACHEL_W rechnen.
     let maxW = istListe ? listeBreiteAus(listeOpt) : undefined;
-    if (uebersichtBreite === "master" && masterBreite > 0) maxW = masterBreite;
+    if (uebersichtBreite === "master") {
+      maxW = kartenSpalten * KACHEL_W + (kartenSpalten - 1) * gap;
+    }
     return (
       <div ref={contentRef} data-ad-scroll="y" style={{ flex: 1, minHeight: 0,
         minWidth: 0, width: "100%", overflowY: "auto", padding: "8px 0",
