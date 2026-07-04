@@ -1634,7 +1634,7 @@ export default function App() {
   // gerundet. Der px-Wert wird als Faktor (px / cardWidth) durchgereicht — in
   // useMasterDetailLayout kürzt sich cardWidth raus, sodass die effektive
   // Mindest-Detailbreite exakt detailMinBreite ist, unabhängig von cardWidth.
-  const detailMinBreite = Math.max(400, Math.min(1200,
+  const detailMinBreite = Math.max(400, Math.min(1400,
     settings.detailMinBreite != null ? settings.detailMinBreite : 400));
   // NEUES MODELL (v12.29): Karten haben eine MAXIMALBREITE (dehnen sich nie
   // darüber, Freiraum bleibt rechts) und eine prozentuale Schrumpf-Toleranz
@@ -1671,7 +1671,7 @@ export default function App() {
     settings.schrumpfProzent != null ? settings.schrumpfProzent
       : (settings.listeSchrumpf != null ? settings.listeSchrumpf : 25)));
   const listeBreiteMin = Math.max(160, Math.round(listeBreiteMax * (1 - schrumpfProz / 100)));
-  const detailBreiteListeMax = Math.max(400, Math.min(1200,
+  const detailBreiteListeMax = Math.max(400, Math.min(1400,
     settings.detailBreiteListe != null ? settings.detailBreiteListe : 540));
   const detailBreiteListeMin = Math.max(300, Math.round(detailBreiteListeMax * (1 - schrumpfProz / 100)));
   // listeOpt: kompaktes Objekt, das die Module unverändert an useMasterDetailLayout

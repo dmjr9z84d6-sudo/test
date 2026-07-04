@@ -5447,9 +5447,9 @@ function VertragFirmaKarte({ firma, maListe, t, accent, onKontaktClick, ves, kon
 }
 
 // ── VertragZeile: kompakte Vertragszeile, aufklappbar für Details ───────────
-// Eingeklappt: Typ · Leistung, Firma (Link), ab/bis, Vertrags-Nr.
-// Aufgeklappt: zusätzlich strukturierte Detail-Felder (Typ, Leistung, Firma,
-// Vertrags-Nr., Laufzeit ab/bis) als übersichtliches Raster.
+// Eingeklappt: Leistung/Name (kein redundanter Typ-Präfix — die Kategorie-Karte
+//   nennt den Typ bereits), Firma (Link), Vertrags-Nr. — OHNE Datum.
+// Aufgeklappt: strukturierte Detail-Felder inkl. Laufzeit ab/bis als Raster.
 function VertragZeile({ v, firma, t, accent, editMode, onKontaktClick, onRemove, onEdit, kontakte, setKontakte, ves, kontext = "vertrag" }) {
   const [offen, setOffen] = useState(false);
   const kartenIconsAn = useKartenIcons();
@@ -5536,14 +5536,12 @@ function VertragZeile({ v, firma, t, accent, editMode, onKontaktClick, onRemove,
         {kartenIconsAn ? <span style={{ fontSize: FS.icon }}>📄</span> : null}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>
-            {v.typ}{v.leistung ? " · " + v.leistung : ""}
+            {v.leistung || v.typ}
           </div>
           <div style={{ fontSize: FS.s, color: t.sub }}>
             {firma
               ? <span style={{ color: firmaFarbe, fontWeight: FW.medium }}>{firma.name}</span>
               : "Keine Firma verknüpft"}
-            {v.ab && ` · ab ${v.ab}`}
-            {v.bis && ` · bis ${v.bis}`}
           </div>
         </div>
         {v.vertragsnr && (

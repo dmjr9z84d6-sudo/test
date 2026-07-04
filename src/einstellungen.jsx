@@ -617,10 +617,10 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
             <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
               fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
-              {Math.max(400, Math.min(1200, settings.detailMinBreite != null ? settings.detailMinBreite : 400))} px
+              {Math.max(400, Math.min(1400, settings.detailMinBreite != null ? settings.detailMinBreite : 400))} px
             </span>
-            <input type="range" min={400} max={1200} step={20}
-              value={Math.max(400, Math.min(1200, settings.detailMinBreite != null ? settings.detailMinBreite : 400))}
+            <input type="range" min={400} max={1400} step={20}
+              value={Math.max(400, Math.min(1400, settings.detailMinBreite != null ? settings.detailMinBreite : 400))}
               onChange={e => save({ detailMinBreite: parseInt(e.target.value, 10) })}
               style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
           </div>
@@ -659,10 +659,10 @@ function SektionErscheinungsbild({ settings, setSettings, rawSettings, t, accent
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 160 }}>
             <span style={{ fontSize: FS.s, fontWeight: FW.medium, color: t.sub,
               fontVariantNumeric: "tabular-nums", minWidth: 56, textAlign: "right" }}>
-              {Math.max(400, Math.min(1200, settings.detailBreiteListe != null ? settings.detailBreiteListe : 540))} px
+              {Math.max(400, Math.min(1400, settings.detailBreiteListe != null ? settings.detailBreiteListe : 540))} px
             </span>
-            <input type="range" min={400} max={1200} step={20}
-              value={Math.max(400, Math.min(1200, settings.detailBreiteListe != null ? settings.detailBreiteListe : 540))}
+            <input type="range" min={400} max={1400} step={20}
+              value={Math.max(400, Math.min(1400, settings.detailBreiteListe != null ? settings.detailBreiteListe : 540))}
               onChange={e => save({ detailBreiteListe: parseInt(e.target.value, 10) })}
               style={{ flex: 1, accentColor: accent, cursor: "pointer", height: 24 }}/>
           </div>
