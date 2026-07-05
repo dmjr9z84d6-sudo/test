@@ -435,3 +435,140 @@ export function dateiBlobUrl(id) {
     }).catch(function () { resolve(null); });
   });
 }
+
+// ── Foto-Helfer (§93 Foto-Feature, Stufe 1) ─────────────────────────────────
+
+// Macht einen String dateinamen-sicher: Umlaute transliterieren, alles außer
+// A-Za-z0-9- zu "-", Mehrfach-"-" eindampfen, Rand-"-" kappen. Für die
+// generierten Foto-Dateinamen (fotoDateiname in datenmodell.js).
+export function dateinameSicher(s) {
+  let x = String(s == null ? "" : s);
+  x = x.replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+       .replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue")
+       .replace(/ß/g, "ss");
+  x = x.replace(/[^A-Za-z0-9-]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  return x;
+}
+
+// ── fotoExifLesen: schlanker JPEG-EXIF-Reader (lizenzfrei, kein Lib-Einsatz).
+// Liest NUR DateTimeOriginal (0x9003) + GPS Lat/Lon (GPS-IFD 0x0001–0x0004).
+// Nur JPEG (APP1/Exif); PNG/HEIC/WebP → sofort null (Aufrufer nimmt Upload-
+// Datum). Robustheit vor Vollständigkeit: JEDER Parse-Fehler → still null.
+// Promise mit { aufgenommen: "DD.MM.YYYY"|"", gps: {lat,lon}|null } oder null.
+export function fotoExifLesen(file) {
+  return new Promise(function (resolve) {
+    try {
+      if (!file) { resolve(null); return; }
+      const typ = (file.type || "").toLowerCase();
+      const nm = (file.name || "").toLowerCase();
+      const istJpeg = typ === "image/jpeg" || typ === "image/jpg"
+        || /\.jpe?g$/.test(nm);
+      if (!istJpeg) { resolve(null); return; }
+      // EXIF liegt am Dateianfang — 256 KB reichen sicher.
+      const teil = file.slice(0, 262144);
+      const reader = new FileReader();
+      reader.onerror = function () { resolve(null); };
+      reader.onload = function () {
+        try {
+          const dv = new DataView(reader.result);
+          if (dv.byteLength < 12 || dv.getUint16(0) !== 0xFFD8) { resolve(null); return; }
+          // JPEG-Segmente durchlaufen, APP1 mit "Exif\0\0" suchen.
+          let off = 2, tiffStart = -1;
+          while (off + 4 <= dv.byteLength) {
+            if (dv.getUint8(off) !== 0xFF) break;
+            const marker = dv.getUint8(off + 1);
+            if (marker === 0xDA) break;                    // SOS — Bilddaten beginnen
+            if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD9)) { off += 2; continue; }
+            const len = dv.getUint16(off + 2);
+            if (len < 2) break;
+            if (marker === 0xE1 && off + 10 <= dv.byteLength
+                && dv.getUint32(off + 4) === 0x45786966   // "Exif"
+                && dv.getUint16(off + 8) === 0x0000) {
+              tiffStart = off + 10;
+              break;
+            }
+            off += 2 + len;
+          }
+          if (tiffStart < 0 || tiffStart + 8 > dv.byteLength) { resolve(null); return; }
+          // TIFF-Header: Endianness (II little / MM big) + IFD0-Offset.
+          const endian = dv.getUint16(tiffStart);
+          const little = endian === 0x4949;
+          if (!little && endian !== 0x4D4D) { resolve(null); return; }
+          const TYP_GROESSE = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
+          // Sucht einen Tag in einem IFD; liefert { typ, count, off } (off = Feldstelle).
+          const tagSuchen = function (ifdOff, tag) {
+            if (ifdOff < 0 || ifdOff + 2 > dv.byteLength) return null;
+            const n = dv.getUint16(ifdOff, little);
+            for (let i = 0; i < n; i++) {
+              const e = ifdOff + 2 + i * 12;
+              if (e + 12 > dv.byteLength) return null;
+              if (dv.getUint16(e, little) === tag) {
+                return { typ: dv.getUint16(e + 2, little),
+                  count: dv.getUint32(e + 4, little), off: e + 8 };
+              }
+            }
+            return null;
+          };
+          // Wo liegen die Nutzdaten eines Eintrags? (inline, wenn ≤ 4 Bytes)
+          const wertOffset = function (e) {
+            const g = TYP_GROESSE[e.typ] || 1;
+            return (g * e.count) <= 4 ? e.off : tiffStart + dv.getUint32(e.off, little);
+          };
+          const asciiLesen = function (e) {
+            const o = wertOffset(e);
+            let s = "";
+            for (let i = 0; i < e.count - 1 && o + i < dv.byteLength; i++) {
+              s += String.fromCharCode(dv.getUint8(o + i));
+            }
+            return s;
+          };
+          const rational = function (o) {
+            if (o + 8 > dv.byteLength) return 0;
+            const num = dv.getUint32(o, little), den = dv.getUint32(o + 4, little);
+            return den ? num / den : 0;
+          };
+          const ifd0 = tiffStart + dv.getUint32(tiffStart + 4, little);
+          // DateTimeOriginal aus dem Exif-Sub-IFD (Pointer-Tag 0x8769 im IFD0).
+          let aufgenommen = "";
+          const exifPtr = tagSuchen(ifd0, 0x8769);
+          if (exifPtr) {
+            const exifIfd = tiffStart + dv.getUint32(wertOffset(exifPtr), little);
+            const dto = tagSuchen(exifIfd, 0x9003);
+            if (dto && dto.typ === 2) {
+              // EXIF-Format "YYYY:MM:DD HH:MM:SS" (Doppelpunkte im Datum!).
+              const roh = asciiLesen(dto);
+              const m = roh.match(/^(\d{4}):(\d{2}):(\d{2})/);
+              if (m) aufgenommen = m[3] + "." + m[2] + "." + m[1];
+            }
+          }
+          // GPS aus dem GPS-IFD (Pointer-Tag 0x8825 im IFD0).
+          let gps = null;
+          const gpsPtr = tagSuchen(ifd0, 0x8825);
+          if (gpsPtr) {
+            const gpsIfd = tiffStart + dv.getUint32(wertOffset(gpsPtr), little);
+            const latRefE = tagSuchen(gpsIfd, 0x0001);
+            const latE = tagSuchen(gpsIfd, 0x0002);
+            const lonRefE = tagSuchen(gpsIfd, 0x0003);
+            const lonE = tagSuchen(gpsIfd, 0x0004);
+            if (latE && lonE && latE.typ === 5 && lonE.typ === 5
+                && latE.count >= 3 && lonE.count >= 3) {
+              const latO = wertOffset(latE), lonO = wertOffset(lonE);
+              let lat = rational(latO) + rational(latO + 8) / 60 + rational(latO + 16) / 3600;
+              let lon = rational(lonO) + rational(lonO + 8) / 60 + rational(lonO + 16) / 3600;
+              const latRef = latRefE ? asciiLesen(latRefE) : "N";
+              const lonRef = lonRefE ? asciiLesen(lonRefE) : "E";
+              if (latRef === "S") lat = -lat;
+              if (lonRef === "W") lon = -lon;
+              if (lat || lon) {
+                gps = { lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6 };
+              }
+            }
+          }
+          if (!aufgenommen && !gps) { resolve(null); return; }
+          resolve({ aufgenommen: aufgenommen, gps: gps });
+        } catch (err) { resolve(null); }
+      };
+      reader.readAsArrayBuffer(teil);
+    } catch (err) { resolve(null); }
+  });
+}

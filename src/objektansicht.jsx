@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getContrastColor } from "./constants.js";
-import { parseDatumWert } from "./utils-basis.js";
+import { parseDatumWert, dateiSpeichern, dateiLoeschen, fotoExifLesen } from "./utils-basis.js";
 import {
-  flaecheVon, isStellplatzTyp, istAnonymesMitglied, teileVon
+  FOTO_ALBEN, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
+  fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, teileVon
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, EinheitOffenContext, I, scrollToCard, useHandlungsbedarf, useKontaktFarbe,
@@ -14,7 +15,7 @@ import {
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
-  objektHatZentralesWarmwasser, wjEndeDatum
+  objektHatZentralesWarmwasser, SegmentControl, wjEndeDatum
 } from "./components.jsx";
 import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
@@ -25,7 +26,7 @@ import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
 // (JSX/Callbacks) gebraucht werden. esbuild löst den Zyklus auf.
 import { AktionsButton, DetailMobilScrollTop } from "./kontakte-modul.jsx";
 import {
-  DokumenteAnsicht, LiegenschaftAnsicht, VerwaltungAnsicht,
+  DateiViewerModal, DokumenteAnsicht, LiegenschaftAnsicht, VerwaltungAnsicht,
   eigStufen, feldImKalender, parseYMD
 } from "./liegenschaft.jsx";
 import { VEKontakteTab, objektBezugInfo } from "./kontakte.jsx";
@@ -1415,15 +1416,8 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
           sprungKarte={sprungZiel && sprungZiel.tab === "dokumente" ? { karteId: sprungZiel.karteId, nonce: sprungZiel.nonce } : null}/>
       )}
       {tab === "fotos" && (
-        <PlatzhalterReiter t={t} accent={accent} icon="paint"
-          titel="Fotos"
-          beschreibung="Fotos zum Objekt — Außenansichten, technische Anlagen, Schadensbilder, Begehungs-Fotos."
-          punkte={[
-            "Kategorien (Außen, Innen, Technik, Schäden …)",
-            "Direkter Upload vom Handy (Kamera)",
-            "Verknüpfung mit Einheiten oder Räumen",
-            "Lightbox-Vorschau",
-          ]}/>
+        <FotosAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
+          editMode={editMode}/>
       )}
     </div>
     </EinheitOffenContext.Provider>
@@ -2190,51 +2184,444 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
   );
 }
 
-function PlatzhalterReiter({ t, accent, icon, titel, beschreibung, punkte }) {
+// ── FotoUploadModal (§93.5) — Anlege-Dialog für Foto-Uploads ────────────────
+// Folgt EXAKT dem kanonischen Modal-Muster (DokumentUploadModal, §76.4/§85.2):
+// fixed-Overlay → Box (RAD.xl, maxHeight 90dvh) → sticky Header mit Icon+Titel+x
+// → Body labelStyle/inputStyle → sticky Footer AktionsButton (1/2).
+// Mehrfach-Auswahl JA (Begehung = viele Fotos auf einmal): alle gewählten
+// Dateien teilen Album/Zuordnung/Gerät/Notiz — bewusste Vereinfachung (§93.10).
+// Zuordnung ist PFLICHT; Hochladen bleibt disabled, bis sie vollständig ist.
+function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
+  const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
+    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
+  const inputStyle = { width: "100%", padding: "8px 10px",
+    background: t.surface, color: t.text, border: `1px solid ${t.border}`,
+    borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
+
+  const [dateien, setDateien] = useState([]);       // gewählte File-Objekte
+  const [exifInfos, setExifInfos] = useState([]);   // parallel je Datei: { aufgenommen, gps, quelle }
+  const [heicAnzahl, setHeicAnzahl] = useState(0);  // abgewiesene HEIC-Dateien (Hinweis)
+  const [album, setAlbum] = useState("");
+  const [eigenAlbum, setEigenAlbum] = useState("");
+  const [art, setArt] = useState("gemeinschaft");   // "gemeinschaft" | "einheit" | "raum"
+  const [hausWahl, setHausWahl] = useState("");
+  const [einheitWahl, setEinheitWahl] = useState("");
+  const [raumWahl, setRaumWahl] = useState("");
+  const [geraetWahl, setGeraetWahl] = useState("");
+  const [notiz, setNotiz] = useState("");
+  const [fehler, setFehler] = useState("");
+  const [ladend, setLadend] = useState(false);
+
+  // Standorte/Einheiten/Räume — DIESELBE Quelle wie Technik/Legionellen
+  // (legionellenStandorte, §93.8 Baustein-Inventar). Haus-Dropdown nur bei
+  // mehreren Standorten; bei genau einem ist er implizit vorgewählt.
+  const standorte = legionellenStandorte(ve);
+  const einzigerStandort = standorte.length === 1 ? standorte[0] : null;
+  const effHausId = hausWahl || (einzigerStandort ? String(einzigerStandort.id) : "");
+  const aktHaus = standorte.find(h => String(h.id) === String(effHausId)) || null;
+  const verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
+  // Räume des Hauses: Gemeinschaftsräume + Räume aller Einheiten (mit Kontext).
+  const verfRaeume = (() => {
+    const out = [];
+    if (!aktHaus) return out;
+    (aktHaus.raeume || []).forEach(r => {
+      if (r) out.push({ id: r.id, label: r.name || "Raum" });
+    });
+    (aktHaus.einheiten || []).forEach(eh => {
+      if (!eh) return;
+      (eh.teile || []).forEach(teil => {
+        ((teil && teil.raeume) || []).forEach(r => {
+          if (r) out.push({ id: r.id, label: "WE" + (eh.nr || eh.id) + ": " + (r.name || "Raum") });
+        });
+      });
+    });
+    return out;
+  })();
+  // Technik-Geräte aller Standorte (optionale Verknüpfung).
+  const alleGeraete = (() => {
+    const out = [];
+    standorte.forEach(h => {
+      ((h && h.technikGeraete) || []).forEach(g => {
+        if (g) out.push({ id: g.id, label: g.typLabel || "Gerät" });
+      });
+    });
+    return out;
+  })();
+
+  const istEigenAlbum = album === "__eigen__";
+  const albumWert = istEigenAlbum ? eigenAlbum.trim() : album;
+  const zuordnungOk = art === "gemeinschaft"
+    || (art === "einheit" && !!einheitWahl)
+    || (art === "raum" && !!raumWahl);
+  const valid = dateien.length > 0 && !!albumWert && zuordnungOk && !ladend;
+
+  const istHeic = (f) => {
+    const typ = ((f && f.type) || "").toLowerCase();
+    const nm = ((f && f.name) || "").toLowerCase();
+    return typ.indexOf("heic") >= 0 || typ.indexOf("heif") >= 0
+      || /\.heic$/.test(nm) || /\.heif$/.test(nm);
+  };
+
+  const dateiWaehlen = () => {
+    setFehler("");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.style.display = "none";
+    input.onchange = (e) => {
+      const roh = Array.from((e.target && e.target.files) || []);
+      try { document.body.removeChild(input); } catch (err) {}
+      if (roh.length === 0) return;
+      // HEIC kann der Browser i. d. R. nicht anzeigen → mit Hinweis abweisen (§93.10).
+      const heic = roh.filter(istHeic);
+      const ok = roh.filter(f => !istHeic(f));
+      setHeicAnzahl(heic.length);
+      setDateien(ok);
+      setExifInfos(ok.map(() => null)); // Platzhalter, EXIF folgt asynchron
+      Promise.all(ok.map(f => fotoExifLesen(f))).then(ergebnisse => {
+        setExifInfos(ergebnisse.map(r => ({
+          aufgenommen: (r && r.aufgenommen) || "",
+          gps: (r && r.gps) || null,
+          quelle: (r && r.aufgenommen) ? "exif" : "upload",
+        })));
+      });
+    };
+    document.body.appendChild(input);
+    input.click();
+  };
+
+  const speichern = () => {
+    if (!valid) return;
+    setLadend(true);
+    const heute = new Date();
+    const p2 = (n) => String(n).padStart(2, "0");
+    const heuteDE = p2(heute.getDate()) + "." + p2(heute.getMonth() + 1) + "." + heute.getFullYear();
+    // Sequentiell speichern (IndexedDB), Einträge sammeln, dann in einem Rutsch
+    // an den Aufrufer — so landet auch bei Mehrfach-Upload nur EIN setVes.
+    const eintraege = [];
+    let kette = Promise.resolve();
+    dateien.forEach((f, i) => {
+      kette = kette.then(() => dateiSpeichern(f).then(meta => {
+        const info = exifInfos[i] || { aufgenommen: "", gps: null, quelle: "upload" };
+        eintraege.push({
+          id: "foto_" + Date.now().toString(36) + "_" + i + "_" + Math.random().toString(36).slice(2, 8),
+          dateiRef: meta.id,
+          name: meta.name, typ: meta.typ, groesse: meta.groesse,
+          album: albumWert,
+          zuordnung: {
+            art: art,
+            einheitId: art === "einheit" ? einheitWahl : null,
+            raumId: art === "raum" ? raumWahl : null,
+          },
+          geraetId: geraetWahl || null,
+          aufgenommen: info.aufgenommen || heuteDE,
+          exifQuelle: info.aufgenommen ? "exif" : "upload",
+          gps: info.gps || null,           // Hintergrund-Info, nicht prominent (§93.2)
+          notiz: notiz.trim(),
+          angelegt: new Date().toISOString(),
+        });
+      }));
+    });
+    kette.then(() => {
+      setLadend(false);
+      onSave(eintraege);
+      onClose();
+    }).catch(() => {
+      setLadend(false);
+      setFehler("Speichern fehlgeschlagen — bitte erneut versuchen.");
+    });
+  };
+
   return (
-    <div style={{ background: t.card, border: `1px solid ${t.border}`,
-      borderRadius: RAD.lg, padding: "24px 18px", textAlign: "center" }}>
-      <div style={{ width: 56, height: 56, borderRadius: RAD.lg, margin: "0 auto 14px",
-        background: accent + "18", display: "flex", alignItems: "center",
-        justifyContent: "center" }}>
-        <I name={icon} size={26} color={accent}/>
-      </div>
-      <div style={{ fontSize: FS.input, fontWeight: FW.heavy, color: t.text, marginBottom: 6 }}>
-        {titel}
-      </div>
-      <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 14, lineHeight: 1.5,
-        maxWidth: 480, margin: "0 auto 14px" }}>
-        {beschreibung}
-      </div>
-      <div style={{ display: "inline-block", fontSize: FS.xxs, fontWeight: FW.bold,
-        color: accent, background: accent + "15", letterSpacing: "0.08em",
-        textTransform: "uppercase", padding: "3px 9px", borderRadius: RAD.pill,
-        marginBottom: 14 }}>
-        Funktion folgt
-      </div>
-      {punkte && punkte.length > 0 && (
-        <div style={{ background: t.surface, border: `1px solid ${t.border}`,
-          borderRadius: RAD.md, padding: "12px 16px", maxWidth: 480, margin: "0 auto",
-          textAlign: "left" }}>
-          <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
-            textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-            Geplant
+    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.7)",
+      zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: t.card, border: `1px solid ${t.border}`,
+        borderRadius: RAD.xl, width: "100%", maxWidth: 480,
+        maxHeight: "90dvh", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+        {/* Header */}
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.border}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          position: "sticky", top: 0, background: t.card, zIndex: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <I name="plus" size={14} color={accent}/>
+            <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>Fotos hochladen</span>
           </div>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none",
-            display: "flex", flexDirection: "column", gap: 6 }}>
-            {punkte.map((p, i) => (
-              <li key={i} style={{ display: "flex", alignItems: "flex-start",
-                gap: 8, fontSize: FS.m, color: t.text }}>
-                <span style={{ color: accent, marginTop: 2 }}>·</span>
-                {p}
-              </li>
-            ))}
-          </ul>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}
+            title="Schließen" aria-label="Schließen">
+            <I name="x" size={16} color={t.sub}/>
+          </button>
         </div>
+
+        <div style={{ padding: 16 }}>
+          {/* Dateien */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={labelStyle}>Fotos</div>
+            <button onClick={dateiWaehlen} style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              background: t.surface, border: `1px solid ${t.border}`,
+              borderRadius: RAD.ms, padding: "10px 12px", cursor: "pointer",
+              fontFamily: "inherit", boxSizing: "border-box", textAlign: "left" }}>
+              <I name="paint" size={16} color={dateien.length > 0 ? accent : t.sub}/>
+              <span style={{ flex: 1, minWidth: 0, fontSize: FS.l,
+                color: dateien.length > 0 ? t.text : t.muted,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {dateien.length === 0 ? "Fotos auswählen …"
+                  : dateien.length === 1 ? dateien[0].name
+                  : dateien.length + " Fotos gewählt"}
+              </span>
+            </button>
+            {heicAnzahl > 0 && (
+              <div style={{ fontSize: FS.xs, color: "#EF4444", marginTop: 6, lineHeight: 1.4 }}>
+                {heicAnzahl === 1 ? "1 HEIC-Datei wurde abgewiesen" : heicAnzahl + " HEIC-Dateien wurden abgewiesen"} —
+                der Browser kann HEIC nicht anzeigen. Bitte in den iPhone-Einstellungen
+                „Kamera → Formate → Maximale Kompatibilität" wählen oder als JPEG teilen.
+              </div>
+            )}
+            {/* EXIF-Anzeige je Datei (read-only, §93.4) */}
+            {dateien.length > 0 && (
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                {dateien.map((f, i) => {
+                  const info = exifInfos[i];
+                  const text = !info ? "Prüfe Aufnahmedatum …"
+                    : info.aufgenommen
+                      ? "Aufgenommen: " + info.aufgenommen + " (aus Foto)"
+                      : "Aufnahmedatum nicht im Foto — Upload-Datum wird verwendet";
+                  return (
+                    <div key={i} style={{ fontSize: FS.xs, color: t.muted,
+                      display: "flex", gap: 6, minWidth: 0 }}>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis",
+                        whiteSpace: "nowrap", maxWidth: "45%", flexShrink: 0 }}>{f.name}</span>
+                      <span style={{ color: info && info.aufgenommen ? t.sub : t.muted }}>· {text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Album */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={labelStyle}>Album</div>
+            <select value={album} onChange={e => { setAlbum(e.target.value); setFehler(""); }}
+              style={inputStyle}>
+              <option value="">— Album wählen —</option>
+              {FOTO_ALBEN.map(a => (
+                <option key={a.id} value={a.id}>{a.label}</option>
+              ))}
+              <option value="__eigen__">Eigenes Album …</option>
+            </select>
+          </div>
+          {istEigenAlbum && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={labelStyle}>Name des Albums</div>
+              <input value={eigenAlbum} onChange={e => { setEigenAlbum(e.target.value); setFehler(""); }}
+                placeholder="z. B. Begehung Juli 2026" style={inputStyle}/>
+            </div>
+          )}
+
+          {/* Zuordnung (PFLICHT) */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={labelStyle}>Wozu gehören die Fotos?</div>
+            <SegmentControl t={t} accent={accent} value={art}
+              onChange={(id) => { setArt(id); setEinheitWahl(""); setRaumWahl(""); }}
+              options={[
+                { id: "gemeinschaft", label: "Gemeinschaft" },
+                { id: "einheit", label: "Einheit" },
+                { id: "raum", label: "Raum" },
+              ]}/>
+            {art !== "gemeinschaft" && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                {standorte.length > 1 && (
+                  <select value={hausWahl}
+                    onChange={e => { setHausWahl(e.target.value); setEinheitWahl(""); setRaumWahl(""); }}
+                    style={inputStyle}>
+                    <option value="">— Haus / Tiefgarage —</option>
+                    {standorte.map(h => (
+                      <option key={h.id} value={h.id}>{h.name || "Gebäude"}</option>
+                    ))}
+                  </select>
+                )}
+                {art === "einheit" && (
+                  <select value={einheitWahl} onChange={e => setEinheitWahl(e.target.value)}
+                    style={inputStyle} disabled={!aktHaus}>
+                    <option value="">— Einheit wählen —</option>
+                    {verfEinheiten.map(eh => (
+                      <option key={eh.id} value={eh.id}>
+                        {eh.bezeichnung || eh.nr || ("Einheit " + eh.id)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {art === "raum" && (
+                  <select value={raumWahl} onChange={e => setRaumWahl(e.target.value)}
+                    style={inputStyle} disabled={!aktHaus}>
+                    <option value="">— Raum wählen —</option>
+                    {verfRaeume.map(r => (
+                      <option key={r.id} value={r.id}>{r.label}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Technik-Gerät (optional) */}
+          {alleGeraete.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={labelStyle}>Technik-Gerät (optional)</div>
+              <select value={geraetWahl} onChange={e => setGeraetWahl(e.target.value)}
+                style={inputStyle}>
+                <option value="">— kein Gerät —</option>
+                {alleGeraete.map(g => (
+                  <option key={g.id} value={g.id}>{g.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Notiz (optional) */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={labelStyle}>Notiz (optional)</div>
+            <textarea value={notiz} onChange={e => setNotiz(e.target.value)}
+              placeholder="z. B. Wasserfleck an der Decke, gemeldet am …"
+              rows={3} style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}/>
+          </div>
+
+          {fehler && (
+            <div style={{ fontSize: FS.s, color: "#EF4444", padding: "2px 0 6px" }}>{fehler}</div>
+          )}
+
+          <div style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic",
+            padding: "6px 0 0", lineHeight: 1.4 }}>
+            Alle gewählten Fotos erhalten dieselben Angaben. Der Dateiname wird
+            automatisch aus Objekt, Album, Zuordnung und Datum erzeugt.
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${t.border}`,
+          display: "flex", gap: 8,
+          position: "sticky", bottom: 0, background: t.card }}>
+          <AktionsButton variante="breit" rolle="abbrechen" onClick={onClose}
+            text="Abbrechen" icon={false} flex={1} t={t} accent={accent}/>
+          <AktionsButton variante="breit" rolle="bestaetigen" onClick={speichern}
+            disabled={!valid} text={ladend ? "Speichert …" : "Hochladen"}
+            icon={false} flex={2} t={t} accent={accent}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── FotosAnsicht (§93, Stufe 1) — Objekt-Tab „Fotos" ────────────────────────
+// EINE Quelle: ve.fotos[] am Objekt (die linke Nav „Fotos" wird in Stufe 3
+// an dieselbe Quelle angeschlossen — Schnellzugriffs-Prinzip, §85.4-Muster).
+// Stufe 1 = Zeilenliste (Galerie-Grid kommt in Stufe 2): generierter Name +
+// Album/Zuordnung/Datum, Ansehen über den bestehenden DateiViewerModal (§86.1),
+// Entfernen im Edit-Modus (Icon-Button 30×30, §86.6).
+function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
+  const fotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
+  const [uploadOffen, setUploadOffen] = useState(false);
+  const [viewerDatei, setViewerDatei] = useState(null); // { id, name } für DateiViewerModal
+
+  const patch = (neueFotos) => {
+    if (!setVes) return;
+    setVes(prev => prev.map(v => v.id === ve.id ? { ...v, fotos: neueFotos } : v));
+  };
+  const fotosHinzu = (eintraege) => patch(fotos.concat(eintraege));
+  const fotoLoeschen = (foto) => {
+    dateiLoeschen(foto.dateiRef); // Blob asynchron weg; Eintrag sofort raus
+    patch(fotos.filter(f => f.id !== foto.id));
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ background: t.card, border: `1px solid ${t.border}`,
+        borderRadius: RAD.lg, padding: "16px 18px", display: "flex",
+        flexDirection: "column", gap: 12 }}>
+        {/* Karten-Kopf: Titel + runder Plus-Button (36×36, RAD.pill — §86.6) */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: FS.input, fontWeight: FW.heavy, color: t.text }}>
+            Fotos{fotos.length > 0 ? " (" + fotos.length + ")" : ""}
+          </span>
+          <button onClick={() => setUploadOffen(true)} title="Fotos hochladen"
+            aria-label="Fotos hochladen" style={{
+            width: 36, height: 36, borderRadius: RAD.pill, border: "none",
+            background: accent, cursor: "pointer", flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <I name="plus" size={16} color={getContrastColor(accent)}/>
+          </button>
+        </div>
+
+        {fotos.length === 0 ? (
+          <div style={{ fontSize: FS.m, color: t.muted, lineHeight: 1.5 }}>
+            Noch keine Fotos. Über <span style={{ fontWeight: FW.bold }}>+</span> Fotos
+            aus der Galerie hochladen — Außenansichten, Technik, Schadensbilder,
+            Begehungs-Fotos. Jedes Foto wird dem Gemeinschaftseigentum, einer
+            Einheit oder einem Raum zugeordnet.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {fotos.map((foto, idx) => {
+              const anzeigeName = fotoDateiname(ve, foto, fotos);
+              const geraet = fotoFindeGeraet(ve, foto.geraetId);
+              const unterTeile = [
+                fotoAlbumLabel(foto.album),
+                fotoZuordnungLabel(ve, foto),
+                foto.aufgenommen || "",
+              ];
+              if (geraet) unterTeile.splice(2, 0, geraet.typLabel || "Gerät");
+              return (
+                <div key={foto.id} style={{ display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 2px",
+                  borderTop: idx > 0 ? `1px solid ${t.border}` : "none" }}>
+                  <div style={{ width: 34, height: 34, borderRadius: RAD.md, flexShrink: 0,
+                    background: accent + "18", display: "flex", alignItems: "center",
+                    justifyContent: "center" }}>
+                    <I name="paint" size={16} color={accent}/>
+                  </div>
+                  <div onClick={() => setViewerDatei({ id: foto.dateiRef, name: anzeigeName })}
+                    style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+                    <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {anzeigeName}
+                    </div>
+                    <div style={{ fontSize: FS.xs, color: t.sub, marginTop: 2,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {unterTeile.filter(Boolean).join(" · ")}
+                      {foto.notiz ? " · " + foto.notiz : ""}
+                    </div>
+                  </div>
+                  {editMode && (
+                    <button onClick={() => fotoLoeschen(foto)} title="Foto entfernen"
+                      aria-label="Foto entfernen" style={{
+                      background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                      width: 30, height: 30, cursor: "pointer", padding: 0, flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <I name="trash" size={13} color={t.sub}/>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {uploadOffen && (
+        <FotoUploadModal ve={ve} t={t} accent={accent}
+          onClose={() => setUploadOffen(false)} onSave={fotosHinzu}/>
+      )}
+      {viewerDatei && (
+        <DateiViewerModal t={t} accent={accent} datei={viewerDatei}
+          onClose={() => setViewerDatei(null)}/>
       )}
     </div>
   );
 }
+
 
 
 export {

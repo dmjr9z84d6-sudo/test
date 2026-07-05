@@ -8380,6 +8380,7 @@ function HeaderFilterDropdown({ sektionen, value, onChange, t, anzahlGesamt = 0,
 
 export {
   ANDERE_OPTION,
+  DateiViewerModal,
   DokumenteAnsicht,
   EinheitZeile,
   HeaderFilterDropdown,

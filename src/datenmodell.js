@@ -2,7 +2,7 @@ import {
   ACCENT, DEFAULT_GEWERKE_LISTE, DEFAULT_KATEGORIEN, DEFAULT_LEISTUNGEN,
   DEFAULT_ROLLEN, DEFAULT_VERWENDUNGEN, KONTAKTE_FARBE
 } from "./constants.js";
-import { isoHeute, splitPlzOrt, zuIsoDatum, parseDatumWert } from "./utils-basis.js";
+import { isoHeute, splitPlzOrt, zuIsoDatum, parseDatumWert, dateinameSicher } from "./utils-basis.js";
 
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 2 · DATENMODELL  (Modell A) — ausgelagertes Modul                ║
@@ -2432,3 +2432,121 @@ export {
   fuehreKontakteZusammen,
   gruppiereRollenkarten
 };
+
+// ── Foto-Feature (§93, Stufe 1) ─────────────────────────────────────────────
+// Fotos hängen am Objekt (ve.fotos[]). Alben: fixe Default-Liste + eigene
+// (Freitext-Strings direkt in foto.album — keine eigene Verwaltung; ein
+// eigenes Album existiert, solange ein Foto es trägt).
+export const FOTO_ALBEN = [
+  { id: "aussen",    label: "Außenansichten" },
+  { id: "innen",     label: "Innenbereiche" },
+  { id: "technik",   label: "Technik" },
+  { id: "schaeden",  label: "Schäden" },
+  { id: "sonstiges", label: "Sonstiges" },
+];
+
+// Anzeige-Label eines Album-Werts: Katalog-id → Label, sonst der eigene Name.
+export function fotoAlbumLabel(album) {
+  const a = FOTO_ALBEN.find(x => x.id === album);
+  return a ? a.label : String(album || "Sonstiges");
+}
+
+// ── Zuordnungs-Auflösung: durchsucht die Standort-Karten (gebaeude/tiefgarage)
+// des Objekts nach Einheit / Raum / Technik-Gerät. Reines Daten-Traversieren —
+// bewusst hier (und nicht in components), damit der Dateiname-Generator ohne
+// UI-Import auskommt.
+function fotoStandorte(ve) {
+  const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
+  return karten.filter(k => k && (k.kategorie === "gebaeude" || k.kategorie === "tiefgarage"));
+}
+export function fotoFindeEinheit(ve, einheitId) {
+  if (!einheitId) return null;
+  const st = fotoStandorte(ve);
+  for (let i = 0; i < st.length; i++) {
+    const eh = (st[i].einheiten || []).find(e => e && String(e.id) === String(einheitId));
+    if (eh) return eh;
+  }
+  return null;
+}
+export function fotoFindeRaum(ve, raumId) {
+  if (!raumId) return null;
+  const st = fotoStandorte(ve);
+  for (let i = 0; i < st.length; i++) {
+    const r = (st[i].raeume || []).find(x => x && String(x.id) === String(raumId));
+    if (r) return r;
+    const einheiten = st[i].einheiten || [];
+    for (let j = 0; j < einheiten.length; j++) {
+      const teile = einheiten[j].teile || [];
+      for (let k = 0; k < teile.length; k++) {
+        const tr = (teile[k].raeume || []).find(x => x && String(x.id) === String(raumId));
+        if (tr) return tr;
+      }
+    }
+  }
+  return null;
+}
+export function fotoFindeGeraet(ve, geraetId) {
+  if (!geraetId) return null;
+  const st = fotoStandorte(ve);
+  for (let i = 0; i < st.length; i++) {
+    const g = (st[i].technikGeraete || []).find(x => x && String(x.id) === String(geraetId));
+    if (g) return g;
+  }
+  return null;
+}
+
+// Zuordnungs-Label eines Fotos (fürs UI + den Dateinamen):
+// Gemeinschaft | WE{nr} | {Raumname}. Gerät (falls verknüpft) wird im
+// Dateinamen angehängt, im UI separat gezeigt.
+export function fotoZuordnungLabel(ve, foto) {
+  const z = (foto && foto.zuordnung) || {};
+  if (z.art === "einheit") {
+    const eh = fotoFindeEinheit(ve, z.einheitId);
+    return eh ? ("WE" + (eh.nr || eh.id)) : "Einheit";
+  }
+  if (z.art === "raum") {
+    const r = fotoFindeRaum(ve, z.raumId);
+    return r ? (r.name || "Raum") : "Raum";
+  }
+  return "Gemeinschaft";
+}
+
+// ── Generierter Foto-Dateiname (KEIN manueller Titel — §93.6):
+//   {VE-Nr}_{Album}_{Zuordnung}[_{Gerät}]_{YYYY-MM-DD}[_{n}].{ext}
+// Beispiel: VE-001_Aussenansichten_Gemeinschaft_2026-05-12.jpg
+// Der Name ist zugleich Anzeigename in Liste/Viewer und Download-Name.
+// alleFotos (optional) = ve.fotos für das Kollisions-Suffix _2, _3 …
+// Hinweis: laut Spec in utils-basis vorgesehen — lebt hier, weil FOTO_ALBEN
+// und die Objekt-Traversierung gebraucht werden (utils-basis bleibt Blatt).
+export function fotoDateiname(ve, foto, alleFotos) {
+  if (!foto) return "Foto.jpg";
+  const extM = String(foto.name || "").match(/\.([A-Za-z0-9]+)$/);
+  const ext = extM ? extM[1].toLowerCase() : "jpg";
+  const basisVon = (f) => {
+    const teile = [
+      dateinameSicher((ve && ve.nr) || "Objekt"),
+      dateinameSicher(fotoAlbumLabel(f.album)),
+      dateinameSicher(fotoZuordnungLabel(ve, f)),
+    ];
+    const g = fotoFindeGeraet(ve, f.geraetId);
+    if (g) teile.push(dateinameSicher(g.typLabel || "Geraet"));
+    // aufgenommen "DD.MM.YYYY" → "YYYY-MM-DD"; Fallback: angelegt (ISO).
+    let datum = "";
+    const dm = String(f.aufgenommen || "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (dm) datum = dm[3] + "-" + dm[2] + "-" + dm[1];
+    else if (f.angelegt) datum = String(f.angelegt).slice(0, 10);
+    if (datum) teile.push(datum);
+    return teile.filter(Boolean).join("_");
+  };
+  const basis = basisVon(foto);
+  // Kollisions-Suffix: wie viele frühere Fotos in der Liste teilen die Basis?
+  let gleich = 0;
+  const alle = Array.isArray(alleFotos) ? alleFotos : [];
+  for (let i = 0; i < alle.length; i++) {
+    const f = alle[i];
+    if (!f) continue;
+    if (f.id === foto.id) break;
+    if (basisVon(f) === basis) gleich++;
+  }
+  return basis + (gleich > 0 ? "_" + (gleich + 1) : "") + "." + ext;
+}
