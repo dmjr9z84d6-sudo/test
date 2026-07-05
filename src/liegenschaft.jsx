@@ -7074,7 +7074,11 @@ function DateiZeile({ meta, t, accent, onAnsehen, onDownload, onEntfernen }) {
 // Optionales datei.info: dezente Info-Zeile unter dem Header (Foto-Feature §93:
 // Album · Zuordnung · Datum + Quelle · Notiz). Fehlt info, rendert nichts —
 // rückwärtskompatibel für alle Dokument-Aufrufer.
-function DateiViewerModal({ t, accent, datei, onClose }) {
+// Optionales Blättern (Foto-Galerie §93): onVor/onZurueck als Funktionen ODER
+// null. Gesetzte Richtungen rendern schwebende Pfeil-Buttons über dem Inhalt;
+// auf Desktop blättern zusätzlich die Pfeiltasten. Dokument-Aufrufer ohne die
+// Props bleiben unverändert.
+function DateiViewerModal({ t, accent, datei, onClose, onVor = null, onZurueck = null }) {
   const [zustand, setZustand] = useState({ url: null, typ: "", name: "", laedt: true, fehler: false });
   // Hintergrund-Variante aus den Einstellungen.
   //   "modus"       → folgt dem Hell-/Dunkel-Modus (Overlay + Inhaltsfläche aus t).
@@ -7146,6 +7150,17 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
   // Bei Dateiwechsel Zoom zurücksetzen.
   useEffect(function () { setZoom(0.5); }, [datei && datei.id]);
 
+  // Pfeiltasten-Blättern (Desktop) — nur aktiv, wenn Blättern angeboten wird.
+  useEffect(function () {
+    if (!onVor && !onZurueck) return;
+    const handler = function (e) {
+      if (e.key === "ArrowRight" && onVor) onVor();
+      else if (e.key === "ArrowLeft" && onZurueck) onZurueck();
+    };
+    window.addEventListener("keydown", handler);
+    return function () { window.removeEventListener("keydown", handler); };
+  }, [onVor, onZurueck]);
+
   const istBild = (zustand.typ || "").indexOf("image/") === 0 ||
     /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(zustand.name || (datei && datei.name) || "");
   const istPdf = (zustand.typ || "").indexOf("pdf") >= 0 ||
@@ -7201,10 +7216,34 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
             dunkel (passt zum dunklen Rahmen des nativen PDF-Viewers); bei Bildern
             folgt sie der gewählten Hintergrund-Variante. */}
         <div onTouchStart={touchStart} onTouchMove={touchMove} onTouchEnd={touchEnd}
-          style={{ flex: 1, minHeight: 0,
+          style={{ flex: 1, minHeight: 0, position: "relative",
             background: istPdf ? "#1A1A22" : inhaltBg, overflow: "auto",
             display: "flex", alignItems: (istBild ? "center" : "flex-start"),
             justifyContent: "center", touchAction: zoom > 1 ? "none" : "auto" }}>
+          {/* Blätter-Pfeile (nur wenn Blättern angeboten): schwebend, vertikal
+              mittig, halbtransparent — Standard-Lightbox-Muster, touch-tauglich. */}
+          {onZurueck && (
+            <button onClick={function (e) { e.stopPropagation(); onZurueck(); }}
+              title="Vorheriges Foto" aria-label="Vorheriges Foto"
+              style={{ position: "absolute", left: 8, top: "50%", zIndex: 5,
+                transform: "translateY(-50%)", width: 40, height: 40,
+                borderRadius: RAD.pill, border: "none", cursor: "pointer",
+                background: "rgba(20,20,32,0.55)", display: "flex",
+                alignItems: "center", justifyContent: "center" }}>
+              <I name="chevL" size={18} color="#FFFFFF"/>
+            </button>
+          )}
+          {onVor && (
+            <button onClick={function (e) { e.stopPropagation(); onVor(); }}
+              title="Nächstes Foto" aria-label="Nächstes Foto"
+              style={{ position: "absolute", right: 8, top: "50%", zIndex: 5,
+                transform: "translateY(-50%)", width: 40, height: 40,
+                borderRadius: RAD.pill, border: "none", cursor: "pointer",
+                background: "rgba(20,20,32,0.55)", display: "flex",
+                alignItems: "center", justifyContent: "center" }}>
+              <I name="chevR" size={18} color="#FFFFFF"/>
+            </button>
+          )}
           {zustand.laedt && (
             <div style={{ fontSize: FS.m, color: t.sub, margin: "auto" }}>Datei wird geladen …</div>
           )}

@@ -2642,7 +2642,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
             const url = thumbUrls[foto.id];
             return (
               <div key={foto.id} style={{ minWidth: 0 }}>
-                <div onClick={() => onAnsehen && onAnsehen(foto)}
+                <div onClick={() => onAnsehen && onAnsehen(foto, gefiltert)}
                   style={{ position: "relative", aspectRatio: "1 / 1",
                     borderRadius: RAD.md, overflow: "hidden", cursor: "pointer",
                     background: t.surface, border: `1px solid ${t.border}` }}>
@@ -2661,10 +2661,18 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {anzeigeName}
                 </div>
+                {/* Metadaten unter der Kachel: Album · Zuordnung · Gerät · Datum,
+                    darunter die Notiz (kursiv) — lesbar ohne den Viewer zu öffnen. */}
                 <div style={{ fontSize: FS.xs, color: t.muted,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {foto.aufgenommen || ""}
+                  {unterZeile(foto)}
                 </div>
+                {foto.notiz ? (
+                  <div style={{ fontSize: FS.xs, color: t.sub, fontStyle: "italic",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {foto.notiz}
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -2685,7 +2693,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
                   justifyContent: "center" }}>
                   <I name="paint" size={16} color={accent}/>
                 </div>
-                <div onClick={() => onAnsehen && onAnsehen(foto)}
+                <div onClick={() => onAnsehen && onAnsehen(foto, gefiltert)}
                   style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
                   <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -2716,7 +2724,9 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
 function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
   const fotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
   const [uploadOffen, setUploadOffen] = useState(false);
-  const [viewerDatei, setViewerDatei] = useState(null); // { id, name, info }
+  // Viewer-Zustand fürs Durchblättern: die beim Öffnen aktuelle (gefilterte)
+  // Foto-Liste + Index. Das datei-Objekt für den Viewer wird daraus abgeleitet.
+  const [viewer, setViewer] = useState(null); // { liste: foto[], index }
 
   const patch = (neueFotos) => {
     if (!setVes) return;
@@ -2726,8 +2736,10 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
   const fotoLoeschen = (foto) => {
     dateiLoeschen(foto.dateiRef); // Blob asynchron weg; Eintrag sofort raus
     patch(fotos.filter(f => f.id !== foto.id));
+    // Falls das Foto gerade im Viewer offen ist: Viewer schließen.
+    setViewer(v => (v && v.liste[v.index] && v.liste[v.index].id === foto.id) ? null : v);
   };
-  const fotoAnsehen = (foto) => {
+  const fotoInfo = (foto) => {
     const geraet = fotoFindeGeraet(ve, foto.geraetId);
     const teile = [
       fotoAlbumLabel(foto.album),
@@ -2739,10 +2751,28 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
         + (foto.exifQuelle === "exif" ? " (aus Foto)" : " (Upload-Datum)"));
     }
     if (foto.notiz) teile.push(foto.notiz);
-    setViewerDatei({ id: foto.dateiRef,
-      name: fotoDateiname(ve, foto, fotos),
-      info: teile.filter(Boolean).join(" · ") });
+    return teile.filter(Boolean).join(" · ");
   };
+  // onAnsehen aus der Galerie: Foto + die aktuell GEFILTERTE Liste — geblättert
+  // wird durch genau die Auswahl, die der Nutzer gerade sieht (Album-Filter).
+  const fotoAnsehen = (foto, liste) => {
+    const kontext = (Array.isArray(liste) && liste.length > 0) ? liste : fotos;
+    const idx = kontext.findIndex(f => f && f.id === foto.id);
+    setViewer({ liste: kontext, index: idx >= 0 ? idx : 0 });
+  };
+  const viewerFoto = viewer ? viewer.liste[viewer.index] : null;
+  const viewerDatei = viewerFoto ? {
+    id: viewerFoto.dateiRef,
+    name: fotoDateiname(ve, viewerFoto, fotos),
+    info: (viewer.liste.length > 1
+      ? (viewer.index + 1) + "/" + viewer.liste.length + " · " : "") + fotoInfo(viewerFoto),
+  } : null;
+  const blaettern = (schritt) => setViewer(v => {
+    if (!v) return v;
+    const neu = v.index + schritt;
+    if (neu < 0 || neu >= v.liste.length) return v;
+    return { liste: v.liste, index: neu };
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -2782,7 +2812,9 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
       )}
       {viewerDatei && (
         <DateiViewerModal t={t} accent={accent} datei={viewerDatei}
-          onClose={() => setViewerDatei(null)}/>
+          onClose={() => setViewer(null)}
+          onZurueck={viewer.index > 0 ? () => blaettern(-1) : null}
+          onVor={viewer.index < viewer.liste.length - 1 ? () => blaettern(1) : null}/>
       )}
     </div>
   );
