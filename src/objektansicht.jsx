@@ -2215,25 +2215,32 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
   // Standorte/Einheiten/Räume — DIESELBE Quelle wie Technik/Legionellen
   // (legionellenStandorte, §93.8 Baustein-Inventar). Haus-Dropdown nur bei
   // mehreren Standorten; bei genau einem ist er implizit vorgewählt.
+  // ZWEI Welten (Benny, 05.07.2026): „gemeinschaft" = Gemeinschaftseigentum
+  // (Haus/TG → optional Gemeinschaftsraum) · „einheit" = Sondereigentum
+  // (Einheit PFLICHT → optional Raum DIESER Einheit). Der Raum ist keine
+  // eigene Art mehr, sondern eine optionale Verfeinerung beider Welten.
   const standorte = legionellenStandorte(ve);
   const einzigerStandort = standorte.length === 1 ? standorte[0] : null;
   const effHausId = hausWahl || (einzigerStandort ? String(einzigerStandort.id) : "");
   const aktHaus = standorte.find(h => String(h.id) === String(effHausId)) || null;
   const verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
-  // Räume des Hauses: Gemeinschaftsräume + Räume aller Einheiten (mit Kontext).
+  const aktEinheit = verfEinheiten.find(e => String(e.id) === String(einheitWahl)) || null;
+  // Raum-Angebot je Welt: Gemeinschaft → Gemeinschaftsräume des Hauses;
+  // Einheit → Räume der gewählten Einheit (über ihre Teile).
   const verfRaeume = (() => {
     const out = [];
+    if (art === "einheit") {
+      if (!aktEinheit) return out;
+      (aktEinheit.teile || []).forEach(teil => {
+        ((teil && teil.raeume) || []).forEach(r => {
+          if (r) out.push({ id: r.id, label: r.name || "Raum" });
+        });
+      });
+      return out;
+    }
     if (!aktHaus) return out;
     (aktHaus.raeume || []).forEach(r => {
       if (r) out.push({ id: r.id, label: r.name || "Raum" });
-    });
-    (aktHaus.einheiten || []).forEach(eh => {
-      if (!eh) return;
-      (eh.teile || []).forEach(teil => {
-        ((teil && teil.raeume) || []).forEach(r => {
-          if (r) out.push({ id: r.id, label: "WE" + (eh.nr || eh.id) + ": " + (r.name || "Raum") });
-        });
-      });
     });
     return out;
   })();
@@ -2250,9 +2257,9 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
 
   const istEigenAlbum = album === "__eigen__";
   const albumWert = istEigenAlbum ? eigenAlbum.trim() : album;
-  const zuordnungOk = art === "gemeinschaft"
-    || (art === "einheit" && !!einheitWahl)
-    || (art === "raum" && !!raumWahl);
+  // Gemeinschaft ist ohne weitere Wahl gültig (Raum optional);
+  // Einheit braucht die konkrete Einheit (Raum optional).
+  const zuordnungOk = art === "gemeinschaft" || (art === "einheit" && !!einheitWahl);
   const valid = dateien.length > 0 && !!albumWert && zuordnungOk && !ladend;
 
   const istHeic = (f) => {
@@ -2311,8 +2318,9 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
           album: albumWert,
           zuordnung: {
             art: art,
+            hausId: effHausId || null,
             einheitId: art === "einheit" ? einheitWahl : null,
-            raumId: art === "raum" ? raumWahl : null,
+            raumId: raumWahl || null,   // optionale Verfeinerung beider Welten
           },
           geraetId: geraetWahl || null,
           aufgenommen: info.aufgenommen || heuteDE,
@@ -2421,50 +2429,52 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
             </div>
           )}
 
-          {/* Zuordnung (PFLICHT) */}
+          {/* Zuordnung (PFLICHT): Gemeinschaftseigentum ODER Sondereigentum */}
           <div style={{ marginBottom: 14 }}>
             <div style={labelStyle}>Wozu gehören die Fotos?</div>
             <SegmentControl t={t} accent={accent} value={art}
               onChange={(id) => { setArt(id); setEinheitWahl(""); setRaumWahl(""); }}
               options={[
                 { id: "gemeinschaft", label: "Gemeinschaft" },
-                { id: "einheit", label: "Einheit" },
-                { id: "raum", label: "Raum" },
+                { id: "einheit", label: "Einheit (SE)" },
               ]}/>
-            {art !== "gemeinschaft" && (
-              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                {standorte.length > 1 && (
-                  <select value={hausWahl}
-                    onChange={e => { setHausWahl(e.target.value); setEinheitWahl(""); setRaumWahl(""); }}
-                    style={inputStyle}>
-                    <option value="">— Haus / Tiefgarage —</option>
-                    {standorte.map(h => (
-                      <option key={h.id} value={h.id}>{h.name || "Gebäude"}</option>
-                    ))}
-                  </select>
-                )}
-                {art === "einheit" && (
-                  <select value={einheitWahl} onChange={e => setEinheitWahl(e.target.value)}
-                    style={inputStyle} disabled={!aktHaus}>
-                    <option value="">— Einheit wählen —</option>
-                    {verfEinheiten.map(eh => (
-                      <option key={eh.id} value={eh.id}>
-                        {eh.bezeichnung || eh.nr || ("Einheit " + eh.id)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {art === "raum" && (
-                  <select value={raumWahl} onChange={e => setRaumWahl(e.target.value)}
-                    style={inputStyle} disabled={!aktHaus}>
-                    <option value="">— Raum wählen —</option>
-                    {verfRaeume.map(r => (
-                      <option key={r.id} value={r.id}>{r.label}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            )}
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              {standorte.length > 1 && (
+                <select value={hausWahl}
+                  onChange={e => { setHausWahl(e.target.value); setEinheitWahl(""); setRaumWahl(""); }}
+                  style={inputStyle}>
+                  <option value="">— Haus / Tiefgarage —</option>
+                  {standorte.map(h => (
+                    <option key={h.id} value={h.id}>{h.name || "Gebäude"}</option>
+                  ))}
+                </select>
+              )}
+              {art === "einheit" && (
+                <select value={einheitWahl}
+                  onChange={e => { setEinheitWahl(e.target.value); setRaumWahl(""); }}
+                  style={inputStyle} disabled={!aktHaus}>
+                  <option value="">— Einheit wählen —</option>
+                  {verfEinheiten.map(eh => (
+                    <option key={eh.id} value={eh.id}>
+                      {eh.bezeichnung || eh.nr || ("Einheit " + eh.id)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {/* Raum: optionale Verfeinerung — Gemeinschaftsraum des Hauses
+                  bzw. Raum der gewählten Einheit. Nur zeigen, wenn es welche gibt. */}
+              {verfRaeume.length > 0 && (art === "gemeinschaft" || !!aktEinheit) && (
+                <select value={raumWahl} onChange={e => setRaumWahl(e.target.value)}
+                  style={inputStyle}>
+                  <option value="">
+                    {art === "einheit" ? "— ganze Einheit (kein Raum) —" : "— kein bestimmter Raum —"}
+                  </option>
+                  {verfRaeume.map(r => (
+                    <option key={r.id} value={r.id}>{r.label}</option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
 
           {/* Technik-Gerät (optional) */}

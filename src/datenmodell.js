@@ -2495,20 +2495,22 @@ export function fotoFindeGeraet(ve, geraetId) {
   return null;
 }
 
-// Zuordnungs-Label eines Fotos (fürs UI + den Dateinamen):
-// Gemeinschaft | WE{nr} | {Raumname}. Gerät (falls verknüpft) wird im
-// Dateinamen angehängt, im UI separat gezeigt.
+// Zuordnungs-Label eines Fotos (fürs UI + den Dateinamen). ZWEI Welten:
+//   gemeinschaft → "Gemeinschaft", mit Raum → "{Raumname}" (z. B. Heizraum)
+//   einheit      → "WE{nr}",       mit Raum → "WE{nr} · {Raumname}"
+// (dateinameSicher macht daraus im Dateinamen "WE3-Bad"). Die frühere eigene
+// Art "raum" (Zwischenstand 13.48) wird defensiv wie gemeinschaft+Raum gelesen.
+// Gerät (falls verknüpft) wird im Dateinamen angehängt, im UI separat gezeigt.
 export function fotoZuordnungLabel(ve, foto) {
   const z = (foto && foto.zuordnung) || {};
+  const raum = z.raumId ? fotoFindeRaum(ve, z.raumId) : null;
+  const raumName = z.raumId ? ((raum && raum.name) || "Raum") : "";
   if (z.art === "einheit") {
     const eh = fotoFindeEinheit(ve, z.einheitId);
-    return eh ? ("WE" + (eh.nr || eh.id)) : "Einheit";
+    const we = eh ? ("WE" + (eh.nr || eh.id)) : "Einheit";
+    return raumName ? (we + " · " + raumName) : we;
   }
-  if (z.art === "raum") {
-    const r = fotoFindeRaum(ve, z.raumId);
-    return r ? (r.name || "Raum") : "Raum";
-  }
-  return "Gemeinschaft";
+  return raumName || "Gemeinschaft";
 }
 
 // ── Generierter Foto-Dateiname (KEIN manueller Titel — §93.6):
