@@ -474,6 +474,10 @@ function PositionSelector({ aktivePosition, onSelect, farbe, disabled, t }) {
 // Greift in objektHandlungsbedarf (Status-Punkt an Objekten in der Liste).
 function HandlungsbedarfTabelle({ settings, save, t, accent }) {
   const cfg = settings.handlungsbedarf || {};
+  // Auf schmalen Screens (< 600px) Label über Wert+Slider stapeln — sonst wird
+  // das Label zwischen 116px-Wert und 150px-Slider senkrecht zerdrückt (§14).
+  const ww = useWindowWidth();
+  const stacked = ww < 600;
   // Feste Vorlauf-Stufen (Tage). Slider-Position 0 = aus ("wird nicht
   // angezeigt"), Position 1..N = STUFEN[0..N-1]. Der frühere Toggle entfällt.
   const STUFEN = [3, 7, 14, 21, 30, 60, 90, 120, 150, 180];
@@ -502,23 +506,39 @@ function HandlungsbedarfTabelle({ settings, save, t, accent }) {
         const an = hbQuelleAktiv(cfg, q.id);
         const vorlauf = hbVorlauf(cfg, q.id);
         const stufe = an ? stufeIdx(vorlauf) + 1 : 0;
+        const labelEl = (
+          <div style={{ flex: stacked ? "none" : 1, minWidth: 0,
+            fontSize: FS.m, fontWeight: FW.medium, overflowWrap: "anywhere",
+            color: an ? t.text : t.muted, lineHeight: 1.3 }}>{q.label}</div>
+        );
+        const wertEl = (
+          <span style={{ fontSize: FS.s, fontWeight: FW.medium,
+            fontVariantNumeric: "tabular-nums", minWidth: 116, textAlign: "right",
+            color: an ? t.sub : t.muted, fontStyle: an ? "normal" : "italic", flexShrink: 0 }}>
+            {an ? `${vorlauf} Tage` : "wird nicht angezeigt"}
+          </span>
+        );
+        const sliderEl = (
+          <input type="range" min={0} max={STUFEN.length} step={1}
+            value={stufe}
+            onChange={e => setStufe(q.id, parseInt(e.target.value, 10))}
+            style={{ width: stacked ? "auto" : 150, flex: stacked ? 1 : "none",
+              flexShrink: 0, accentColor: an ? accent : t.muted,
+              cursor: "pointer", height: 24 }}/>
+        );
         return (
-          <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 10,
+          <div key={q.id} style={{ display: "flex",
+            flexDirection: stacked ? "column" : "row",
+            alignItems: stacked ? "stretch" : "center", gap: stacked ? 8 : 10,
             padding: "8px", borderRadius: RAD.sm,
             background: an ? "transparent" : t.surface + "80",
             border: `1px solid ${t.border}40` }}>
-            <div style={{ flex: 1, minWidth: 0, fontSize: FS.m, fontWeight: FW.medium,
-              color: an ? t.text : t.muted, lineHeight: 1.3 }}>{q.label}</div>
-            <span style={{ fontSize: FS.s, fontWeight: FW.medium,
-              fontVariantNumeric: "tabular-nums", minWidth: 116, textAlign: "right",
-              color: an ? t.sub : t.muted, fontStyle: an ? "normal" : "italic", flexShrink: 0 }}>
-              {an ? `${vorlauf} Tage` : "wird nicht angezeigt"}
-            </span>
-            <input type="range" min={0} max={STUFEN.length} step={1}
-              value={stufe}
-              onChange={e => setStufe(q.id, parseInt(e.target.value, 10))}
-              style={{ width: 150, flexShrink: 0, accentColor: an ? accent : t.muted,
-                cursor: "pointer", height: 24 }}/>
+            {labelEl}
+            {stacked ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {wertEl}{sliderEl}
+              </div>
+            ) : (<>{wertEl}{sliderEl}</>)}
           </div>
         );
       })}
