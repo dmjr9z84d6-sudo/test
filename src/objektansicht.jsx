@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getContrastColor } from "./constants.js";
-import { parseDatumWert, dateiSpeichern, dateiLoeschen, fotoExifLesen } from "./utils-basis.js";
+import { parseDatumWert, dateiBlobUrl, dateiSpeichern, dateiLoeschen, fotoExifLesen } from "./utils-basis.js";
 import {
   FOTO_ALBEN, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
   fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, teileVon
@@ -2525,16 +2525,184 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
   );
 }
 
-// ── FotosAnsicht (§93, Stufe 1) — Objekt-Tab „Fotos" ────────────────────────
+// ── FotoGalerie (§93, Stufe 2) — wiederverwendbarer Galerie-Baustein ────────
+// Zeigt eine Foto-Liste als Thumbnail-Grid ODER Zeilenliste, mit Album-Filter
+// (FilterButtons-Muster, eigene Alben erscheinen automatisch) und Umschalter
+// (SegmentControl, icon-only). Wird vom Objekt-Tab genutzt und in Stufe 3
+// vom Fotos-Screen der linken Nav wiederverwendet (eine Quelle: ve.fotos).
+// Object-URL-Hygiene: Thumbnails werden NUR für die aktuell gefilterten Fotos
+// erzeugt und beim Filter-Wechsel/Unmount konsequent revoked (§93.7/§93.10).
+function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoeschen }) {
+  const [albumFilter, setAlbumFilter] = useState("alle");
+  const [ansicht, setAnsicht] = useState("grid");      // "grid" | "liste"
+  const [thumbUrls, setThumbUrls] = useState({});      // fotoId -> Object-URL
+
+  // Album-Katalog + eigene Alben (aus vorhandenen foto.album-Werten abgeleitet).
+  const counts = {};
+  fotos.forEach(f => {
+    const a = (f && f.album) || "sonstiges";
+    counts[a] = (counts[a] || 0) + 1;
+  });
+  const eigene = Object.keys(counts)
+    .filter(a => !FOTO_ALBEN.some(k => k.id === a))
+    .sort()
+    .map(a => ({ id: a, label: a, kurz: a }));
+  const filterArten = FOTO_ALBEN.map(a => ({ id: a.id, label: a.label, kurz: a.label }))
+    .concat(eigene);
+  const aktiveArten = filterArten.filter(a => counts[a.id] > 0).map(a => a.id);
+
+  const gefiltert = albumFilter === "alle"
+    ? fotos : fotos.filter(f => ((f && f.album) || "sonstiges") === albumFilter);
+
+  // Thumbnails nur für die sichtbaren (gefilterten) Fotos laden; alte URLs
+  // beim Wechsel freigeben — sonst Speicherfresser auf dem iPhone (§93.10).
+  const gefiltertKey = gefiltert.map(f => f.id).join(",");
+  useEffect(() => {
+    let aktiv = true;
+    const urls = {};
+    if (ansicht !== "grid" || gefiltert.length === 0) { setThumbUrls({}); return; }
+    Promise.all(gefiltert.map(f =>
+      dateiBlobUrl(f.dateiRef).then(res => { if (res && res.url) urls[f.id] = res.url; })
+    )).then(() => {
+      if (aktiv) setThumbUrls(urls);
+      else Object.keys(urls).forEach(k => { try { URL.revokeObjectURL(urls[k]); } catch (e) {} });
+    });
+    return () => {
+      aktiv = false;
+      Object.keys(urls).forEach(k => { try { URL.revokeObjectURL(urls[k]); } catch (e) {} });
+      setThumbUrls({});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gefiltertKey, ansicht]);
+
+  const unterZeile = (foto) => {
+    const geraet = fotoFindeGeraet(ve, foto.geraetId);
+    const teile = [
+      fotoAlbumLabel(foto.album),
+      fotoZuordnungLabel(ve, foto),
+    ];
+    if (geraet) teile.push(geraet.typLabel || "Gerät");
+    if (foto.aufgenommen) teile.push(foto.aufgenommen);
+    return teile.filter(Boolean).join(" · ");
+  };
+
+  const loeschBtn = (foto, absolut) => (
+    <button onClick={(e) => { e.stopPropagation(); onLoeschen && onLoeschen(foto); }}
+      title="Foto entfernen" aria-label="Foto entfernen" style={{
+      background: absolut ? t.card : "none", border: `1px solid ${t.border}`,
+      borderRadius: RAD.sm, width: 30, height: 30, cursor: "pointer", padding: 0,
+      flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+      ...(absolut ? { position: "absolute", top: 6, right: 6,
+        boxShadow: "0 1px 4px rgba(0,0,0,0.35)" } : {}) }}>
+      <I name="trash" size={13} color={t.sub}/>
+    </button>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Filter-Zeile: Alben links (scrollbar), Ansicht-Umschalter rechts */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <FilterButtons arten={filterArten} aktive={aktiveArten} counts={counts}
+          wert={albumFilter} onWert={setAlbumFilter} t={t} accent={accent}/>
+        <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+          <SegmentControl t={t} accent={accent} value={ansicht} onChange={setAnsicht}
+            options={[
+              { id: "grid", label: "", icon: "grid" },
+              { id: "liste", label: "", icon: "list" },
+            ]}/>
+        </div>
+      </div>
+
+      {gefiltert.length === 0 && (
+        <div style={{ fontSize: FS.m, color: t.muted, textAlign: "center", padding: "16px 0" }}>
+          Keine Fotos in diesem Album.
+        </div>
+      )}
+
+      {/* Galerie-Grid: quadratische Kacheln, Name (gekürzt) + Datum darunter */}
+      {ansicht === "grid" && gefiltert.length > 0 && (
+        <div style={{ display: "grid", gap: 10,
+          gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}>
+          {gefiltert.map(foto => {
+            const anzeigeName = fotoDateiname(ve, foto, fotos);
+            const url = thumbUrls[foto.id];
+            return (
+              <div key={foto.id} style={{ minWidth: 0 }}>
+                <div onClick={() => onAnsehen && onAnsehen(foto)}
+                  style={{ position: "relative", aspectRatio: "1 / 1",
+                    borderRadius: RAD.md, overflow: "hidden", cursor: "pointer",
+                    background: t.surface, border: `1px solid ${t.border}` }}>
+                  {url ? (
+                    <img src={url} alt={anzeigeName} style={{ width: "100%",
+                      height: "100%", objectFit: "cover", display: "block" }}/>
+                  ) : (
+                    <div style={{ width: "100%", height: "100%", display: "flex",
+                      alignItems: "center", justifyContent: "center" }}>
+                      <I name="paint" size={22} color={t.muted}/>
+                    </div>
+                  )}
+                  {editMode && loeschBtn(foto, true)}
+                </div>
+                <div style={{ fontSize: FS.xs, color: t.text, marginTop: 4,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {anzeigeName}
+                </div>
+                <div style={{ fontSize: FS.xs, color: t.muted,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {foto.aufgenommen || ""}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Zeilenliste (Stufe-1-Darstellung, als Umschalt-Option erhalten) */}
+      {ansicht === "liste" && gefiltert.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {gefiltert.map((foto, idx) => {
+            const anzeigeName = fotoDateiname(ve, foto, fotos);
+            return (
+              <div key={foto.id} style={{ display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 2px",
+                borderTop: idx > 0 ? `1px solid ${t.border}` : "none" }}>
+                <div style={{ width: 34, height: 34, borderRadius: RAD.md, flexShrink: 0,
+                  background: accent + "18", display: "flex", alignItems: "center",
+                  justifyContent: "center" }}>
+                  <I name="paint" size={16} color={accent}/>
+                </div>
+                <div onClick={() => onAnsehen && onAnsehen(foto)}
+                  style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+                  <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {anzeigeName}
+                  </div>
+                  <div style={{ fontSize: FS.xs, color: t.sub, marginTop: 2,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {unterZeile(foto)}
+                    {foto.notiz ? " · " + foto.notiz : ""}
+                  </div>
+                </div>
+                {editMode && loeschBtn(foto, false)}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── FotosAnsicht (§93, Stufe 2) — Objekt-Tab „Fotos" ────────────────────────
 // EINE Quelle: ve.fotos[] am Objekt (die linke Nav „Fotos" wird in Stufe 3
 // an dieselbe Quelle angeschlossen — Schnellzugriffs-Prinzip, §85.4-Muster).
-// Stufe 1 = Zeilenliste (Galerie-Grid kommt in Stufe 2): generierter Name +
-// Album/Zuordnung/Datum, Ansehen über den bestehenden DateiViewerModal (§86.1),
-// Entfernen im Edit-Modus (Icon-Button 30×30, §86.6).
+// Kopf mit Plus (§86.6) + FotoGalerie (Grid/Liste, Album-Filter). Ansehen über
+// den bestehenden DateiViewerModal (§86.1) inkl. Info-Zeile (Zuordnung/Album/
+// Datum + Quelle/Notiz — GPS bewusst NICHT, §93.2).
 function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
   const fotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
   const [uploadOffen, setUploadOffen] = useState(false);
-  const [viewerDatei, setViewerDatei] = useState(null); // { id, name } für DateiViewerModal
+  const [viewerDatei, setViewerDatei] = useState(null); // { id, name, info }
 
   const patch = (neueFotos) => {
     if (!setVes) return;
@@ -2544,6 +2712,22 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
   const fotoLoeschen = (foto) => {
     dateiLoeschen(foto.dateiRef); // Blob asynchron weg; Eintrag sofort raus
     patch(fotos.filter(f => f.id !== foto.id));
+  };
+  const fotoAnsehen = (foto) => {
+    const geraet = fotoFindeGeraet(ve, foto.geraetId);
+    const teile = [
+      fotoAlbumLabel(foto.album),
+      fotoZuordnungLabel(ve, foto),
+    ];
+    if (geraet) teile.push(geraet.typLabel || "Gerät");
+    if (foto.aufgenommen) {
+      teile.push(foto.aufgenommen
+        + (foto.exifQuelle === "exif" ? " (aus Foto)" : " (Upload-Datum)"));
+    }
+    if (foto.notiz) teile.push(foto.notiz);
+    setViewerDatei({ id: foto.dateiRef,
+      name: fotoDateiname(ve, foto, fotos),
+      info: teile.filter(Boolean).join(" · ") });
   };
 
   return (
@@ -2569,54 +2753,12 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
           <div style={{ fontSize: FS.m, color: t.muted, lineHeight: 1.5 }}>
             Noch keine Fotos. Über <span style={{ fontWeight: FW.bold }}>+</span> Fotos
             aus der Galerie hochladen — Außenansichten, Technik, Schadensbilder,
-            Begehungs-Fotos. Jedes Foto wird dem Gemeinschaftseigentum, einer
-            Einheit oder einem Raum zugeordnet.
+            Begehungs-Fotos. Jedes Foto wird dem Gemeinschaftseigentum oder einer
+            Einheit zugeordnet.
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {fotos.map((foto, idx) => {
-              const anzeigeName = fotoDateiname(ve, foto, fotos);
-              const geraet = fotoFindeGeraet(ve, foto.geraetId);
-              const unterTeile = [
-                fotoAlbumLabel(foto.album),
-                fotoZuordnungLabel(ve, foto),
-                foto.aufgenommen || "",
-              ];
-              if (geraet) unterTeile.splice(2, 0, geraet.typLabel || "Gerät");
-              return (
-                <div key={foto.id} style={{ display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 2px",
-                  borderTop: idx > 0 ? `1px solid ${t.border}` : "none" }}>
-                  <div style={{ width: 34, height: 34, borderRadius: RAD.md, flexShrink: 0,
-                    background: accent + "18", display: "flex", alignItems: "center",
-                    justifyContent: "center" }}>
-                    <I name="paint" size={16} color={accent}/>
-                  </div>
-                  <div onClick={() => setViewerDatei({ id: foto.dateiRef, name: anzeigeName })}
-                    style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
-                    <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {anzeigeName}
-                    </div>
-                    <div style={{ fontSize: FS.xs, color: t.sub, marginTop: 2,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {unterTeile.filter(Boolean).join(" · ")}
-                      {foto.notiz ? " · " + foto.notiz : ""}
-                    </div>
-                  </div>
-                  {editMode && (
-                    <button onClick={() => fotoLoeschen(foto)} title="Foto entfernen"
-                      aria-label="Foto entfernen" style={{
-                      background: "none", border: `1px solid ${t.border}`, borderRadius: RAD.sm,
-                      width: 30, height: 30, cursor: "pointer", padding: 0, flexShrink: 0,
-                      display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <I name="trash" size={13} color={t.sub}/>
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <FotoGalerie ve={ve} fotos={fotos} t={t} accent={accent}
+            editMode={editMode} onAnsehen={fotoAnsehen} onLoeschen={fotoLoeschen}/>
         )}
       </div>
 
@@ -2635,7 +2777,7 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
 
 
 export {
-  EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
+  EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons, FotoGalerie,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf

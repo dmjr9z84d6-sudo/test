@@ -7071,6 +7071,9 @@ function DateiZeile({ meta, t, accent, onAnsehen, onDownload, onEntfernen }) {
 // Datei als Object-URL aus IndexedDB (dateiBlobUrl) und zeigt sie typgerecht:
 // PDF → <iframe>, Bild → <img>, sonst Hinweis + Download. KEIN window.open.
 // Object-URL wird beim Schließen/Unmount via revokeObjectURL freigegeben.
+// Optionales datei.info: dezente Info-Zeile unter dem Header (Foto-Feature §93:
+// Album · Zuordnung · Datum + Quelle · Notiz). Fehlt info, rendert nichts —
+// rückwärtskompatibel für alle Dokument-Aufrufer.
 function DateiViewerModal({ t, accent, datei, onClose }) {
   const [zustand, setZustand] = useState({ url: null, typ: "", name: "", laedt: true, fehler: false });
   // Hintergrund-Variante aus den Einstellungen.
@@ -7184,6 +7187,16 @@ function DateiViewerModal({ t, accent, datei, onClose }) {
             <I name="x" size={15} color={getContrastColor(accent)}/>
           </button>
         </div>
+        {datei && datei.info && (
+          <div style={{ padding: "5px 14px",
+            paddingLeft: "calc(env(safe-area-inset-left, 0px) + 14px)",
+            paddingRight: "calc(env(safe-area-inset-right, 0px) + 14px)",
+            background: transparent ? (istDunkel ? "rgba(13,13,22,0.75)" : "rgba(255,255,255,0.75)") : t.card,
+            borderBottom: `1px solid ${t.border}`, flexShrink: 0,
+            fontSize: FS.xs, color: t.sub, lineHeight: 1.4 }}>
+            {datei.info}
+          </div>
+        )}
         {/* Inhalt — Pinch-Zoom-Container (nur Bild). Hinter PDF ist die Fläche
             dunkel (passt zum dunklen Rahmen des nativen PDF-Viewers); bei Bildern
             folgt sie der gewählten Hintergrund-Variante. */}
