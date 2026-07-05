@@ -331,7 +331,7 @@ import {
 import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
-  StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
+  StatusLeiste, VEDetail, VEKachel, VEListenZeile, FotosAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 } from "./objektansicht.jsx";
 // Kontakt-Kategorien — ausgelagert nach kontakte.jsx (zyklischer Import).
@@ -1089,7 +1089,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   gotoVE, gotoKontakt, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null,
   listenAnsicht = "karten", viewVEId = null, setViewVEId = null, festeGridSpec = null,
   renderDetail = null, istDesktop = true, emptyText = "Keine Einträge.",
-  detailAktion = null,
+  detailAktion = null, masterBadge = null,
   titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null }) {
   const offenVEObj = (ves || []).find(v => v.id === viewVEId) || null;
   // Im Mobil-Detail (Objekt offen, kein Desktop-Nebeneinander) zeigt der Header
@@ -1159,6 +1159,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
             ves={ves} setVes={setVes}
             gotoKontakt={gotoKontakt}
             auswahlAccentOverride={accent}
+            masterBadge={masterBadge}
             onNurDetail={setNurDetail}
             renderDetailOverride={renderDetailOverride}/>
         </div>
@@ -1183,11 +1184,13 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
             <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={accent}
               aktiv={false} kbItem id={"objliste-" + veObj.id}
               auswahlAccentOverride={accent}
+              extraBadge={masterBadge ? masterBadge(veObj) : null}
               onClick={() => setViewVEId && setViewVEId(veObj.id)}/>
           ) : (
             <VEKachel key={veObj.id} ve={veObj} t={t} accent={accent}
               aktiv={false} kbItem id={"objliste-" + veObj.id}
               auswahlAccentOverride={accent}
+              extraBadge={masterBadge ? masterBadge(veObj) : null}
               onClick={() => setViewVEId && setViewVEId(veObj.id)}/>
           ))}
         </div>
@@ -1722,6 +1725,7 @@ export default function App() {
   // (aktion-Slot) sitzt, wie bei allen anderen Detail-Screens.
   const [dokumenteEditMode, setDokumenteEditMode] = useState(false);
   const [fotosViewVEId, setFotosViewVEId] = useState(null);
+  const [fotosEditMode, setFotosEditMode] = useState(false);
   const [kommunikationViewVEId, setKommunikationViewVEId] = useState(null);
   const [finanzenViewVEId, setFinanzenViewVEId] = useState(null);
   // Aus dem Seiten-Kalender angesteuerter Termin → in der Kalender-Vollansicht
@@ -3294,9 +3298,13 @@ export default function App() {
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
             detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
-            viewVEId={fotosViewVEId} setViewVEId={setFotosViewVEId}
+            viewVEId={fotosViewVEId} setViewVEId={(id) => { setFotosViewVEId(id); setFotosEditMode(false); }}
             istDesktop={istDesktop}
             titel="Fotos" anzahl={(vesSichtbar || []).length}
+            masterBadge={(veObj) => {
+              const n = (veObj && Array.isArray(veObj.fotos)) ? veObj.fotos.length : 0;
+              return n > 0 ? (n === 1 ? "1 Foto" : n + " Fotos") : null;
+            }}
             legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
@@ -3312,37 +3320,35 @@ export default function App() {
               }, 450);
             }}
             emptyText="Keine Fotos für dieses Objekt."
-            renderDetail={(veObj) => {
-              // Fake-Demo-Daten nur zum Layout-Testen (echte Quelle folgt).
+            detailAktion={() => {
               const fAccent = (effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899";
-              const demo = [
-                { titel: "Fassade Vorderseite", info: "Objektfoto · 12.05.2026" },
-                { titel: "Treppenhaus EG", info: "Objektfoto · 12.05.2026" },
-                { titel: "Wasserschaden Keller", info: "Schadensdoku · 03.06.2026" },
-              ];
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {demo.map((d, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12,
-                      background: t.card, border: `1px solid ${t.border}`,
-                      borderRadius: RAD.lg, padding: "10px 12px", minWidth: 0,
-                      boxSizing: "border-box", width: "100%" }}>
-                      <div style={{ width: 44, height: 44, flexShrink: 0, borderRadius: RAD.ms,
-                        background: fAccent + "22", display: "flex", alignItems: "center",
-                        justifyContent: "center" }}>
-                        <I name="paint" size={20} color={fAccent}/>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: FS.l, fontWeight: FW.bold, color: t.text,
-                          overflowWrap: "anywhere" }}>{d.titel}</div>
-                        <div style={{ fontSize: FS.s, color: t.muted, marginTop: 2,
-                          overflowWrap: "anywhere" }}>{d.info}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              return fotosEditMode ? (
+                <button onClick={() => setFotosEditMode(false)}
+                  title="Fertig" aria-label="Fertig"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 36, height: 36, flexShrink: 0, background: fAccent, border: "none",
+                    borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${fAccent}40` }}>
+                  <I name="check" size={14} color="#FFFFFF"/>
+                </button>
+              ) : (
+                <button onClick={() => setFotosEditMode(true)}
+                  title="Bearbeiten" aria-label="Bearbeiten"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 36, height: 36, flexShrink: 0, background: fAccent, border: "none",
+                    borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${fAccent}40` }}>
+                  <I name="pencil" size={14} color={getContrastColor(fAccent)}/>
+                </button>
               );
-            }}/>
+            }}
+            renderDetail={(veObj) => (
+              // ECHTE Quelle: dieselbe FotosAnsicht wie der Objekt-Tab „Fotos"
+              // (Baustein-Regel §76/§85.4: EIN Foto-Inhalt, kein Zweitbau —
+              // der Nav-Screen ist reiner Schnellzugriff auf die Objektdaten).
+              <FotosAnsicht
+                ve={veObj} setVes={setVes} t={t}
+                accent={(effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899"}
+                editMode={fotosEditMode}/>
+            )}/>
         )}
         {!suchErg && screen === "kommunikation" && (
           <ObjektListeMitDetail

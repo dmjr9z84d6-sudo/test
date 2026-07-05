@@ -793,7 +793,7 @@ function objektHandlungsbedarf(ve, cfg) {
 // ── VEListenZeile (kompakte Listenansicht eines Objekts, DESIGN §35) ────────
 // Eine schmale, scannbare Zeile statt der Kachel: Status-Punkt · WEG-Nr ·
 // Adresse · Einheiten-Zahl. Tippen klappt dasselbe Detail auf wie die Kachel.
-function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = false, auswahlAccentOverride = null }) {
+function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = false, auswahlAccentOverride = null, extraBadge = null }) {
   const auswahlAccent = auswahlAccentOverride || useKontaktFarbe().auswahlObjekt || accent;
   const hbCfg = useHandlungsbedarf();
   const statusLeisteSettings = useStatusLeiste();
@@ -835,11 +835,17 @@ function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = fal
         <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
           whiteSpace: "nowrap" }}>{einheitenText}</span>
       ) : null}
+      {/* extraBadge: optionale Screen-Info (z. B. Foto-Anzahl im Fotos-Screen) */}
+      {extraBadge ? (
+        <span style={{ fontSize: FS.xs, fontWeight: FW.bold, color: accent,
+          background: accent + "18", padding: "1px 8px", borderRadius: RAD.pill,
+          flexShrink: 0, whiteSpace: "nowrap" }}>{extraBadge}</span>
+      ) : null}
     </div>
   );
 }
 
-function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, id, kompakt = false, ohneRahmen = false, kbItem = false, auswahlAccentOverride = null }) {
+function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, id, kompakt = false, ohneRahmen = false, kbItem = false, auswahlAccentOverride = null, extraBadge = null }) {
   const statusLeisteSettings = useStatusLeiste();
   const hbCfg = useHandlungsbedarf();
   // Auswahl-Hervorhebung: im Mehr-Farbe-Modus die Objekt-Bereichsfarbe,
@@ -963,6 +969,12 @@ function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, i
             )}
           </div>
           {!kompakt && <VerwendungenBadges ve={ve} size={18}/>}
+          {/* extraBadge: optionale Screen-Info (z. B. Foto-Anzahl im Fotos-Screen) */}
+          {extraBadge && !kompakt && (
+            <span style={{ fontSize: FS.xs, fontWeight: FW.bold, color: accent,
+              background: accent + "18", padding: "1px 8px", borderRadius: RAD.pill,
+              whiteSpace: "nowrap" }}>{extraBadge}</span>
+          )}
         </div>
       </div>
       {zeigeStatus && <StatusLeiste {...(status || { typ: null, text: "" })} t={t} borderColor={bc} eingebettet={true}/>}
@@ -1525,7 +1537,7 @@ const TE_MUSTER_PUNKTE = [
 // Hierher verschoben (aus dem App-Rumpf), weil alle Bausteine (VEDetail/VEKachel/
 // VEListenZeile) hier leben und so KEIN Modul-Init-Zyklus entsteht; Nutzer sind
 // der App-Rumpf UND der Kalender (renderDetailOverride für Objekt-Termine).
-function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, gefiltert, expandedVEId, setExpandedVEId, sprungZiel = null,
+function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, kartenSpalten = 2, gefiltert, expandedVEId, setExpandedVEId, sprungZiel = null, masterBadge = null,
   offenVE, t, accent, kontakte, setKontakte, ves, setVes, gotoKontakt, listenAnsicht = "karten", renderDetailOverride = null, auswahlAccentOverride = null, onNurDetail = null }) {
   const istListe = listenAnsicht === "liste";
   // Auswahl-Akzent: Mehr-Farbe = Objekt-Bereichsfarbe, Graumodus = System-Akzent.
@@ -1557,12 +1569,14 @@ function ObjekteMasterDetail({ cardWidth, detailMinBreite = 300, detailMin = nul
         <VEListenZeile key={ve.id} ve={ve} t={t} accent={accent}
           aktiv={expandedVEId === ve.id} kbItem id={"obj-" + ve.id}
           auswahlAccentOverride={auswahlAccentOverride}
+          extraBadge={masterBadge ? masterBadge(ve) : null}
           onClick={() => setExpandedVEId(expandedVEId === ve.id ? null : ve.id)}/>
       ) : (
         <VEKachel key={ve.id} ve={ve} t={t} accent={accent}
           aktiv={expandedVEId === ve.id} kbItem
           id={"obj-" + ve.id}
           auswahlAccentOverride={auswahlAccentOverride}
+          extraBadge={masterBadge ? masterBadge(ve) : null}
           onClick={() => setExpandedVEId(expandedVEId === ve.id ? null : ve.id)}/>
       ))}
     </div>
@@ -2777,7 +2791,7 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
 
 
 export {
-  EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons, FotoGalerie,
+  EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons, FotoGalerie, FotosAnsicht,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
