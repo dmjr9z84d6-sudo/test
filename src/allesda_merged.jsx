@@ -1546,6 +1546,9 @@ export default function App() {
       // gar nicht enthält (unabhängig vom Warmwasser-Schalter). Reihenfolge des
       // Defaults übernehmen; vorhandene Tabs bleiben unverändert.
       if (Array.isArray(sett.objektTabs)) {
+        // Alte Tab-id „bilder" (vor v13.46 umbenannt in „fotos") aus gespeicherten
+        // Configs werfen — sonst bleibt der tote Tab neben dem neuen stehen.
+        sett.objektTabs = sett.objektTabs.filter(x => !(x && x.id === "bilder"));
         const vorhandeneTabIds = sett.objektTabs.map(x => x && x.id);
         const fehlendeT = (DEFAULT_SETTINGS.objektTabs || []).filter(x => vorhandeneTabIds.indexOf(x.id) < 0);
         if (fehlendeT.length > 0) {
