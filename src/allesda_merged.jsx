@@ -1810,6 +1810,60 @@ export default function App() {
     };
   }, []);
 
+  // ── Browser-/Wisch-Zurück auf Screen-Ebene (v13.44) ──────────────────────
+  // Die App ist eine SPA ohne Routing → der iPhone-Wisch-Zurück würde ohne das
+  // hier komplett aus der App fliegen. Wir spiegeln AUSSCHLIESSLICH die eine
+  // zentrale Achse `screen` in die Browser-History. Details/Modals/Unter-Tabs
+  // (HeaderZurueck §75.5, MasterDetailRahmen/onNurDetail §75, kalNurDetail-Fix)
+  // bleiben UNBERÜHRT und regeln ihr Zurück wie bisher — History kennt sie
+  // nicht, daher kein Widerspruch. Verhalten: „nur Screen" (Variante B) — ein
+  // Zurück wechselt immer direkt den Screen, offene Details werden nicht als
+  // eigener Zwischenschritt behandelt. Am „Boden" (Start-Screen) bleibt die App
+  // offen statt zu schließen (Boden-Eintrag wird re-gepusht).
+  //
+  // Ein useEffect auf `screen` führt die History, damit es EGAL ist, welcher
+  // Aufrufer den Screen ändert (wechselScreen / gotoVE / gotoTermin / …).
+  // vonPopstateRef verhindert, dass ein durch popstate ausgelöstes setScreen
+  // erneut pusht (sonst Endlosschleife / History-Stau).
+  const vonPopstateRef = useRef(false);
+  const historyInitRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.history) return;
+    // Boden-Eintrag: liegt UNTER dem Start-Screen, damit der erste Zurück-Wisch
+    // nicht aus der App führt. Nur einmal beim Mount.
+    if (!historyInitRef.current) {
+      historyInitRef.current = true;
+      try {
+        window.history.replaceState({ adScreen: "objekte", adBoden: true }, "");
+      } catch (err) {}
+    }
+    const onPop = (e) => {
+      const st = (e && e.state) || null;
+      const zielScreen = (st && st.adScreen) || "objekte";
+      // Am Boden angekommen: Boden-Eintrag re-pushen → App bleibt offen (nie
+      // rausfliegen), statt dass der Browser das PWA-Fenster schließt.
+      if (st && st.adBoden) {
+        try { window.history.pushState({ adScreen: "objekte", adBoden: true }, ""); } catch (err) {}
+      }
+      vonPopstateRef.current = true;
+      setScreen(zielScreen);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Vorwärts-Wechsel: bei JEDER `screen`-Änderung einen History-Eintrag pushen —
+  // außer die Änderung kam gerade durch popstate (dann nur Flag zurücksetzen).
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.history) return;
+    if (vonPopstateRef.current) { vonPopstateRef.current = false; return; }
+    // Kein Doppel-Eintrag, wenn der aktuelle Top-State schon dieser Screen ist
+    // (z. B. erneuter Klick auf denselben Menüpunkt).
+    const st = window.history.state;
+    if (st && st.adScreen === screen && !st.adBoden) return;
+    try { window.history.pushState({ adScreen: screen }, ""); } catch (err) {}
+  }, [screen]);
+
   // Fensterbreite – entscheidet zwischen Sidebar (Desktop) und horizontaler Leiste (Mobile)
   const windowWidth = useWindowWidth();
   const istDesktop = windowWidth >= DESKTOP_MIN_WIDTH;
