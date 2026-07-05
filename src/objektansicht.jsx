@@ -1248,7 +1248,7 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
     { id: "te",           label: "TE",           icon: "badge" },
     { id: "dokumente",    label: "Dokumente",    icon: "document" },
     { id: "kontakte",     label: "Kontakte",     icon: "users" },
-    { id: "bilder",       label: "Bilder",       icon: "paint" },
+    { id: "fotos",        label: "Fotos",        icon: "paint" },
     { id: "historie",     label: "Historie",     icon: "calendar" },
   ];
   const tabDef = (id) => TAB_DEFAULTS.find(d => d.id === id) || { id, label: id, icon: "document" };
@@ -1414,9 +1414,9 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
           onKontaktClick={onKontaktClick} ves={ves}
           sprungKarte={sprungZiel && sprungZiel.tab === "dokumente" ? { karteId: sprungZiel.karteId, nonce: sprungZiel.nonce } : null}/>
       )}
-      {tab === "bilder" && (
+      {tab === "fotos" && (
         <PlatzhalterReiter t={t} accent={accent} icon="paint"
-          titel="Bilder"
+          titel="Fotos"
           beschreibung="Fotos zum Objekt — Außenansichten, technische Anlagen, Schadensbilder, Begehungs-Fotos."
           punkte={[
             "Kategorien (Außen, Innen, Technik, Schäden …)",

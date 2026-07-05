@@ -381,7 +381,7 @@ const DEFAULT_SETTINGS = {
     { id:"te",           label:"TE",           icon:"badge",    aktiv:true, fix:false, reihenfolge:3 },
     { id:"dokumente",    label:"Dokumente",    icon:"document", aktiv:true, fix:false, reihenfolge:4 },
     { id:"kontakte",     label:"Kontakte",     icon:"users",    aktiv:true, fix:false, reihenfolge:5 },
-    { id:"bilder",       label:"Bilder",       icon:"paint",    aktiv:true, fix:false, reihenfolge:6 },
+    { id:"fotos",        label:"Fotos",        icon:"paint",    aktiv:true, fix:false, reihenfolge:6 },
     { id:"historie",     label:"Historie",     icon:"calendar", aktiv:true, fix:false, reihenfolge:7 },
   ],
 };
