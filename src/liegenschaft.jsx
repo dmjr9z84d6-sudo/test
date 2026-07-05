@@ -4042,6 +4042,52 @@ function ergaenzeTechnikGeraetFelder(g) {
 
 // Zuordnungs-Zeile eines Geräts: Haus/Tiefgarage · Raum ODER Einheit, plus
 // Zuständigkeit (WEG / Sondereigentümer). standorte = Gebäude- + TG-Karten.
+// ── TechnikUebersichtAnsicht (§93-Nachbarschaft, Schnellzugriff-Screens) ────
+// Lese-Übersicht ALLER Technik-Geräte eines Objekts über seine Standort-Karten
+// (gebaeude/tiefgarage) — für den Technik-Hauptscreen (linke Nav). Nutzt die
+// ECHTE GeraetKarte read-only (Baustein-Regel: ein Geräte-Inhalt, kein
+// Zweitbau). Gepflegt werden Geräte weiterhin am Objekt (Liegenschaft-Tab).
+function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = null, onKontaktClick = null, ves = [] }) {
+  const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
+  // Geräte hängen an den TECHNIK-Karten; die Gebäude/TG-Karten (haeuser)
+  // dienen der Standort-Anzeige je Gerät (GeraetStandort, g.hausId).
+  const haeuser = karten.filter(k => k && (k.kategorie === "gebaeude" || k.kategorie === "tiefgarage"));
+  const mitGeraeten = karten
+    .filter(k => k && k.kategorie === "technik")
+    .map(k => ({ karte: k, geraete: (k.technikGeraete || []).map(ergaenzeTechnikGeraetFelder) }))
+    .filter(x => x.geraete.length > 0);
+  if (mitGeraeten.length === 0) {
+    return (
+      <div style={{ background: t.card, border: `1px solid ${t.border}`,
+        borderRadius: RAD.lg, padding: "16px 18px", fontSize: FS.m,
+        color: t.muted, lineHeight: 1.5 }}>
+        Noch keine technischen Anlagen hinterlegt. Geräte werden am Objekt
+        gepflegt (Liegenschaft → Technik-Karte des Gebäudes).
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {mitGeraeten.map(({ karte, geraete }) => (
+        <div key={karte.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {mitGeraeten.length > 1 && (
+            <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
+              textTransform: "uppercase", letterSpacing: "0.08em", padding: "0 2px" }}>
+              {karte.name || "Technik"}
+            </div>
+          )}
+          {geraete.map(g => (
+            <GeraetKarte key={g.id} g={g} t={t} accent={accent} editMode={false}
+              haeuser={haeuser} kontakte={kontakte} setKontakte={setKontakte}
+              onKontaktClick={onKontaktClick} ves={ves}
+              formOffen={false} onEdit={null} onRemove={null} renderForm={null}/>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GeraetStandort({ g, haeuser, t }) {
   const haus = g.hausId ? (haeuser || []).find(h => String(h.id) === String(g.hausId)) : null;
   const raum = haus && g.raumId ? (haus.raeume || []).find(r => String(r.id) === String(g.raumId)) : null;
@@ -8434,6 +8480,7 @@ export {
   ANDERE_OPTION,
   DateiViewerModal,
   DokumenteAnsicht,
+  TechnikUebersichtAnsicht,
   EinheitZeile,
   HeaderFilterDropdown,
   KARTEN_ICONS,

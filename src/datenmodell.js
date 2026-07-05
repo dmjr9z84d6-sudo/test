@@ -364,12 +364,15 @@ const DEFAULT_SETTINGS = {
     { id:"auftraege",     label:"Vorgänge",      icon:"ticket",    farbe:"#EF4444", aktiv:true,  reihenfolge:5 },
     { id:"kommunikation", label:"Kommunikation", icon:"mail",      farbe:"#0EA5E9", aktiv:true,  reihenfolge:6 },
     { id:"finanzen",      label:"Finanzen",      icon:"chart",     farbe:"#22C55E", aktiv:true,  reihenfolge:7 },
-    { id:"technik",       label:"Technik",       icon:"wrench",    farbe:"#10B981", aktiv:false, reihenfolge:8 },
-    { id:"dokumente",     label:"Dokumente",     icon:"document",  farbe:"#64748B", aktiv:false, reihenfolge:9 },
+    { id:"technik",       label:"Technik",       icon:"wrench",    farbe:"#10B981", aktiv:true,  reihenfolge:8 },
+    { id:"dokumente",     label:"Dokumente",     icon:"document",  farbe:"#64748B", aktiv:true,  reihenfolge:9 },
     { id:"statistik",     label:"Statistik",     icon:"chart",     farbe:"#6366F1", aktiv:true,  reihenfolge:10 },
     { id:"listen",        label:"Listengenerator", icon:"sort",    farbe:"#0E7490", aktiv:true,  reihenfolge:11 },
     { id:"fotos",         label:"Fotos",         icon:"paint",     farbe:"#EC4899", aktiv:true,  reihenfolge:12 },
     { id:"schnelleingabe", label:"Schnelleingabe", icon:"plus",    farbe:"#0080FF", aktiv:true,  reihenfolge:13 },
+    { id:"legionellen",   label:"Legionellen",   icon:"drop",      farbe:"#06B6D4", aktiv:true,  reihenfolge:14 },
+    { id:"te",            label:"Teilungserklärung", icon:"badge", farbe:"#A855F7", aktiv:true,  reihenfolge:15 },
+    { id:"historie",      label:"Historie",      icon:"clock",     farbe:"#F97316", aktiv:true,  reihenfolge:16 },
   ],
   // Objekt-Detail-Tabs: Reihenfolge + Sichtbarkeit (global). Liegenschaft und
   // Verwaltung sind fix (immer sichtbar, nicht sortierbar) — daher nur die
@@ -2486,10 +2489,14 @@ export function fotoFindeRaum(ve, raumId) {
   return null;
 }
 export function fotoFindeGeraet(ve, geraetId) {
+  // Geräte hängen an den TECHNIK-Karten des Objekts (kategorie "technik"),
+  // nicht an den Gebäude-Karten (Bugfix v13.53 — vorher lief die Suche leer).
   if (!geraetId) return null;
-  const st = fotoStandorte(ve);
-  for (let i = 0; i < st.length; i++) {
-    const g = (st[i].technikGeraete || []).find(x => x && String(x.id) === String(geraetId));
+  const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
+  for (let i = 0; i < karten.length; i++) {
+    const k = karten[i];
+    if (!k || k.kategorie !== "technik") continue;
+    const g = (k.technikGeraete || []).find(x => x && String(x.id) === String(geraetId));
     if (g) return g;
   }
   return null;

@@ -331,7 +331,8 @@ import {
 import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
-  StatusLeiste, VEDetail, VEKachel, VEListenZeile, FotosAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
+  StatusLeiste, VEDetail, VEKachel, VEListenZeile, FotosAnsicht, HistorieAnsicht,
+  LegionellenAnsicht, TERegisterAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 } from "./objektansicht.jsx";
 // Kontakt-Kategorien — ausgelagert nach kontakte.jsx (zyklischer Import).
@@ -360,7 +361,7 @@ import {
 // Liegenschaft-Kern (S5a) — ausgelagert nach liegenschaft.jsx. Der App-Rumpf
 // nutzt nur die Header-/Kachel-Komponenten; kein Rückimport in diese Datei.
 import {
-  DokumenteAnsicht, HeaderFilterDropdown, KategorieKacheln, SeitenleisteKacheln
+  DokumenteAnsicht, HeaderFilterDropdown, KategorieKacheln, SeitenleisteKacheln, TechnikUebersichtAnsicht
 } from "./liegenschaft.jsx";
 
 // ║ SEKTION 9 · APP  (Default Export)                                       ║
@@ -1533,6 +1534,16 @@ export default function App() {
         const vorhandeneIds = sett.kacheln.map(k => k && k.id);
         const fehlendeK = (DEFAULT_SETTINGS.kacheln || []).filter(k => vorhandeneIds.indexOf(k.id) < 0);
         if (fehlendeK.length > 0) sett.kacheln = [...sett.kacheln, ...fehlendeK];
+        // Einmal-Migration (v13.53): Technik + Dokumente waren als Platzhalter
+        // per Default unsichtbar; ab jetzt zeigen sie echte Inhalte → einmalig
+        // sichtbar schalten. Das Flag sorgt dafür, dass eine SPÄTERE bewusste
+        // Deaktivierung durch den Nutzer nie wieder überschrieben wird.
+        if (!sett.kachelnMigSichtbarV1353) {
+          sett.kacheln = sett.kacheln.map(k =>
+            (k && (k.id === "technik" || k.id === "dokumente") && k.aktiv === false)
+              ? { ...k, aktiv: true } : k);
+          sett.kachelnMigSichtbarV1353 = true;
+        }
       }
       // Migration (v12.88): tote Suchkategorien „adressen" + „vertraege" aus
       // Bestands-Settings entfernen. Die Universalsuche durchsucht real nur
@@ -1726,6 +1737,10 @@ export default function App() {
   const [dokumenteEditMode, setDokumenteEditMode] = useState(false);
   const [fotosViewVEId, setFotosViewVEId] = useState(null);
   const [fotosEditMode, setFotosEditMode] = useState(false);
+  const [legionellenViewVEId, setLegionellenViewVEId] = useState(null);
+  const [legionellenEditMode, setLegionellenEditMode] = useState(false);
+  const [teViewVEId, setTeViewVEId] = useState(null);
+  const [historieViewVEId, setHistorieViewVEId] = useState(null);
   const [kommunikationViewVEId, setKommunikationViewVEId] = useState(null);
   const [finanzenViewVEId, setFinanzenViewVEId] = useState(null);
   // Aus dem Seiten-Kalender angesteuerter Termin → in der Kalender-Vollansicht
@@ -1771,6 +1786,16 @@ export default function App() {
     if (screenId === "objekte") setExpandedVEId(null);
     else if (screenId === "kontakte") setAktivKontaktId(null);
     else if (screenId === "kalender") { if (typeof setKalViewVEId === "function") setKalViewVEId(null); }
+    // Objektlisten-Screens (Schnellzugriff): erneuter Klick auf den Menüpunkt
+    // schließt das offene Objekt — gleiches Verhalten wie Objekte/Kontakte.
+    else if (screenId === "dokumente") { setDokumenteViewVEId(null); setDokumenteEditMode(false); }
+    else if (screenId === "fotos") { setFotosViewVEId(null); setFotosEditMode(false); }
+    else if (screenId === "technik") setTechnikViewVEId(null);
+    else if (screenId === "legionellen") { setLegionellenViewVEId(null); setLegionellenEditMode(false); }
+    else if (screenId === "te") setTeViewVEId(null);
+    else if (screenId === "historie") setHistorieViewVEId(null);
+    else if (screenId === "kommunikation") setKommunikationViewVEId(null);
+    else if (screenId === "finanzen") { if (typeof setFinanzenViewVEId === "function") setFinanzenViewVEId(null); }
   };
 
   // Header-Breite messen – entscheidet zwischen 1- und 2-Zeilen-Layout
@@ -3203,37 +3228,14 @@ export default function App() {
               }, 450);
             }}
             emptyText="Keine technischen Anlagen für dieses Objekt."
-            renderDetail={(veObj) => {
-              // Fake-Demo-Daten nur zum Layout-Testen (echte Quelle folgt).
-              const tAccent = (effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981";
-              const demo = [
-                { titel: "Heizung — Gas-Brennwert", info: "Nächste Wartung 09/2026", status: "ok" },
-                { titel: "Aufzug — Personenaufzug", info: "TÜV fällig 06/2026", status: "faellig" },
-                { titel: "Lüftung — Zentralanlage", info: "Filterwechsel offen", status: "offen" },
-              ];
-              const statusFarbe = { "ok": "#10B981", "faellig": "#EF4444", "offen": "#F59E0B" };
-              const statusText = { "ok": "OK", "faellig": "fällig", "offen": "offen" };
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {demo.map((d, i) => (
-                    <div key={i} style={{ background: t.card, border: `1px solid ${t.border}`,
-                      borderRadius: RAD.lg, padding: "12px 14px", minWidth: 0,
-                      boxSizing: "border-box", width: "100%" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
-                          color: t.text, overflowWrap: "anywhere" }}>{d.titel}</div>
-                        <div style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
-                          color: getContrastColor(statusFarbe[d.status] || tAccent),
-                          background: statusFarbe[d.status] || tAccent,
-                          borderRadius: RAD.sm, padding: "2px 8px" }}>{statusText[d.status] || d.status}</div>
-                      </div>
-                      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4,
-                        overflowWrap: "anywhere" }}>{d.info}</div>
-                    </div>
-                  ))}
-                </div>
-              );
-            }}/>
+            renderDetail={(veObj) => (
+              // ECHTE Quelle: Technik-Geräte der Standort-Karten des Objekts
+              // (TechnikUebersichtAnsicht, read-only — gepflegt wird am Objekt).
+              <TechnikUebersichtAnsicht ve={veObj} t={t}
+                accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
+                kontakte={kontakteSichtbar} setKontakte={setKontakte}
+                onKontaktClick={gotoKontakt} ves={vesSichtbar}/>
+            )}/>
         )}
         {!suchErg && screen === "dokumente" && (
           <ObjektListeMitDetail
@@ -3348,6 +3350,141 @@ export default function App() {
                 ve={veObj} setVes={setVes} t={t}
                 accent={(effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899"}
                 editMode={fotosEditMode}/>
+            )}/>
+        )}
+        {!suchErg && screen === "legionellen" && (
+          <ObjektListeMitDetail
+            ves={vesSichtbar} kontakte={kontakteSichtbar}
+            setVes={setVes} setKontakte={setKontakte} t={t}
+            gotoVE={gotoVE} gotoKontakt={gotoKontakt}
+            cardWidth={cardWidth} kartenSpalten={kartenSpalten}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            istDesktop={istDesktop}
+            legendeAn={legendeSichtbar(effectiveSettings)}
+            onGotoStatusEinstellungen={() => {
+              wechselScreen("einstellungen");
+              setTimeout(() => {
+                try {
+                  window.dispatchEvent(new CustomEvent("allesda:zentrale-sektion",
+                    { detail: { id: "statusleiste" } }));
+                } catch (err) {}
+              }, 60);
+              setTimeout(() => {
+                const el = document.getElementById("set-handlungsbedarf");
+                if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
+              }, 450);
+            }}
+            accent={(effectiveSettings.kacheln.find(k => k.id === "legionellen") || {}).farbe || "#06B6D4"}
+            viewVEId={legionellenViewVEId} setViewVEId={(id) => { setLegionellenViewVEId(id); setLegionellenEditMode(false); }}
+            titel="Legionellen" anzahl={(vesSichtbar || []).length}
+            emptyText="Keine Legionellen-Daten für dieses Objekt."
+            detailAktion={(veObj) => {
+              // Stift nur bei Prüfpflicht (zentrales Warmwasser) — sonst gibt es
+              // nichts zu erfassen und der Hinweis unten erklärt das.
+              if (!objektHatZentralesWarmwasser(veObj)) return null;
+              const lAccent = (effectiveSettings.kacheln.find(k => k.id === "legionellen") || {}).farbe || "#06B6D4";
+              return legionellenEditMode ? (
+                <button onClick={() => setLegionellenEditMode(false)}
+                  title="Fertig" aria-label="Fertig"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 36, height: 36, flexShrink: 0, background: lAccent, border: "none",
+                    borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${lAccent}40` }}>
+                  <I name="check" size={14} color="#FFFFFF"/>
+                </button>
+              ) : (
+                <button onClick={() => setLegionellenEditMode(true)}
+                  title="Bearbeiten" aria-label="Bearbeiten"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 36, height: 36, flexShrink: 0, background: lAccent, border: "none",
+                    borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${lAccent}40` }}>
+                  <I name="pencil" size={14} color={getContrastColor(lAccent)}/>
+                </button>
+              );
+            }}
+            renderDetail={(veObj) => (
+              // ECHTE Quelle: dieselbe LegionellenAnsicht wie der Objekt-Tab.
+              // Ohne zentrale Warmwasserversorgung besteht keine Prüfpflicht
+              // (TrinkwV) — dann Hinweis statt leerer Erfassung.
+              objektHatZentralesWarmwasser(veObj) ? (
+                <LegionellenAnsicht ve={veObj} setVes={setVes} t={t}
+                  accent={(effectiveSettings.kacheln.find(k => k.id === "legionellen") || {}).farbe || "#06B6D4"}
+                  editMode={legionellenEditMode}
+                  kontakte={kontakteSichtbar} onKontaktClick={gotoKontakt}/>
+              ) : (
+                <div style={{ background: t.card, border: `1px solid ${t.border}`,
+                  borderRadius: RAD.lg, padding: "16px 18px", fontSize: FS.m,
+                  color: t.muted, lineHeight: 1.5 }}>
+                  Dieses Objekt hat keine zentrale Warmwasserversorgung — die
+                  Legionellen-Prüfpflicht nach TrinkwV besteht hier nicht.
+                  (Einstellbar an der Technik-Karte des Gebäudes.)
+                </div>
+              )
+            )}/>
+        )}
+        {!suchErg && screen === "te" && (
+          <ObjektListeMitDetail
+            ves={vesSichtbar} kontakte={kontakteSichtbar}
+            setVes={setVes} setKontakte={setKontakte} t={t}
+            gotoVE={gotoVE} gotoKontakt={gotoKontakt}
+            cardWidth={cardWidth} kartenSpalten={kartenSpalten}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            istDesktop={istDesktop}
+            legendeAn={legendeSichtbar(effectiveSettings)}
+            onGotoStatusEinstellungen={() => {
+              wechselScreen("einstellungen");
+              setTimeout(() => {
+                try {
+                  window.dispatchEvent(new CustomEvent("allesda:zentrale-sektion",
+                    { detail: { id: "statusleiste" } }));
+                } catch (err) {}
+              }, 60);
+              setTimeout(() => {
+                const el = document.getElementById("set-handlungsbedarf");
+                if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
+              }, 450);
+            }}
+            accent={(effectiveSettings.kacheln.find(k => k.id === "te") || {}).farbe || "#A855F7"}
+            viewVEId={teViewVEId} setViewVEId={setTeViewVEId}
+            titel="Teilungserklärung" anzahl={(vesSichtbar || []).length}
+            emptyText="Kein TE-Register für dieses Objekt."
+            renderDetail={(veObj) => (
+              // ECHTE Quelle: dasselbe TE-Klausel-Register wie der Objekt-Tab.
+              <TERegisterAnsicht ve={veObj} t={t}
+                accent={(effectiveSettings.kacheln.find(k => k.id === "te") || {}).farbe || "#A855F7"}/>
+            )}/>
+        )}
+        {!suchErg && screen === "historie" && (
+          <ObjektListeMitDetail
+            ves={vesSichtbar} kontakte={kontakteSichtbar}
+            setVes={setVes} setKontakte={setKontakte} t={t}
+            gotoVE={gotoVE} gotoKontakt={gotoKontakt}
+            cardWidth={cardWidth} kartenSpalten={kartenSpalten}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
+            istDesktop={istDesktop}
+            legendeAn={legendeSichtbar(effectiveSettings)}
+            onGotoStatusEinstellungen={() => {
+              wechselScreen("einstellungen");
+              setTimeout(() => {
+                try {
+                  window.dispatchEvent(new CustomEvent("allesda:zentrale-sektion",
+                    { detail: { id: "statusleiste" } }));
+                } catch (err) {}
+              }, 60);
+              setTimeout(() => {
+                const el = document.getElementById("set-handlungsbedarf");
+                if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
+              }, 450);
+            }}
+            accent={(effectiveSettings.kacheln.find(k => k.id === "historie") || {}).farbe || "#F97316"}
+            viewVEId={historieViewVEId} setViewVEId={setHistorieViewVEId}
+            titel="Historie" anzahl={(vesSichtbar || []).length}
+            emptyText="Keine Historie für dieses Objekt."
+            renderDetail={(veObj) => (
+              // ECHTE Quelle: dieselbe HistorieAnsicht wie der Objekt-Tab.
+              <HistorieAnsicht ve={veObj} t={t}
+                accent={(effectiveSettings.kacheln.find(k => k.id === "historie") || {}).farbe || "#F97316"}
+                kontakte={kontakteSichtbar} setKontakte={setKontakte}
+                onKontaktClick={gotoKontakt}/>
             )}/>
         )}
         {!suchErg && screen === "kommunikation" && (

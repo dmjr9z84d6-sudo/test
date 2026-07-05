@@ -2258,11 +2258,13 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
     });
     return out;
   })();
-  // Technik-Geräte aller Standorte (optionale Verknüpfung).
+  // Technik-Geräte für die optionale Verknüpfung — sie hängen an den
+  // TECHNIK-Karten des Objekts (Bugfix v13.53: vorher wurden fälschlich die
+  // Gebäude-Karten durchsucht, das Dropdown blieb dadurch immer verborgen).
   const alleGeraete = (() => {
     const out = [];
-    standorte.forEach(h => {
-      ((h && h.technikGeraete) || []).forEach(g => {
+    (((ve && ve.karten) || []).filter(k => k && k.kategorie === "technik")).forEach(k => {
+      (k.technikGeraete || []).forEach(g => {
         if (g) out.push({ id: g.id, label: g.typLabel || "Gerät" });
       });
     });
@@ -2824,6 +2826,7 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
 
 export {
   EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons, FotoGalerie, FotosAnsicht,
+  HistorieAnsicht, LegionellenAnsicht, TERegisterAnsicht,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
