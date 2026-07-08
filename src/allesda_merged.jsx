@@ -325,7 +325,7 @@ import {
 // holt seinerseits S5-Kern-Helfer aus dieser Datei zurück; Laufzeit-Auflösung).
 import {
   AUTO_BETEILIGTE_REGELN, KALENDER_TYPEN, KAL_FENSTER_MONATE, KAL_ZOOM_STUFEN,
-  KalenderPanel, KalenderScreen, isoKW, restzeitText, sammleTermine, terminEinheitIds
+  KalenderPanel, KalenderScreen, LegionellenTimeline, isoKW, restzeitText, sammleTermine, terminEinheitIds
 } from "./kalender.jsx";
 // Objekt-Übersicht/-Detail — ausgelagert nach objektansicht.jsx (zyklischer
 // Import: holt seinerseits Ansicht-Komponenten aus dieser Datei zurück).
@@ -1753,6 +1753,10 @@ export default function App() {
   // der Kachel bleibt unverändert; View bleibt (wie kalView) über Screen-
   // Wechsel hinweg erhalten.
   const [legionellenView, setLegionellenView] = useState("objekte");
+  // §95: Auswahl-State der Timeline-Sicht (controlled, Kalender-Muster) +
+  // nurDetail-Meldung des MasterDetailRahmen für den Header-Zurück.
+  const [legionellenTimelineKey, setLegionellenTimelineKey] = useState(null);
+  const [legionellenNurDetail, setLegionellenNurDetail] = useState(false);
   const [teViewVEId, setTeViewVEId] = useState(null);
   const [historieViewVEId, setHistorieViewVEId] = useState(null);
   const [kommunikationViewVEId, setKommunikationViewVEId] = useState(null);
@@ -1805,7 +1809,7 @@ export default function App() {
     else if (screenId === "dokumente") { setDokumenteViewVEId(null); setDokumenteEditMode(false); }
     else if (screenId === "fotos") { setFotosViewVEId(null); setFotosEditMode(false); }
     else if (screenId === "technik") setTechnikViewVEId(null);
-    else if (screenId === "legionellen") { setLegionellenViewVEId(null); setLegionellenEditMode(false); }
+    else if (screenId === "legionellen") { setLegionellenViewVEId(null); setLegionellenEditMode(false); setLegionellenTimelineKey(null); }
     else if (screenId === "te") setTeViewVEId(null);
     else if (screenId === "historie") setHistorieViewVEId(null);
     else if (screenId === "kommunikation") setKommunikationViewVEId(null);
@@ -2495,35 +2499,8 @@ export default function App() {
       optionen={[{ id: "objekte", label: "Objekte" }, { id: "timeline", label: "Timeline" }]}
       aktiv={legionellenView}
       onWaehle={(id) => { setLegionellenView(id); setLegionellenViewVEId(null);
-        setLegionellenEditMode(false); }}/>
+        setLegionellenEditMode(false); setLegionellenTimelineKey(null); }}/>
   );
-  // §95: Timeline = ObjektListeMitDetail mit vorgefilterten + nach Dringlichkeit
-  // sortierten Objekten (überfällig → ohne Prüfdatum → bald ≤3 Mon → ok, inner-
-  // halb nach Fälligkeit). Fälligkeit über SSoT-Helfer legionellenEffektiveNaechste.
-  const legionellenTimelineVes = React.useMemo(() => {
-    const rangVon = (s) => s === "ueberfaellig" ? 0 : s == null ? 1 : s === "bald" ? 2 : 3;
-    return (vesSichtbar || [])
-      .filter(v => objektHatZentralesWarmwasser(v))
-      .map(v => {
-        const naechste = legionellenEffektiveNaechste(v.legionellen);
-        const d = parseDatumWert(naechste);
-        return { v, rang: rangVon(legionellenFaelligStatus(naechste)),
-          zeit: (d && !isNaN(d.getTime())) ? d.getTime() : 0 };
-      })
-      .sort((a, b) => (a.rang - b.rang) || (a.zeit - b.zeit))
-      .map(x => x.v);
-  }, [vesSichtbar]);
-  // Fälligkeits-Badge fürs Master (extraBadge-Slot §94.2): Text erbt die
-  // Badge-Farbe (= Legionellen-Accent, SSoT „ok"-Fall); überfällig/bald werden
-  // über LEGIONELLEN_STATUS_FARBE gefärbt — exakt die Ampel des Objekt-Tabs.
-  const legionellenTimelineBadge = (veObj) => {
-    const naechste = legionellenEffektiveNaechste(veObj && veObj.legionellen);
-    const status = legionellenFaelligStatus(naechste);
-    const txt = status === "ueberfaellig" ? ("überfällig seit " + naechste)
-      : status == null ? "keine Prüfung erfasst" : ("fällig " + naechste);
-    const farbe = LEGIONELLEN_STATUS_FARBE[status] || null;
-    return farbe ? <span style={{ color: farbe }}>{txt}</span> : txt;
-  };
 
   return (
     <TipProvider>
@@ -3405,41 +3382,30 @@ export default function App() {
                 editMode={fotosEditMode}/>
             )}/>
         )}
-        {/* §95: Timeline-Sicht der Legionellen-Kachel — DERSELBE Baustein wie
-            die Objekte-Sicht (ObjektListeMitDetail), nur konfiguriert: vorge-
-            filterte + nach Dringlichkeit sortierte Objekte, Zeilen-Ansicht,
-            Fälligkeits-Badge (SSoT-Ampel), Detail read-only nebendran. */}
+        {/* §95: Timeline-Sicht der Legionellen-Kachel — EXAKT die Kalender-
+            Timeline (KalenderZeile in Dringlichkeits-Buckets, Detail nebendran
+            über MasterDetailRahmen, mobil ersetzt das Detail die Liste; Zurück
+            im Header-rechts-Slot wie überall). */}
         {!suchErg && screen === "legionellen" && legionellenView === "timeline" && (
-          <ObjektListeMitDetail
-            ves={legionellenTimelineVes} kontakte={kontakteSichtbar}
-            setVes={setVes} setKontakte={setKontakte} t={t}
-            gotoVE={gotoVE} gotoKontakt={gotoKontakt}
-            kopfMitte={legionellenPille}
-            cardWidth={cardWidth} kartenSpalten={kartenSpalten}
-            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt}
-            listenAnsicht="liste" festeGridSpec={festeGridSpec}
-            istDesktop={istDesktop}
-            legendeAn={legendeSichtbar(effectiveSettings)}
-            accent={legionellenAccent}
-            viewVEId={legionellenViewVEId} setViewVEId={(id) => { setLegionellenViewVEId(id); setLegionellenEditMode(false); }}
-            titel="Legionellen" anzahl={(legionellenTimelineVes || []).length}
-            emptyText="Kein Objekt ist prüfpflichtig (zentrale Warmwasserversorgung)."
-            masterBadge={legionellenTimelineBadge}
-            renderDetail={(veObj) => (
-              <>
-                <LegionellenAnsicht ve={veObj} setVes={setVes} t={t}
-                  accent={legionellenAccent} editMode={false}
-                  kontakte={kontakteSichtbar} onKontaktClick={gotoKontakt}/>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-                  <button onClick={() => gotoVE(veObj.id)}
-                    style={{ background: "transparent", border: "none", cursor: "pointer",
-                      padding: "4px 2px", fontFamily: "inherit", fontSize: FS.s,
-                      fontWeight: FW.bold, color: legionellenAccent }}>
-                    Zum Objekt
-                  </button>
-                </div>
-              </>
-            )}/>
+          <>
+            <ScreenKopf t={t} accent={legionellenAccent} titel="Legionellen"
+              onTitelClick={() => setLegionellenTimelineKey(null)}
+              mitte={legionellenPille}
+              rechts={(legionellenTimelineKey && (!istDesktop || legionellenNurDetail)) ? (
+                <HeaderZurueck onClick={() => setLegionellenTimelineKey(null)} t={t}/>
+              ) : null}/>
+            <LegionellenTimeline
+              ves={vesSichtbar} kontakte={kontakteSichtbar}
+              setVes={setVes} setKontakte={setKontakte}
+              t={t} accent={legionellenAccent}
+              gotoVE={gotoVE} gotoKontakt={gotoKontakt}
+              istDesktop={istDesktop}
+              listenAnsicht={effectiveSettings.listenAnsicht} listeOpt={listeOpt}
+              kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff}
+              detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff}
+              offenKey={legionellenTimelineKey} setOffenKey={setLegionellenTimelineKey}
+              onNurDetail={setLegionellenNurDetail}/>
+          </>
         )}
         {!suchErg && screen === "legionellen" && legionellenView === "objekte" && (
           <ObjektListeMitDetail

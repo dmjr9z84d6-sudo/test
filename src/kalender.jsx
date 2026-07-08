@@ -8,7 +8,7 @@ import {
 import {
   Avatar, DatumFeld, DatumKalender, DetailRahmen, objektKopfProps, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, HeaderPlus,
   Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat,
-  legionellenEffektiveNaechste, objektHatZentralesWarmwasser
+  legionellenEffektiveNaechste, legionellenFaelligStatus, objektHatZentralesWarmwasser
 } from "./components.jsx";
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useFirmenRollen, useKontaktFarbe,
@@ -31,7 +31,7 @@ import {
 } from "./liegenschaft.jsx";
 import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
-  ObjekteMasterDetail, VEKachel, VEListenZeile, alleEinheitenVonVe
+  LegionellenAnsicht, ObjekteMasterDetail, VEKachel, VEListenZeile, alleEinheitenVonVe
 } from "./objektansicht.jsx";
 import { objektBezugInfo } from "./kontakte.jsx";
 
@@ -3166,7 +3166,152 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
 
 
 
+// ── LegionellenTimeline (§95): objektübergreifende Fälligkeits-Timeline ──────
+// EXAKT die Optik und Mechanik der Kalender-Timeline (KalenderZeile in
+// Dringlichkeits-Buckets, Auswahl statt Inline-Aufklappen, Detail über
+// MasterDetailRahmen mit uebersichtBreite="master" → gleiche Listenbreite wie
+// im Kalender; mobil ersetzt das Detail die Liste). Gefüttert mit den
+// Legionellen-Fristen ALLER prüfpflichtigen Objekte — bewusst OHNE Fenster-
+// begrenzung, der Turnus läuft bis zu 3 Jahre (TrinkwV). Einträge im
+// sammleTermine-Format, Fälligkeit über den SSoT-Helfer. Controlled: offenKey/
+// setOffenKey leben im Rumpf (Header-Zurück setzt dort zurück, §94.3-Muster).
+function LegionellenTimeline({ ves, kontakte, t, accent, gotoVE, gotoKontakt,
+  istDesktop = true, listenAnsicht = "karten", listeOpt = null, kartenSpalten = 2,
+  kartenMaxBreite = 340, kartenMin = 272, detailMinBreite = 300, detailMin = null,
+  offenKey = null, setOffenKey = null, onNurDetail = null,
+  setVes = null, setKontakte = null }) {
+  var heute = new Date(); heute.setHours(0, 0, 0, 0);
+  var eintraege = [];
+  (ves || []).forEach(function(ve) {
+    if (!objektHatZentralesWarmwasser(ve)) return;
+    var naechste = legionellenEffektiveNaechste(ve.legionellen);
+    var status = legionellenFaelligStatus(naechste); // null = kein Prüfdatum
+    var d = parseDatumWert(naechste);
+    var ohneDatum = !d || isNaN(d.getTime());
+    // Ohne Prüfdatum: heutiges Datum als Anker („ab heute handeln"), eigener
+    // Bucket „Keine Prüfung erfasst" macht den Zustand explizit.
+    var datum = new Date(ohneDatum ? heute : d); datum.setHours(0, 0, 0, 0);
+    eintraege.push({
+      datum: datum,
+      iso: datum.getFullYear() + "-" + String(datum.getMonth()+1).padStart(2,"0") + "-" + String(datum.getDate()).padStart(2,"0"),
+      titel: ohneDatum ? "Legionellen-Prüfung — nicht erfasst" : "Legionellen-Prüfung fällig",
+      typ: "legionellen", farbe: accent, icon: "drop",
+      bezugLabel: ve.nr || ve.name || ("Objekt " + ve.id),
+      sub: ve.strasse || ve.adresse || "",
+      objektId: ve.id, kontaktId: null, einheitIds: [], kontaktIds: [],
+      ziel: { tab: "legionellen", karteId: null, label: "Zur Legionellen-Prüfung" },
+      diff: tagsDiffMS(heute, datum),
+      _status: ohneDatum ? "nichtErfasst" : status,
+      _veId: ve.id
+    });
+  });
+  var BUCKETS = [
+    { id: "ueberfaellig", label: "Überfällig" },
+    { id: "nichtErfasst", label: "Keine Prüfung erfasst" },
+    { id: "bald",         label: "Demnächst (≤ 3 Monate)" },
+    { id: "ok",           label: "Später" },
+  ];
+  var gruppen = {};
+  BUCKETS.forEach(function(b) { gruppen[b.id] = []; });
+  eintraege.forEach(function(e) { (gruppen[e._status] || gruppen.ok).push(e); });
+  BUCKETS.forEach(function(b) { gruppen[b.id].sort(function(a, x) { return a.datum - x.datum; }); });
+  var eKey = function(e) { return "leg-" + e._veId; };
+  var offener = null;
+  for (var oi = 0; oi < eintraege.length; oi++) {
+    if (eKey(eintraege[oi]) === offenKey) { offener = eintraege[oi]; break; }
+  }
+  var waehle = function(key) { if (setOffenKey) setOffenKey(offenKey === key ? null : key); };
+  // Eine KalenderZeile je Eintrag (DRY für Liste + Detail) — keine Lösch-/
+  // Notiz-/Bearbeiten-Callbacks: Fristen sind BERECHNET, nicht manuell.
+  var zeile = function(e, imDetail) {
+    var key = eKey(e);
+    return (
+      <KalenderZeile key={key + (imDetail ? "-detail" : "")} termin={e} t={t}
+        rahmenFarbe={accent} imDetail={imDetail === true}
+        kontakte={kontakte} ves={ves} setKontakte={setKontakte}
+        onKontaktClick={gotoKontakt} onVEClick={function(id) { if (gotoVE) gotoVE(id, e.ziel); }}
+        offen={imDetail === true}
+        onToggle={function() { waehle(key); }}
+        onZiel={function() { if (gotoVE) gotoVE(e.objektId, e.ziel); }}/>
+    );
+  };
+  var veVon = function(e) {
+    for (var i = 0; i < (ves || []).length; i++) {
+      if (ves[i] && ves[i].id === e._veId) return ves[i];
+    }
+    return null;
+  };
+  var masterListe = (
+    <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0, minWidth: 0,
+      width: "100%", overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
+      {eintraege.length === 0 && (
+        <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", marginTop: 20 }}>
+          Kein Objekt ist prüfpflichtig (zentrale Warmwasserversorgung).
+        </div>
+      )}
+      {BUCKETS.map(function(b) {
+        if (gruppen[b.id].length === 0) return null;
+        return (
+          <div key={b.id} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: FS.s, fontWeight: FW.bold,
+              color: b.id === "ueberfaellig" ? "#EF4444" : t.sub,
+              textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8, marginTop: 4 }}>
+              {b.label} <span style={{ color: t.muted, fontWeight: FW.medium }}>({gruppen[b.id].length})</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {gruppen[b.id].map(function(e) { return zeile(e, false); })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+  // Detail: aufgeklappte KalenderZeile (Kalender-Optik) + darunter die
+  // LegionellenAnsicht des Objekts (read-only) — „alle nötigen Informationen"
+  // vor dem Sprung; der „Zur Legionellen-Prüfung"-Link der Zeile ist der Weg
+  // ins Objekt.
+  var detailVE = offener ? veVon(offener) : null;
+  var detailInhalt = offener ? (
+    <DetailRahmen t={t} accent={accent}>
+      {zeile(offener, true)}
+      {detailVE ? (
+        <div style={{ marginTop: 10 }}>
+          <LegionellenAnsicht ve={detailVE} setVes={setVes} t={t} accent={accent}
+            editMode={false} kontakte={kontakte} onKontaktClick={gotoKontakt}/>
+        </div>
+      ) : null}
+    </DetailRahmen>
+  ) : null;
+  // MOBIL: Detail ersetzt die Liste (Zurück im Header, Rumpf-State).
+  if (!istDesktop) {
+    if (offener) {
+      return (
+        <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0, minWidth: 0,
+          width: "100%", overflowY: "auto", padding: "8px 2px", boxSizing: "border-box" }}>
+          {detailInhalt}
+        </div>
+      );
+    }
+    return masterListe;
+  }
+  // DESKTOP: kanonisches Master-Detail (§75) — Liste auf Master-Breite begrenzt.
+  return (
+    <div style={{ display: "flex", flexDirection: "row", flex: 1,
+      minHeight: 0, minWidth: 0, width: "100%" }}>
+      <MasterDetailRahmen
+        master={masterListe}
+        detail={detailInhalt}
+        istDesktop={true}
+        listenAnsicht={listenAnsicht} listeOpt={listeOpt}
+        kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+        kartenMin={kartenMin} detailMinBreite={detailMinBreite} detailMin={detailMin}
+        gap={10} onNurDetail={onNurDetail}
+        uebersichtBreite="master"/>
+    </div>
+  );
+}
+
 export {
   AUTO_BETEILIGTE_REGELN, KALENDER_TYPEN, KAL_FENSTER_MONATE, KAL_ZOOM_STUFEN,
-  KalenderPanel, KalenderScreen, isoKW, restzeitText, sammleTermine, terminEinheitIds
+  KalenderPanel, KalenderScreen, LegionellenTimeline, isoKW, restzeitText, sammleTermine, terminEinheitIds
 };
