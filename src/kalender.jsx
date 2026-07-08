@@ -7,7 +7,8 @@ import {
 } from "./datenmodell.js";
 import {
   Avatar, DatumFeld, DatumKalender, DetailRahmen, objektKopfProps, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, HeaderPlus,
-  Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat
+  Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat,
+  legionellenNaechste, objektHatZentralesWarmwasser
 } from "./components.jsx";
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useFirmenRollen, useKontaktFarbe,
@@ -297,6 +298,25 @@ function sammleTermine(ves, kontakte, fensterMonate, rueckMonate, freieTermine) 
     }
     sammleKartenFristen(ve.verwaltungsKarten, "Verwaltung", "verwaltung");
     sammleKartenFristen(ve.dokumenteKarten, "Dokument", "dokumente");
+
+    // Legionellen-Frist (TrinkwV, §68/§95): die berechnete nächste Fälligkeit
+    // als eigener Termin-Typ 💧. Nur prüfpflichtige Objekte (zentrale Warm-
+    // wasserversorgung). Quelle ist ve.legionellen (strukturierte Daten des
+    // Legionellen-Tabs), NICHT die Karten-Datumsfelder — exakt dieselbe
+    // Rechnung wie LegionellenAnsicht: manuell gesetztes Datum gewinnt, sonst
+    // letzte Prüfung + Befund-Intervall.
+    if (objektHatZentralesWarmwasser(ve)) {
+      var lg = ve.legionellen || {};
+      var lgNaechste = (lg.naechsteManuell && lg.naechste)
+        ? lg.naechste
+        : legionellenNaechste(lg.letzte || "", lg.befund || "unauffaellig");
+      var lgD = parseDatumWert(lgNaechste);
+      if (lgD && imFenster(lgD)) {
+        add(lgD, "Legionellen-Prüfung fällig", "legionellen", "#06B6D4", "drop",
+          objLabel, objSub, ve.id, null,
+          { tab: "legionellen", karteId: null, label: "Zur Legionellen-Prüfung" });
+      }
+    }
   });
 
   // Jahrestage aus Kontakt-Datumsfeldern (jährlich wiederkehrend, nächstes Vorkommen)
@@ -402,6 +422,7 @@ const KALENDER_TYPEN = [
   { id: "wahl",       label: "Wahl",       kurz: "Wahl" },
   { id: "vertrag",    label: "Verträge",   kurz: "Vertr." },
   { id: "technik",    label: "Technik",    kurz: "Tech." },
+  { id: "legionellen",label: "Legionellen",kurz: "Leg." },
   { id: "eigentuemer",label: "Eigentümer", kurz: "Eig." },
   { id: "belegung",   label: "Belegung",   kurz: "Beleg." },
   { id: "sev",        label: "SEV",        kurz: "SEV" },

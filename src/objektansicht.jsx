@@ -2824,9 +2824,127 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
 
 
 
+// ── LegionellenTimeline (§95): objektübergreifende Fälligkeits-Übersicht ─────
+// Alle prüfpflichtigen Objekte (zentrale Warmwasserversorgung) als flache
+// Liste, nach Dringlichkeit sortiert: überfällig → ohne Prüfdatum → bald
+// (≤3 Mon) → ok. Zwei Stufen vor dem Sprung (Vorgabe 08.07.2026): Zeile =
+// kurz & knapp (Ampel · Objekt · fällig); Klick auf den GANZEN Kopf klappt
+// Details auf (kein Chevron — Karten-Klapp-Muster); erst dort „Zum Objekt →"
+// (onOeffneObjekt wechselt im selben Screen in die Objekte-Sicht, Kalender-
+// Sprungmuster). Reine Inhalts-Komponente — der ScreenKopf mit KopfPille
+// lebt im Rumpf (S9), wo auch der View-State liegt.
+function LegionellenTimeline({ ves, t, accent, onOeffneObjekt = null }) {
+  const [offenId, setOffenId] = useState(null);
+  const eintraege = (ves || [])
+    .filter(v => objektHatZentralesWarmwasser(v))
+    .map(v => {
+      const lg = v.legionellen || {};
+      const naechste = (lg.naechsteManuell && lg.naechste)
+        ? lg.naechste
+        : legionellenNaechste(lg.letzte || "", lg.befund || "unauffaellig");
+      const status = legionellenFaelligStatus(naechste); // null = kein Datum
+      const d = parseDatumWert(naechste);
+      return { ve: v, lg, naechste, status,
+        zeit: (d && !isNaN(d.getTime())) ? d.getTime() : null };
+    });
+  // Dringlichkeit: überfällig(0) → ohne Prüfdatum(1, unklarer Zustand =
+  // Handlungsbedarf) → bald(2) → ok(3); innerhalb der Gruppe nach Datum asc.
+  const rangVon = (s) => s === "ueberfaellig" ? 0 : s == null ? 1 : s === "bald" ? 2 : 3;
+  eintraege.sort((a, b) => {
+    const ra = rangVon(a.status), rb = rangVon(b.status);
+    if (ra !== rb) return ra - rb;
+    return (a.zeit || 0) - (b.zeit || 0);
+  });
+  // Ampel-Farbe: die Tab-Ampel lässt „ok" bewusst neutral
+  // (LEGIONELLEN_STATUS_FARBE) — in der Timeline ist „alles erledigt" aber
+  // selbst die Information, deshalb hier Grün. Kein SSoT-Bruch, nur
+  // Übersichts-Darstellung; rot/amber identisch zur SSoT.
+  const punktFarbe = (s) => s === "ueberfaellig" ? "#EF4444"
+    : s === "bald" ? "#F59E0B" : s === "ok" ? "#10B981" : t.muted;
+  const statusText = (e) => e.status === "ueberfaellig"
+    ? ("überfällig seit " + e.naechste)
+    : e.status == null ? "keine Prüfung erfasst" : ("fällig " + e.naechste);
+  if (!eintraege.length) {
+    return (
+      <div style={{ background: t.card, border: `1px solid ${t.border}`,
+        borderRadius: RAD.lg, padding: "16px 18px", fontSize: FS.m,
+        color: t.muted, lineHeight: 1.5 }}>
+        Kein Objekt ist prüfpflichtig (zentrale Warmwasserversorgung) — die
+        Timeline bleibt leer. (Einstellbar an der Technik-Karte des Gebäudes.)
+      </div>
+    );
+  }
+  const infoZeile = (label, wert) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12,
+      padding: "4px 0" }}>
+      <span style={{ fontSize: FS.s, color: t.muted, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text,
+        textAlign: "right" }}>{wert}</span>
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {eintraege.map(e => {
+        const offen = offenId === e.ve.id;
+        const farbe = punktFarbe(e.status);
+        const bInfo = legionellenBefund((e.lg && e.lg.befund) || "unauffaellig");
+        const stellen = Array.isArray(e.lg.pruefstellen) ? e.lg.pruefstellen.length : 0;
+        return (
+          <div key={e.ve.id} style={{ background: t.card,
+            border: `1px solid ${offen ? farbe : t.border}`,
+            borderRadius: RAD.lg, overflow: "hidden" }}>
+            {/* Kopf: GANZE Fläche klickbar (kein Chevron) */}
+            <div onClick={() => setOffenId(offen ? null : e.ve.id)}
+              style={{ display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 14px", cursor: "pointer" }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%",
+                background: farbe, flexShrink: 0 }}/>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {e.ve.nr || e.ve.name || ("Objekt " + e.ve.id)}
+                </div>
+                {(e.ve.strasse || e.ve.adresse) ? (
+                  <div style={{ fontSize: FS.s, color: t.muted, whiteSpace: "nowrap",
+                    overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {e.ve.strasse || e.ve.adresse}
+                  </div>
+                ) : null}
+              </div>
+              <span style={{ fontSize: FS.s, fontWeight: FW.bold, flexShrink: 0,
+                color: e.status === "ueberfaellig" ? "#EF4444" : t.sub }}>
+                {statusText(e)}
+              </span>
+            </div>
+            {offen && (
+              <div style={{ padding: "8px 14px 12px", borderTop: `1px solid ${t.border}` }}>
+                {infoZeile("Letzte Prüfung", e.lg.letzte ? datumAnzeige(parseDatumWert(e.lg.letzte)) : "—")}
+                {infoZeile("Befund", bInfo.label)}
+                {infoZeile("Turnus", bInfo.kurz.replace("+", "alle ").replace(" J", " Jahre").replace(" M", " Monate"))}
+                {infoZeile("Nächste fällig", e.naechste || "—")}
+                {infoZeile("Probenahmestellen", String(stellen))}
+                {onOeffneObjekt ? (
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                    <button onClick={() => onOeffneObjekt(e.ve.id)}
+                      style={{ background: "transparent", border: "none", cursor: "pointer",
+                        padding: "4px 2px", fontFamily: "inherit", fontSize: FS.s,
+                        fontWeight: FW.bold, color: accent }}>
+                      Zum Objekt
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export {
   EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons, FotoGalerie, FotosAnsicht,
-  HistorieAnsicht, LegionellenAnsicht, TERegisterAnsicht,
+  HistorieAnsicht, LegionellenAnsicht, LegionellenTimeline, TERegisterAnsicht,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf

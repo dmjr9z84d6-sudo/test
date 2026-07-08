@@ -332,7 +332,7 @@ import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, FotosAnsicht, HistorieAnsicht,
-  LegionellenAnsicht, TERegisterAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
+  LegionellenAnsicht, LegionellenTimeline, TERegisterAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 } from "./objektansicht.jsx";
 // Kontakt-Kategorien — ausgelagert nach kontakte.jsx (zyklischer Import).
@@ -1090,7 +1090,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   gotoVE, gotoKontakt, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null,
   listenAnsicht = "karten", viewVEId = null, setViewVEId = null, festeGridSpec = null,
   renderDetail = null, istDesktop = true, emptyText = "Keine Einträge.",
-  detailAktion = null, masterBadge = null,
+  detailAktion = null, masterBadge = null, kopfMitte = null,
   titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null }) {
   const offenVEObj = (ves || []).find(v => v.id === viewVEId) || null;
   // Im Mobil-Detail (Objekt offen, kein Desktop-Nebeneinander) zeigt der Header
@@ -1104,12 +1104,19 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   const header = (
     <ScreenKopf t={t} accent={accent} titel={titel}
       onTitelClick={() => setViewVEId && setViewVEId(null)}
-      mitte={anzahl != null ? (
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-          background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
-          padding: "3px 10px", flexShrink: 0 }}>
-          <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.sub }}>WEG</span>
-          <span style={{ fontSize: FS.s, fontWeight: FW.heavy, color: t.text }}>{anzahl}</span>
+      mitte={(kopfMitte || anzahl != null) ? (
+        // §95: optionaler kopfMitte-Slot (z. B. KopfPille Timeline⇄Objekte)
+        // VOR der Anzahl-Pille — ohne kopfMitte exakt das bisherige Bild.
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {kopfMitte}
+          {anzahl != null ? (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
+              background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.pill,
+              padding: "3px 10px", flexShrink: 0 }}>
+              <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.sub }}>WEG</span>
+              <span style={{ fontSize: FS.s, fontWeight: FW.heavy, color: t.text }}>{anzahl}</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
       rechts={zeigeZurueck ? (
@@ -1739,6 +1746,12 @@ export default function App() {
   const [fotosEditMode, setFotosEditMode] = useState(false);
   const [legionellenViewVEId, setLegionellenViewVEId] = useState(null);
   const [legionellenEditMode, setLegionellenEditMode] = useState(false);
+  // §95: Sicht-Umschalter der Legionellen-Kachel (KopfPille wie im Kalender):
+  // "objekte" = bestehende Master-Detail-Erfassung, "timeline" = objektüber-
+  // greifende Fälligkeits-Übersicht. Default "objekte" — bestehendes Verhalten
+  // der Kachel bleibt unverändert; View bleibt (wie kalView) über Screen-
+  // Wechsel hinweg erhalten.
+  const [legionellenView, setLegionellenView] = useState("objekte");
   const [teViewVEId, setTeViewVEId] = useState(null);
   const [historieViewVEId, setHistorieViewVEId] = useState(null);
   const [kommunikationViewVEId, setKommunikationViewVEId] = useState(null);
@@ -2471,6 +2484,18 @@ export default function App() {
       </div>
     );
   };
+
+  // §95: Ableitungen der Legionellen-Kachel — EINE Quelle für beide Sichten
+  // (Timeline + Objekte), statt die Accent-Suche mehrfach inline zu rechnen.
+  const legionellenAccent = ((effectiveSettings.kacheln || [])
+    .find(k => k.id === "legionellen") || {}).farbe || "#06B6D4";
+  const legionellenPille = (
+    <KopfPille t={t} accent={legionellenAccent}
+      optionen={[{ id: "objekte", label: "Objekte" }, { id: "timeline", label: "Timeline" }]}
+      aktiv={legionellenView}
+      onWaehle={(id) => { setLegionellenView(id); setLegionellenViewVEId(null);
+        setLegionellenEditMode(false); }}/>
+  );
 
   return (
     <TipProvider>
@@ -3352,11 +3377,28 @@ export default function App() {
                 editMode={fotosEditMode}/>
             )}/>
         )}
-        {!suchErg && screen === "legionellen" && (
+        {/* §95: Timeline-Sicht der Legionellen-Kachel — objektübergreifende
+            Fälligkeits-Übersicht. „Zum Objekt" wechselt (Kalender-Sprungmuster)
+            in die Objekte-Sicht und klappt das Objekt auf. */}
+        {!suchErg && screen === "legionellen" && legionellenView === "timeline" && (
+          <>
+            <ScreenKopf t={t} accent={legionellenAccent} titel="Legionellen"
+              mitte={legionellenPille}/>
+            <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
+              minWidth: 0, width: "100%", boxSizing: "border-box", overflowY: "auto",
+              padding: 2 }}>
+              <LegionellenTimeline ves={vesSichtbar} t={t} accent={legionellenAccent}
+                onOeffneObjekt={(veId) => { setLegionellenView("objekte");
+                  setLegionellenViewVEId(veId); setLegionellenEditMode(false); }}/>
+            </div>
+          </>
+        )}
+        {!suchErg && screen === "legionellen" && legionellenView === "objekte" && (
           <ObjektListeMitDetail
             ves={vesSichtbar} kontakte={kontakteSichtbar}
             setVes={setVes} setKontakte={setKontakte} t={t}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
+            kopfMitte={legionellenPille}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
             detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
             istDesktop={istDesktop}
@@ -3374,7 +3416,7 @@ export default function App() {
                 if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
               }, 450);
             }}
-            accent={(effectiveSettings.kacheln.find(k => k.id === "legionellen") || {}).farbe || "#06B6D4"}
+            accent={legionellenAccent}
             viewVEId={legionellenViewVEId} setViewVEId={(id) => { setLegionellenViewVEId(id); setLegionellenEditMode(false); }}
             titel="Legionellen" anzahl={(vesSichtbar || []).length}
             emptyText="Keine Legionellen-Daten für dieses Objekt."
@@ -3382,7 +3424,7 @@ export default function App() {
               // Stift nur bei Prüfpflicht (zentrales Warmwasser) — sonst gibt es
               // nichts zu erfassen und der Hinweis unten erklärt das.
               if (!objektHatZentralesWarmwasser(veObj)) return null;
-              const lAccent = (effectiveSettings.kacheln.find(k => k.id === "legionellen") || {}).farbe || "#06B6D4";
+              const lAccent = legionellenAccent;
               return legionellenEditMode ? (
                 <button onClick={() => setLegionellenEditMode(false)}
                   title="Fertig" aria-label="Fertig"
@@ -3407,7 +3449,7 @@ export default function App() {
               // (TrinkwV) — dann Hinweis statt leerer Erfassung.
               objektHatZentralesWarmwasser(veObj) ? (
                 <LegionellenAnsicht ve={veObj} setVes={setVes} t={t}
-                  accent={(effectiveSettings.kacheln.find(k => k.id === "legionellen") || {}).farbe || "#06B6D4"}
+                  accent={legionellenAccent}
                   editMode={legionellenEditMode}
                   kontakte={kontakteSichtbar} onKontaktClick={gotoKontakt}/>
               ) : (
