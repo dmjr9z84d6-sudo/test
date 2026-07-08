@@ -8,7 +8,7 @@ import {
 import {
   Avatar, DatumFeld, DatumKalender, DetailRahmen, objektKopfProps, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, HeaderPlus,
   Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat,
-  legionellenNaechste, objektHatZentralesWarmwasser
+  legionellenEffektiveNaechste, objektHatZentralesWarmwasser
 } from "./components.jsx";
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useFirmenRollen, useKontaktFarbe,
@@ -302,15 +302,10 @@ function sammleTermine(ves, kontakte, fensterMonate, rueckMonate, freieTermine) 
     // Legionellen-Frist (TrinkwV, §68/§95): die berechnete nächste Fälligkeit
     // als eigener Termin-Typ 💧. Nur prüfpflichtige Objekte (zentrale Warm-
     // wasserversorgung). Quelle ist ve.legionellen (strukturierte Daten des
-    // Legionellen-Tabs), NICHT die Karten-Datumsfelder — exakt dieselbe
-    // Rechnung wie LegionellenAnsicht: manuell gesetztes Datum gewinnt, sonst
-    // letzte Prüfung + Befund-Intervall.
+    // Legionellen-Tabs), NICHT die Karten-Datumsfelder — Rechnung über den
+    // SSoT-Helfer legionellenEffektiveNaechste (derselbe wie Tab + Timeline).
     if (objektHatZentralesWarmwasser(ve)) {
-      var lg = ve.legionellen || {};
-      var lgNaechste = (lg.naechsteManuell && lg.naechste)
-        ? lg.naechste
-        : legionellenNaechste(lg.letzte || "", lg.befund || "unauffaellig");
-      var lgD = parseDatumWert(lgNaechste);
+      var lgD = parseDatumWert(legionellenEffektiveNaechste(ve.legionellen));
       if (lgD && imFenster(lgD)) {
         add(lgD, "Legionellen-Prüfung fällig", "legionellen", "#06B6D4", "drop",
           objLabel, objSub, ve.id, null,

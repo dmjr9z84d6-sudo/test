@@ -314,6 +314,7 @@ import {
   legionellenFindeEinheit,
   legionellenFindeRaum,
   legionellenNaechste,
+  legionellenEffektiveNaechste,
   legionellenStandorte,
   objektHatZentralesWarmwasser,
   parseAnteile,
@@ -332,7 +333,7 @@ import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, FotosAnsicht, HistorieAnsicht,
-  LegionellenAnsicht, LegionellenTimeline, TERegisterAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
+  LegionellenAnsicht, TERegisterAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 } from "./objektansicht.jsx";
 // Kontakt-Kategorien — ausgelagert nach kontakte.jsx (zyklischer Import).
@@ -2496,6 +2497,33 @@ export default function App() {
       onWaehle={(id) => { setLegionellenView(id); setLegionellenViewVEId(null);
         setLegionellenEditMode(false); }}/>
   );
+  // §95: Timeline = ObjektListeMitDetail mit vorgefilterten + nach Dringlichkeit
+  // sortierten Objekten (überfällig → ohne Prüfdatum → bald ≤3 Mon → ok, inner-
+  // halb nach Fälligkeit). Fälligkeit über SSoT-Helfer legionellenEffektiveNaechste.
+  const legionellenTimelineVes = React.useMemo(() => {
+    const rangVon = (s) => s === "ueberfaellig" ? 0 : s == null ? 1 : s === "bald" ? 2 : 3;
+    return (vesSichtbar || [])
+      .filter(v => objektHatZentralesWarmwasser(v))
+      .map(v => {
+        const naechste = legionellenEffektiveNaechste(v.legionellen);
+        const d = parseDatumWert(naechste);
+        return { v, rang: rangVon(legionellenFaelligStatus(naechste)),
+          zeit: (d && !isNaN(d.getTime())) ? d.getTime() : 0 };
+      })
+      .sort((a, b) => (a.rang - b.rang) || (a.zeit - b.zeit))
+      .map(x => x.v);
+  }, [vesSichtbar]);
+  // Fälligkeits-Badge fürs Master (extraBadge-Slot §94.2): Text erbt die
+  // Badge-Farbe (= Legionellen-Accent, SSoT „ok"-Fall); überfällig/bald werden
+  // über LEGIONELLEN_STATUS_FARBE gefärbt — exakt die Ampel des Objekt-Tabs.
+  const legionellenTimelineBadge = (veObj) => {
+    const naechste = legionellenEffektiveNaechste(veObj && veObj.legionellen);
+    const status = legionellenFaelligStatus(naechste);
+    const txt = status === "ueberfaellig" ? ("überfällig seit " + naechste)
+      : status == null ? "keine Prüfung erfasst" : ("fällig " + naechste);
+    const farbe = LEGIONELLEN_STATUS_FARBE[status] || null;
+    return farbe ? <span style={{ color: farbe }}>{txt}</span> : txt;
+  };
 
   return (
     <TipProvider>
@@ -3377,21 +3405,41 @@ export default function App() {
                 editMode={fotosEditMode}/>
             )}/>
         )}
-        {/* §95: Timeline-Sicht der Legionellen-Kachel — objektübergreifende
-            Fälligkeits-Übersicht. „Zum Objekt" wechselt (Kalender-Sprungmuster)
-            in die Objekte-Sicht und klappt das Objekt auf. */}
+        {/* §95: Timeline-Sicht der Legionellen-Kachel — DERSELBE Baustein wie
+            die Objekte-Sicht (ObjektListeMitDetail), nur konfiguriert: vorge-
+            filterte + nach Dringlichkeit sortierte Objekte, Zeilen-Ansicht,
+            Fälligkeits-Badge (SSoT-Ampel), Detail read-only nebendran. */}
         {!suchErg && screen === "legionellen" && legionellenView === "timeline" && (
-          <>
-            <ScreenKopf t={t} accent={legionellenAccent} titel="Legionellen"
-              mitte={legionellenPille}/>
-            <div data-ad-scroll="y" data-ad-auslauf="1" style={{ flex: 1, minHeight: 0,
-              minWidth: 0, width: "100%", boxSizing: "border-box", overflowY: "auto",
-              padding: 2 }}>
-              <LegionellenTimeline ves={vesSichtbar} t={t} accent={legionellenAccent}
-                onOeffneObjekt={(veId) => { setLegionellenView("objekte");
-                  setLegionellenViewVEId(veId); setLegionellenEditMode(false); }}/>
-            </div>
-          </>
+          <ObjektListeMitDetail
+            ves={legionellenTimelineVes} kontakte={kontakteSichtbar}
+            setVes={setVes} setKontakte={setKontakte} t={t}
+            gotoVE={gotoVE} gotoKontakt={gotoKontakt}
+            kopfMitte={legionellenPille}
+            cardWidth={cardWidth} kartenSpalten={kartenSpalten}
+            detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt}
+            listenAnsicht="liste" festeGridSpec={festeGridSpec}
+            istDesktop={istDesktop}
+            legendeAn={legendeSichtbar(effectiveSettings)}
+            accent={legionellenAccent}
+            viewVEId={legionellenViewVEId} setViewVEId={(id) => { setLegionellenViewVEId(id); setLegionellenEditMode(false); }}
+            titel="Legionellen" anzahl={(legionellenTimelineVes || []).length}
+            emptyText="Kein Objekt ist prüfpflichtig (zentrale Warmwasserversorgung)."
+            masterBadge={legionellenTimelineBadge}
+            renderDetail={(veObj) => (
+              <>
+                <LegionellenAnsicht ve={veObj} setVes={setVes} t={t}
+                  accent={legionellenAccent} editMode={false}
+                  kontakte={kontakteSichtbar} onKontaktClick={gotoKontakt}/>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                  <button onClick={() => gotoVE(veObj.id)}
+                    style={{ background: "transparent", border: "none", cursor: "pointer",
+                      padding: "4px 2px", fontFamily: "inherit", fontSize: FS.s,
+                      fontWeight: FW.bold, color: legionellenAccent }}>
+                    Zum Objekt
+                  </button>
+                </div>
+              </>
+            )}/>
         )}
         {!suchErg && screen === "legionellen" && legionellenView === "objekte" && (
           <ObjektListeMitDetail

@@ -2312,6 +2312,17 @@ function legionellenFaelligStatus(naechsteWert, heute) {
 }
 const LEGIONELLEN_STATUS_FARBE = { ok: null, bald: "#F59E0B", ueberfaellig: "#EF4444" };
 
+// Effektive nächste Fälligkeit aus einem Legionellen-Datenobjekt
+// ({ letzte, befund, naechste, naechsteManuell }) — EINE Quelle für Tab,
+// Kalender-Einspeisung und Timeline (§95): manuell gesetztes Datum gewinnt,
+// sonst letzte Prüfung + Befund-Intervall.
+function legionellenEffektiveNaechste(daten) {
+  const d = daten || {};
+  return (d.naechsteManuell && d.naechste)
+    ? d.naechste
+    : legionellenNaechste(d.letzte || "", d.befund || "unauffaellig");
+}
+
 // ── Prüfpflicht-Ableitung aus der Technik ───────────────────────────────────
 // Die Legionellen-Prüfpflicht (TrinkwV) gilt nur bei ZENTRALER Trinkwasser-
 // erwärmung (Großanlage). Statt eines redundanten Schalters leiten wir das aus
@@ -3680,6 +3691,7 @@ export {
   LEGIONELLEN_BEFUNDE,
   legionellenBefund,
   legionellenNaechste,
+  legionellenEffektiveNaechste,
   legionellenFaelligStatus,
   LEGIONELLEN_STATUS_FARBE,
   LEGIONELLEN_ZENTRAL_SYSTEME,
