@@ -8,7 +8,8 @@ import {
 import {
   Avatar, DatumFeld, DatumKalender, DetailRahmen, objektKopfProps, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, HeaderPlus,
   Toggle, ZeitFeld, ZeitWahl, datumAnzeige, tageImMonat,
-  legionellenEffektiveNaechste, legionellenFaelligStatus, objektHatZentralesWarmwasser
+  legionellenEffektiveNaechste, legionellenFaelligStatus, objektHatZentralesWarmwasser,
+  overlayBackdrop, overlayPanel, OverlayKopf, overlayBody,
 } from "./components.jsx";
 import {
   DESKTOP_MIN_WIDTH, I, StickySectionHeader, useFirmenRollen, useKontaktFarbe,
@@ -1855,38 +1856,15 @@ function WizardDialog({ titel, anzahl, aktivIdx, onClose, onZurueck, onWeiter,
   );
 }
 
-function terminOverlayBackdrop() {
-  return { position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
-    background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex",
-    alignItems: "center", justifyContent: "center",
-    padding: "16px", boxSizing: "border-box" };
-}
-function terminOverlayPanel(t) {
-  return { background: t.bg, border: `1px solid ${t.border}`,
-    borderRadius: RAD.lg, width: "100%", maxWidth: 460,
-    height: "auto", maxHeight: "calc(100dvh - 32px)",
-    display: "flex", flexDirection: "column",
-    boxSizing: "border-box", overflow: "hidden" };
-}
+// §76-Hebung (v13.57): Das Overlay-Muster lebt jetzt generisch in
+// components.jsx (overlayBackdrop/Panel/OverlayKopf/Body) — hier nur noch
+// dünne Wrapper, damit alle Aufrufstellen unverändert bleiben.
+const terminOverlayBackdrop = overlayBackdrop;
+const terminOverlayPanel = overlayPanel;
 function terminOverlayKopf(t, titel, onClose) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "12px 16px", borderBottom: `1px solid ${t.border}`, flexShrink: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <I name="plus" size={14} color={t.text}/>
-        <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titel}</span>
-      </div>
-      <button onClick={onClose} title="Schließen" aria-label="Schließen"
-        style={{ background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
-        <I name="x" size={16} color={t.sub}/>
-      </button>
-    </div>
-  );
+  return <OverlayKopf t={t} titel={titel} onClose={onClose}/>;
 }
-function terminOverlayBody() {
-  return { flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 14px 14px 14px" };
-}
+const terminOverlayBody = overlayBody;
 
 function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante = "overlay",
   ves = [], kontakte = [], setVes = null, setKontakte = null, setFreieTermine = null, onGotoVE = null, onGotoKontakt = null, onGotoTermin = null }) {

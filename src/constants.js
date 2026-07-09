@@ -134,8 +134,21 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "13.56";
+export const APP_VERSION = "13.57";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
+
+// ── Handlungs-Ampel-Farbtöne (§96) ───────────────────────────────────────────
+// EINE Quelle für alle Ampel-Punkte: die 5-stufige Vorgangs-Ampel UND der
+// 3-stufige Objekt-Status-Punkt (HANDLUNGSBEDARF_FARBEN in objektansicht.jsx
+// = Teilmenge rot/gelb/gruen hieraus). Töne sind die etablierten Statusfarben
+// des Projekts (rot/gelb wie LEGIONELLEN_STATUS_FARBE, blau/grau wie Bestand).
+export const AMPEL_FARBEN = {
+  rot:   "#EF4444", // überfällig / Frist verpasst
+  gelb:  "#F59E0B", // Handlung fällig
+  blau:  "#3B82F6", // offener Entwurf (erfasst)
+  gruen: "#22C55E", // läuft
+  grau:  "#94A3B8", // ruht berechtigt / geschlossen
+};
 
 // ── Seriös-Modus Farbe ───────────────────────────────────────────────────────
 // Im "Weniger Farbe"-Modus wird eine einzige neutrale Graufarbe für ALLE

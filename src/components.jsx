@@ -57,6 +57,43 @@ function Toggle({ value, onChange, color = ACCENT, disabled = false }) {
 // ── SegmentControl — einheitliche Auswahl aus 2–4 Optionen (DESIGN §37) ─────
 // Ersetzt alle handgebauten Segment-Button-Reihen und Auswahl-Pill-Reihen.
 // options: [{ id, label, icon? }]. Aktiv = voller Akzent + Kontrasttext.
+// ── Overlay-Bausteine (§76-Hebung aus kalender.jsx, v13.57) ──────────────────
+// EIN Overlay-Muster für alle Anlege-/Bearbeiten-Dialoge (Termine, Vorgänge,
+// künftige Flows): abgedunkelter Backdrop, zentriertes Panel (max 460), Kopf
+// mit Icon+Titel+Schließen, scrollender Body. dvh statt vh (§14 Safari).
+function overlayBackdrop() {
+  return { position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
+    background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex",
+    alignItems: "center", justifyContent: "center",
+    padding: "16px", boxSizing: "border-box" };
+}
+function overlayPanel(t) {
+  return { background: t.bg, border: `1px solid ${t.border}`,
+    borderRadius: RAD.lg, width: "100%", maxWidth: 460,
+    height: "auto", maxHeight: "calc(100dvh - 32px)",
+    display: "flex", flexDirection: "column",
+    boxSizing: "border-box", overflow: "hidden" };
+}
+function OverlayKopf({ t, titel, onClose, icon = "plus" }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "12px 16px", borderBottom: `1px solid ${t.border}`, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <I name={icon} size={14} color={t.text}/>
+        <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titel}</span>
+      </div>
+      <button onClick={onClose} title="Schließen" aria-label="Schließen"
+        style={{ background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
+        <I name="x" size={16} color={t.sub}/>
+      </button>
+    </div>
+  );
+}
+function overlayBody() {
+  return { flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 14px 14px 14px" };
+}
+
 function SegmentControl({ options, value, onChange, accent = ACCENT, t, voll = true }) {
   return (
     <div style={{ display: "inline-flex", gap: 4, background: t.surface,
@@ -3637,6 +3674,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
 // ╔═════════════════════════════════════════════════════════════════════════╗
 
 export {
+  overlayBackdrop, overlayPanel, OverlayKopf, overlayBody,
   KopfPille,
   ScreenKopf,
   HeaderZurueck,

@@ -8239,7 +8239,25 @@ function feldImKalender(f) {
   return istFristFeldName(f.name);
 }
 
-function KategorieKacheln({ settings, t, aktiverScreen, suchAktiv = false, onKlick }) {
+// ── KachelBadge (§96): Mini-Zähler oben rechts am Kachel-Icon ────────────────
+// EIN Baustein für beide Navigationen (mobile Leiste + Seitenleiste).
+// info = { zahl, farbe } — farbe ist ein fertiger Hex-Ton (AMPEL_FARBEN der
+// dringlichsten Stufe). Sitzt absolut am Icon-Container und funktioniert so
+// in allen Sidebar-Breiten-Modi (icon/kurz/voll).
+function KachelBadge({ info }) {
+  if (!info || !info.zahl) return null;
+  return (
+    <span style={{ position: "absolute", top: -5, right: -5, minWidth: 15,
+      height: 15, padding: "0 3px", borderRadius: 8, background: info.farbe,
+      color: "#fff", fontSize: 9.5, fontWeight: 700, display: "flex",
+      alignItems: "center", justifyContent: "center", lineHeight: 1,
+      boxSizing: "border-box", pointerEvents: "none" }}>
+      {info.zahl > 99 ? "99+" : info.zahl}
+    </span>
+  );
+}
+
+function KategorieKacheln({ settings, t, aktiverScreen, suchAktiv = false, onKlick, badges = null }) {
   const aktiv = settings.kacheln.filter(k => k.aktiv).sort((a, b) => a.reihenfolge - b.reihenfolge);
   return (
     <div style={{
@@ -8264,8 +8282,10 @@ function KategorieKacheln({ settings, t, aktiverScreen, suchAktiv = false, onKli
             onMouseEnter={e => { if (!ist) e.currentTarget.style.borderColor = k.farbe + "60"; }}
             onMouseLeave={e => { if (!ist) e.currentTarget.style.borderColor = t.border; }}>
             <div style={{ width: 24, height: 24, borderRadius: RAD.sm, flexShrink: 0,
+              position: "relative",
               background: k.farbe + "20", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <I name={k.icon} size={12} color={k.farbe}/>
+              <KachelBadge info={badges ? badges[k.id] : null}/>
             </div>
             <span style={{ fontSize: FS.m, fontWeight: ist ? 700 : 600,
               color: ist ? k.farbe : t.text,
@@ -8283,7 +8303,7 @@ function KategorieKacheln({ settings, t, aktiverScreen, suchAktiv = false, onKli
 //   · breite < 145px: Icon + erste 2 Buchstaben
 //   · breite ≥ 145px: Icon + voller Text
 // Breite wird über Drag-Handle am rechten Rand verstellt und in settings.sidebarBreite gespeichert.
-function SeitenleisteKacheln({ settings, setSettings, t, aktiverScreen, onKlick }) {
+function SeitenleisteKacheln({ settings, setSettings, t, aktiverScreen, onKlick, badges = null }) {
   const aktiv = settings.kacheln.filter(k => k.aktiv).sort((a, b) => a.reihenfolge - b.reihenfolge);
   const breite = settings.sidebarBreite || 200;
   const modus = sidebarModus(breite);
@@ -8339,8 +8359,10 @@ function SeitenleisteKacheln({ settings, setSettings, t, aktiverScreen, onKlick 
             onMouseEnter={e => { if (!ist) e.currentTarget.style.borderColor = k.farbe + "60"; }}
             onMouseLeave={e => { if (!ist) e.currentTarget.style.borderColor = t.border; }}>
             <div style={{ width: 28, height: 28, borderRadius: RAD.ms, flexShrink: 0,
+              position: "relative",
               background: k.farbe + "20", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <I name={k.icon} size={14} color={k.farbe}/>
+              <KachelBadge info={badges ? badges[k.id] : null}/>
             </div>
             {label && (
               <span style={{ fontSize: FS.l, fontWeight: ist ? 700 : 600,

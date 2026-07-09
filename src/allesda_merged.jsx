@@ -185,8 +185,21 @@ import {
   vsWertVon,
   wendeKontaktZuweisungenAn,
   wendeKontaktZuweisungenAnAlle,
-  zaehlerArtLabel
+  zaehlerArtLabel,
+  // §96 Vorgangs-Welt
+  leereVorgangsWelt,
+  normalisiereVorgangsWelt,
+  erzeugeVorgangsSeeds,
+  neuerVorgang,
+  neueBeteiligung,
+  neueNachricht,
+  neuerAuftrag
 } from "./datenmodell.js";
+
+import {
+  VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma, vorgangAnzahlFuerObjekt,
+  SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay
+} from "./vorgang.jsx";
 
 
 import {
@@ -1475,6 +1488,11 @@ export default function App() {
   // sondern in einem eigenen globalen Topf. Felder wie ein manueller Termin,
   // aber ohne objektId/einheitId.
   const [freieTermine, setFreieTermine] = useState([]);
+  // Vorgangs-Welt (§96): neun flache Listen (Vorgänge, Aufträge, Nachrichten,
+  // Beteiligungen, Angebote, Abnahmen, Rechnungen, Aufgaben, Beschlüsse) in
+  // EINEM Container — objektübergreifend wie freieTermine, gespiegelt gegen
+  // das Supabase-Schema C2–C4 (Migration 1:1).
+  const [vorgangsWelt, setVorgangsWelt] = useState(() => leereVorgangsWelt());
   // Flag: erst nach dem Laden aus Storage beginnt das Auto-Speichern,
   // sonst würde der initiale State (Defaults) den Storage überschreiben.
   const [storageGeladen, setStorageGeladen] = useState(false);
@@ -1626,6 +1644,16 @@ export default function App() {
       else setKontakte(prevK => wendeKontaktZuweisungenAnAlle(prevK, vFinal));
       if (vGeladen) setVes(vGeladen);
       if (Array.isArray(daten.freieTermine)) setFreieTermine(daten.freieTermine);
+      // Vorgangs-Welt (§96): gespeicherte Welt normalisiert übernehmen. Gibt es
+      // noch keine (Bestand vor v13.57), EINMAL Demo-Seeds an die echten
+      // Objekte hängen (alle demo:true, gesammelt entfernbar). Danach ist die
+      // Welt — auch geleert — im Storage vorhanden, Seeds kommen nie doppelt.
+      if (daten.vorgangsWelt && typeof daten.vorgangsWelt === "object") {
+        setVorgangsWelt(normalisiereVorgangsWelt(daten.vorgangsWelt));
+      } else {
+        const seeds = erzeugeVorgangsSeeds(vFinal, kGeladen || kontakte);
+        if (seeds) setVorgangsWelt(seeds);
+      }
     } else {
       // Keine gespeicherten Daten → DEFAULT-Stand ebenfalls einmal synchronisieren.
       setKontakte(prevK => wendeKontaktZuweisungenAnAlle(prevK, ves));
@@ -1642,8 +1670,8 @@ export default function App() {
   // Auto-Speichern Daten
   useEffect(() => {
     if (!storageGeladen) return;
-    storage.speichereDaten({ kontakte, ves, freieTermine });
-  }, [kontakte, ves, freieTermine, storageGeladen]);
+    storage.speichereDaten({ kontakte, ves, freieTermine, vorgangsWelt });
+  }, [kontakte, ves, freieTermine, vorgangsWelt, storageGeladen]);
   const [headerFilter, setHeaderFilter] = useState(HEADER_FILTER_LEER);
   // Filter für Verwaltungsart auf der Objekte-Seite ("alle" oder VERWALTUNGSART.id)
   const [filterArt, setFilterArt] = useState("alle");
@@ -1731,6 +1759,11 @@ export default function App() {
   // Master-Detail-Muster wie Kalender: Liste = Objekte, Detail = Override).
   const [etvViewVEId, setEtvViewVEId] = useState(null);
   const [auftragViewVEId, setAuftragViewVEId] = useState(null);
+  // Sprung vom Schreibtisch (§96.8): dieser Vorgang wird beim Öffnen des
+  // Objekt-Details direkt aufgeklappt (initialOffeneId + key-Remount).
+  const [auftragSprungId, setAuftragSprungId] = useState(null);
+  // Erfassen-Overlay (§96/Etappe 4): offen nur mit gewähltem Objekt.
+  const [auftragNeuOffen, setAuftragNeuOffen] = useState(false);
   // Vorgänge-Pille (Benny v12.36): "objekt" → Vorgänge je Objekt; "firma" →
   // Vorgänge je Firma (alle Firmen-Kontakte). Eigener Auswahl-State je Achse.
   const [auftragView, setAuftragView] = useState("objekt"); // "objekt" | "firma"
@@ -2490,6 +2523,11 @@ export default function App() {
     );
   };
 
+  // §96: Badge der Schreibtisch-Kachel — Anzahl anliegender Handlungspunkte,
+  // gefärbt in der dringlichsten Ampel-Stufe. null → kein Badge.
+  const schreibtischBadge = schreibtischBadgeInfo(vorgangsWelt);
+  const navBadges = schreibtischBadge ? { schreibtisch: schreibtischBadge } : null;
+
   // §95: Ableitungen der Legionellen-Kachel — EINE Quelle für beide Sichten
   // (Timeline + Objekte), statt die Accent-Suche mehrfach inline zu rechnen.
   const legionellenAccent = ((effectiveSettings.kacheln || [])
@@ -2809,7 +2847,7 @@ export default function App() {
             damit nicht weg. */}
         {!istDesktop && schnellzugriffSichtbar && settings.schnellzugriffSticky && (
           <div style={{ borderTop: `1px solid ${t.border}`, padding: "6px 0" }}>
-            <KategorieKacheln settings={effectiveSettings} t={t} aktiverScreen={screen} suchAktiv={!!suchErg} onKlick={navTo}/>
+            <KategorieKacheln settings={effectiveSettings} t={t} aktiverScreen={screen} suchAktiv={!!suchErg} onKlick={navTo} badges={navBadges}/>
           </div>
         )}
         {/* Speicher-Status-Band — schmale Zeile am Ende des Headers.
@@ -2836,7 +2874,7 @@ export default function App() {
         <div style={{ background: t.header,
           borderBottom: `1px solid ${t.border}`, padding: "6px 0",
           flexShrink: 0 }}>
-          <KategorieKacheln settings={effectiveSettings} t={t} aktiverScreen={screen} suchAktiv={!!suchErg} onKlick={navTo}/>
+          <KategorieKacheln settings={effectiveSettings} t={t} aktiverScreen={screen} suchAktiv={!!suchErg} onKlick={navTo} badges={navBadges}/>
         </div>
       )}
 
@@ -2858,7 +2896,7 @@ export default function App() {
             height: "100%",
             overflowY: "auto",
           }}>
-            <SeitenleisteKacheln settings={effectiveSettings} setSettings={setSettings}
+            <SeitenleisteKacheln badges={navBadges} settings={effectiveSettings} setSettings={setSettings}
               t={t} aktiverScreen={screen} onKlick={navTo}/>
           </div>
         )}
@@ -3040,40 +3078,6 @@ export default function App() {
           const istDesk = istDesktop;
           const istListeA = effectiveSettings.listenAnsicht === "liste";
           const firmen = (kontakteSichtbar || []).filter(k => k && k.typ === "firma");
-          // Demo-Vorgänge (echte Quelle folgt). Je nach Achse nach Objekt bzw.
-          // Firma gefiltert — vorerst dieselben Demo-Einträge zur Layout-Prüfung.
-          const demoAlle = [
-            { titel: "Heizungswartung Jahresturnus", firma: "Wärme & Technik GmbH", status: "in Arbeit" },
-            { titel: "Treppenhausreinigung Nachbesserung", firma: "CleanPro Service", status: "offen" },
-            { titel: "Aufzug-TÜV-Prüfung", firma: "Lift Süd KG", status: "erledigt" },
-          ];
-          const statusFarbe = { "offen": "#F59E0B", "in Arbeit": aAccent, "erledigt": "#10B981" };
-          const renderVorgaenge = (vorgaenge) => (
-            vorgaenge.length === 0 ? (
-              <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic", padding: "8px 2px" }}>
-                Keine Vorgänge.
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {vorgaenge.map((d, i) => (
-                  <div key={i} style={{ background: t.card, border: `1px solid ${t.border}`,
-                    borderRadius: RAD.lg, padding: "12px 14px", minWidth: 0,
-                    boxSizing: "border-box", width: "100%" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
-                        color: t.text, overflowWrap: "anywhere" }}>{d.titel}</div>
-                      <div style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
-                        color: getContrastColor(statusFarbe[d.status] || aAccent),
-                        background: statusFarbe[d.status] || aAccent,
-                        borderRadius: RAD.sm, padding: "2px 8px" }}>{d.status}</div>
-                    </div>
-                    <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4,
-                      overflowWrap: "anywhere" }}>{d.firma}</div>
-                  </div>
-                ))}
-              </div>
-            )
-          );
 
           const hatAuswahl = (auftragView === "objekt" && auftragViewVEId) || (auftragView === "firma" && auftragFirmaId);
           let detailKopf = null, detailSub = null, detailListe = null;
@@ -3081,14 +3085,37 @@ export default function App() {
             const vo = (vesSichtbar || []).find(v => v.id === auftragViewVEId);
             detailKopf = vo ? (vo.nr || "Objekt") : "";
             detailSub = (vo && vo.adresse) ? vo.adresse : null;
-            detailListe = renderVorgaenge(demoAlle); // TODO echte Quelle: Vorgänge dieses Objekts
+            // Echte Quelle (§96): Vorgänge dieses Objekts + „Erfasst"-Ecke
+            // (vorgangslose Begehungsfunde). key=veId → frischer Klapp-State
+            // je Objekt (React-Key-Lehre).
+            detailListe = (
+              <VorgangsBereichFuerObjekt key={auftragViewVEId + ":" + (auftragSprungId || "")}
+                veId={auftragViewVEId} welt={vorgangsWelt}
+                kontakte={kontakteSichtbar} t={t} accent={aAccent}
+                initialOffeneId={auftragSprungId}
+                onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
+                DatumFeld={DatumFeld}/>
+            );
           } else if (auftragView === "firma" && auftragFirmaId) {
             const fk = firmen.find(f => f.id === auftragFirmaId);
             detailKopf = fk ? (fk.name || "Firma") : "";
-            const gef = demoAlle.filter(d => fk && d.firma === (fk.name || ""));
-            detailListe = renderVorgaenge(gef); // TODO echte Quelle: Vorgänge dieser Firma
+            // Echte Quelle (§96): Vorgänge, an denen die Firma über Auftrag
+            // oder Angebot hängt — objektübergreifend.
+            detailListe = (
+              <VorgangsBereichFuerFirma key={auftragFirmaId}
+                firmaId={auftragFirmaId} welt={vorgangsWelt}
+                kontakte={kontakteSichtbar} t={t} accent={aAccent}
+                onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
+                DatumFeld={DatumFeld}/>
+            );
           }
 
+          // §94.2-Badge: Anzahl lebender Fälle (offene Vorgänge + lose
+          // erfasst-Aufträge) je Objekt an der Master-Liste.
+          const aufBadge = (v) => {
+            const n = vorgangAnzahlFuerObjekt(v.id, vorgangsWelt);
+            return n > 0 ? String(n) : null;
+          };
           const masterInhalt = (layout) => auftragView === "objekt" ? (
             <div style={istListeA
               ? { display: "flex", flexDirection: "column", gap: 6 }
@@ -3096,13 +3123,13 @@ export default function App() {
               {(vesSichtbar || []).map(v => istListeA ? (
                 <VEListenZeile key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
-                  auswahlAccentOverride={aAccent}
-                  onClick={() => setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id)}/>
+                  auswahlAccentOverride={aAccent} extraBadge={aufBadge(v)}
+                  onClick={() => { setAuftragSprungId(null); setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id); }}/>
               ) : (
                 <VEKachel key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
-                  auswahlAccentOverride={aAccent}
-                  onClick={() => setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id)}/>
+                  auswahlAccentOverride={aAccent} extraBadge={aufBadge(v)}
+                  onClick={() => { setAuftragSprungId(null); setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id); }}/>
               ))}
             </div>
           ) : (
@@ -3135,14 +3162,55 @@ export default function App() {
                   optionen={[{ id: "objekt", label: "Objekte" }, { id: "firma", label: "Firmen" }]}
                   aktiv={auftragView} onWaehle={setAuftragView}/>
               }
-              rechts={(hatAuswahl && auftragNurDetail) ? (
-                <HeaderZurueck onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} t={t}/>
+              rechts={(auftragView === "objekt" && auftragViewVEId) || (hatAuswahl && auftragNurDetail) ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {auftragView === "objekt" && auftragViewVEId ? (
+                    <HeaderPlus onClick={() => setAuftragNeuOffen(true)}
+                      accent={aAccent} title="Neu (Vorgang / Auftrag erfassen)" t={t}/>
+                  ) : null}
+                  {(hatAuswahl && auftragNurDetail) ? (
+                    <HeaderZurueck onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} t={t}/>
+                  ) : null}
+                </div>
               ) : null}/>
           );
+
+          // Erfassen-Overlay (§96 Etappe 4). Mutationen laufen über die
+          // Modell-Fabriken — Vorgang bekommt automatisch die Fallführer-
+          // Beteiligung (kontakt_id null = die Verwaltung, §96.3) und
+          // optional die erste Notiz als Nachricht.
+          const anlegenVe = auftragNeuOffen && auftragView === "objekt" && auftragViewVEId
+            ? (vesSichtbar || []).find(v => v.id === auftragViewVEId) : null;
+          const auftragNeuOverlay = anlegenVe ? (
+            <VorgangNeuOverlay ve={anlegenVe} t={t} accent={aAccent}
+              Inp={Inp} SegmentControl={SegmentControl}
+              onClose={() => setAuftragNeuOffen(false)}
+              onAnlegenVorgang={(d) => {
+                const v = neuerVorgang({ objekt_id: anlegenVe.id,
+                  einheit_id: d.einheit_id, titel: d.titel, kategorie: d.kategorie });
+                const bet = neueBeteiligung({ vorgang_id: v.id, rolle: "fallfuehrer" });
+                const nachricht = d.notiz
+                  ? neueNachricht({ vorgang_id: v.id, richtung: "eingehend",
+                      inhalt: d.notiz })
+                  : null;
+                setVorgangsWelt(prev => ({ ...prev,
+                  vorgaenge: [...prev.vorgaenge, v],
+                  beteiligungen: [...prev.beteiligungen, bet],
+                  nachrichten: nachricht ? [...prev.nachrichten, nachricht] : prev.nachrichten,
+                }));
+              }}
+              onErfasseAuftrag={(d) => {
+                const a = neuerAuftrag({ objekt_id: anlegenVe.id,
+                  beschreibung: d.beschreibung, status: "erfasst" });
+                setVorgangsWelt(prev => ({ ...prev,
+                  auftraege: [...prev.auftraege, a] }));
+              }}/>
+          ) : null;
 
           if (!istDesk) {
             return (
               <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                {auftragNeuOverlay}
                 {auftragHeader}
                 {hatAuswahl ? (
                   <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
@@ -3161,6 +3229,7 @@ export default function App() {
           }
           return (
             <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              {auftragNeuOverlay}
               {auftragHeader}
               {auftragView === "objekt" && aufLegende ? (
                 <div style={{ flexShrink: 0, padding: "0 2px" }}>{aufLegende}</div>
@@ -3173,6 +3242,41 @@ export default function App() {
                 kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
                 kartenMin={kartenMinBreiteEff} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff}
                 t={t} onNurDetail={setAuftragNurDetail}/>
+            </div>
+          );
+        })()}
+        {!suchErg && screen === "schreibtisch" && (() => {
+          // §96.8 Schreibtisch Stufe 1: objektübergreifende Handlungsliste.
+          // Kein Master-Detail — die Liste IST der Inhalt; Tap springt in den
+          // Vorgänge-Screen (Objekt geöffnet, Ziel-Vorgang aufgeklappt).
+          const sAccent = (effectiveSettings.kacheln.find(k => k.id === "schreibtisch") || {}).farbe || "#6366F1";
+          const springe = (e) => {
+            if (!e || !e.objekt_id) return;
+            setAuftragView("objekt");
+            setAuftragFirmaId(null);
+            setAuftragViewVEId(e.objekt_id);
+            setAuftragSprungId(e.vorgang_id || null);
+            wechselScreen("auftraege");
+          };
+          const anzahl = schreibtischBadge ? schreibtischBadge.zahl : 0;
+          return (
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              <ScreenKopf t={t} accent={sAccent} titel="Schreibtisch"
+                mitte={anzahl > 0 ? (
+                  <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: sAccent,
+                    background: sAccent + "18", padding: "2px 10px",
+                    borderRadius: RAD.pill, whiteSpace: "nowrap" }}>
+                    {anzahl === 1 ? "1 Punkt" : anzahl + " Punkte"}
+                  </span>
+                ) : null}/>
+              <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+                <div style={{ maxWidth: 720, margin: "0 auto", width: "100%",
+                  boxSizing: "border-box" }}>
+                  <SchreibtischBereich welt={vorgangsWelt} ves={vesSichtbar}
+                    t={t} accent={sAccent} onSpringe={springe}
+                    SegmentControl={SegmentControl}/>
+                </div>
+              </div>
             </div>
           );
         })()}

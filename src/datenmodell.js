@@ -373,6 +373,9 @@ const DEFAULT_SETTINGS = {
     { id:"legionellen",   label:"Legionellen",   icon:"drop",      farbe:"#06B6D4", aktiv:true,  reihenfolge:14 },
     { id:"te",            label:"Teilungserklärung", icon:"badge", farbe:"#A855F7", aktiv:true,  reihenfolge:15 },
     { id:"historie",      label:"Historie",      icon:"clock",     farbe:"#F97316", aktiv:true,  reihenfolge:16 },
+    // §96: Schreibtisch — objektübergreifende Handlungsliste der Vorgangs-Welt
+    // („Was liegt an?"). Badge an der Kachel = Anzahl + dringlichste Farbe.
+    { id:"schreibtisch",  label:"Schreibtisch",  icon:"check",     farbe:"#6366F1", aktiv:true,  reihenfolge:17 },
   ],
   // Objekt-Detail-Tabs: Reihenfolge + Sichtbarkeit (global). Liegenschaft und
   // Verwaltung sind fix (immer sichtbar, nicht sortierbar) — daher nur die
@@ -2559,3 +2562,987 @@ export function fotoDateiname(ve, foto, alleFotos) {
   }
   return basis + (gleich > 0 ? "_" + (gleich + 1) : "") + "." + ext;
 }
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ §96 · VORGANGS-WELT — das Datenmodell (VORGANG_Feature_Spec _03)         ║
+// ║                                                                          ║
+// ║ Architektur-Prinzip (Spec §2): ALLES EIGENSTÄNDIGE IST FLACH.            ║
+// ║ Jedes Ding mit eigenem Lebenszyklus ist eine eigene Liste mit Fremd-     ║
+// ║ schlüssel — nie im Elternobjekt verschachtelt. Der Vorgang lebt wie ein  ║
+// ║ Termin (eigene Liste, objekt_id am Eintrag → Objekt-Sicht UND Timeline   ║
+// ║ sind nur zwei Filter auf dieselbe Liste), nicht wie ein Foto (Attribut). ║
+// ║                                                                          ║
+// ║ Spiegelt DB-Schema C2–C4 (Spec _06) + die 7 Schema-Lücken (Spec _03      ║
+// ║ §10): Angebot, Beteiligung, Abnahme, Rechnung, Aufgabe, Kategorie,       ║
+// ║ Beschluss-Referenz. Migration zu Supabase = 1:1 (Tabelle je Liste).      ║
+// ║                                                                          ║
+// ║ Bewusst KEIN Baustein: „Meldung" (= Vorgang offen + erste Nachricht +    ║
+// ║ Melder-Beteiligung), „Hinweis" (= errechnet, §96-Hinweise unten),        ║
+// ║ „Notiz" (§5.11: ist entweder erfasst-Auftrag, Ideen-Same oder Aufgabe    ║
+// ║ an mich selbst), Foto/Datei (Eigenschaft am Träger, kein Fall).          ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// ── §96.1 · Kategorien: EIN Prozess, der sich zusammenfaltet (Spec §6) ──────
+// Die Kategorie entscheidet, welche Phasen der EINEN potenziellen Kette aktiv
+// sind — kein Bau von 4 Parallel-Prozessen (§76 auf Prozessebene). Zugleich
+// macht das Feld das Portfolio filterbar (alle Sanierungen, alle Pflege …).
+const VORGANG_PHASEN_KETTE = [
+  "meldung", "angebot", "beschluss", "beauftragung", "ausfuehrung",
+  "abnahme", "rechnung", "abschluss", "gewaehrleistung",
+];
+const VORGANG_KATEGORIEN = [
+  { id: "pflege", label: "Pflege / Kleinauftrag",
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "abschluss"] },
+  { id: "instandhaltung", label: "Instandhaltung",
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss"] },
+  { id: "instandsetzung", label: "Instandsetzung",
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss", "gewaehrleistung"] },
+  { id: "sanierung", label: "Sanierung / Modernisierung",
+    phasen: VORGANG_PHASEN_KETTE.slice() },
+];
+function vorgangKategorie(id) {
+  for (let i = 0; i < VORGANG_KATEGORIEN.length; i++) {
+    if (VORGANG_KATEGORIEN[i].id === id) return VORGANG_KATEGORIEN[i];
+  }
+  return VORGANG_KATEGORIEN[1]; // Default: Instandhaltung (der „Standard"-Fall)
+}
+function kategorieHatPhase(kategorieId, phase) {
+  return vorgangKategorie(kategorieId).phasen.indexOf(phase) >= 0;
+}
+
+// ── §96.2 · Statusketten (Spec §7 — zwei gekoppelte Ketten) ────────────────
+// Kopplung ist BEWUSST lose: Auftrags-Fertigmeldung schaltet den Vorgang
+// NICHT automatisch weiter — sie erzeugt einen Hinweis („Abnahme fällig") an
+// den Fallführer. Fertigmeldung = Behauptung der Firma; Abnahme = Prüfung.
+const VORGANG_STATUS = [
+  "offen", "beauftragt", "ausfuehrung", "abnahme",
+  "rechnungspruefung", "bezahlt", "geschlossen",
+];
+// erfasst (NEU _03) = der frühe Auftrag („kaputte Lampe"): festgehalten, weiß
+// schon was es ist, aber noch nicht rausgeschickt. KEIN Notizzettel — der
+// Auftrag fängt nur früher an. Darf OHNE Vorgang leben (vorgang_id null),
+// unverzichtbar für die Begehung (§5.12).
+const AUFTRAG_STATUS = [
+  "erfasst", "beauftragt", "in_arbeit", "fertiggemeldet",
+  "nachbesserung", "abgenommen",
+];
+function auftragLaeuft(a) {
+  return !!a && (a.status === "beauftragt" || a.status === "in_arbeit"
+    || a.status === "nachbesserung");
+}
+const RECHNUNG_STATUS = ["eingegangen", "in_pruefung", "freigegeben", "bezahlt"];
+const ABNAHME_ERGEBNISSE = ["angenommen", "mit_maengeln", "abgelehnt"];
+const AUFGABE_STATUS = ["offen", "erledigt", "abgelehnt"];
+
+// ── §96.3 · Beteiligungs-Rollen (Spec §5.2 — Rolle am VORGANG, nicht am ────
+// Menschen). Die zwei Zugriffsachsen (sehen / beitragen) sind FREI kombinier-
+// bar; die Werte hier sind nur die Regelfall-Vorbelegung je Rolle.
+// Leitregel: Beteiligungen werden NIE gelöscht — der Zeuge bleibt für immer
+// in der Akte auffindbar (Versicherung!), fällt nach `bis` nur aus dem
+// laufenden Verteiler. kontakt_id null + rolle "fallfuehrer" = die Verwaltung
+// selbst (bis Login/Phase 5 gibt es keinen „Ich"-Kontakt).
+const BETEILIGUNG_ROLLEN = [
+  { id: "fallfuehrer",   label: "Fallführer",            sehen: "voll",         beitragen: "voll" },
+  { id: "melder",        label: "Melder / Zeuge",        sehen: "eigener_teil", beitragen: "lesen" },
+  { id: "betroffener",   label: "Betroffener",           sehen: "voll",         beitragen: "lesen" },
+  { id: "mitinformiert", label: "Mitinformiert / Beirat", sehen: "voll",        beitragen: "lesen" },
+  { id: "extern",        label: "Externer Beteiligter",  sehen: "eigener_teil", beitragen: "eigener_teil_schreiben" },
+  { id: "ausfuehrender", label: "Ausführender",          sehen: "eigener_teil", beitragen: "eigener_teil_schreiben" },
+  { id: "pruefer",       label: "Prüfer",                sehen: "eigener_teil", beitragen: "eigener_teil_schreiben" },
+];
+function beteiligungRolle(id) {
+  for (let i = 0; i < BETEILIGUNG_ROLLEN.length; i++) {
+    if (BETEILIGUNG_ROLLEN[i].id === id) return BETEILIGUNG_ROLLEN[i];
+  }
+  return BETEILIGUNG_ROLLEN[0];
+}
+
+// ── §96.4 · ID-Fabriken (Bestandsmuster: präfix_ + Zeit36 + Zufall) ────────
+function vgId(praefix) {
+  return praefix + "_" + Date.now().toString(36) + "_"
+    + Math.random().toString(36).slice(2, 8);
+}
+
+// ── §96.5 · Objekt-Fabriken = zugleich Normalisierer ───────────────────────
+// Object.assign(Defaults, init): dient dem Neuanlegen UND dem Normalisieren
+// geladener Daten (fehlende Felder werden generisch ergänzt, vorhandene
+// gewinnen — dasselbe Prinzip wie ladeSettings).
+function neuerVorgang(init) {
+  const v = Object.assign({
+    id: vgId("vg"),
+    objekt_id: null,             // WO (Gemeinschaftseigentum) — Pflicht im Alltag
+    einheit_id: null,            // optional präziser (Sondereigentum / „WE 03")
+    titel: "",
+    kategorie: "instandhaltung", // steuert Phasen (§96.1) + macht Portfolio filterbar
+    art: null,                   // Auslöser-Typ (meldung/anfrage/schaden) — Schema C2, optional
+    status: "offen",
+    eigentumsbezug: "gemeinschaft", // gemeinschaft | sonder (Schema C2)
+    abrechnungskreis_id: null,   // Kostenträger (Schema A2b) — nullable = Gesamt-WEG
+    ersteller_kontakt_id: null,
+    angelegt_am: isoHeute(),
+    geschlossen_am: null,
+    ruht_bis: null,              // Grau-Unterart 1: ruht bis DATUM → kippt bei Erreichen zu 🟡
+    // Grau-Unterart 2 + ETV-Nahtstelle (§9): ruht bis EREIGNIS. Wert ist eine
+    // Beschluss-ID ODER der Sonderwert "naechste_etv" (= gehört auf die
+    // Tagesordnung, Beschluss-Objekt existiert noch nicht — die spätere
+    // ETV-Welt findet ihre Tagesordnung als Filter hierüber fertig vor).
+    wartet_auf_beschluss_id: null,
+    entstanden_aus_beschluss_id: null, // Rückrichtung: Beschluss erzeugte diesen Vorgang
+    gewaehrleistung_bis: null,   // geschlossen + trotzdem reaktivierbar (nie löschen)
+    dateien: [],                 // allgemeine Vorgangs-Dokumente (§85-Mechanik)
+    demo: false,                 // true = Seed-Datensatz (gesammelt entfernbar)
+  }, init || {});
+  if (!Array.isArray(v.dateien)) v.dateien = [];
+  return v;
+}
+function neueBeteiligung(init) {
+  const rolleId = (init && init.rolle) || "fallfuehrer";
+  const r = beteiligungRolle(rolleId);
+  const b = Object.assign({
+    id: vgId("bet"),
+    vorgang_id: null,
+    kontakt_id: null,            // null = die Verwaltung selbst (s. §96.3)
+    rolle: rolleId,
+    sehen: r.sehen,              // nichts | eigener_teil | voll
+    beitragen: r.beitragen,      // lesen | eigener_teil_schreiben | voll
+    von: isoHeute(),
+    bis: null,                   // Zeitfenster-Ende: fällt aus dem Verteiler, bleibt in der Akte
+    status: "aktiv",             // aktiv | beendet — NIE löschen (Leitregel)
+    demo: false,
+  }, init || {});
+  return b;
+}
+function neueNachricht(init) {
+  return Object.assign({
+    id: vgId("nc"),
+    vorgang_id: null,
+    richtung: "eingehend",       // eingehend | ausgehend
+    kanal: "notiz",              // heute manuell; später additiv "email" (Schema C3)
+    von_kontakt_id: null,
+    an_kontakt_id: null,
+    betreff: "",
+    inhalt: "",
+    gesendet_am: isoHeute(),
+    demo: false,
+  }, init || {});
+}
+function neuesAngebot(init) {
+  // Angebot = Anfrage OHNE Verbindlichkeit (§5.4). Endet mit Preis/Dokument,
+  // nicht mit Leistung. Hält die Auftragsliste sauber (3 Anfragen ≠ 3 Aufträge).
+  const a = Object.assign({
+    id: vgId("ang"),
+    vorgang_id: null,
+    firma_kontakt_id: null,
+    preis: null,                 // Zahl (EUR) oder null solange offen
+    gueltig_bis: null,           // treibt „Angebot veraltet"-Frist am Schreibtisch
+    eingeholt_am: isoHeute(),
+    wurde_zu_auftrag_id: null,   // die Verwandlung: gewähltes Angebot → Auftrag (nachvollziehbar)
+    dateien: [],
+    demo: false,
+  }, init || {});
+  if (!Array.isArray(a.dateien)) a.dateien = [];
+  return a;
+}
+function neuerAuftrag(init) {
+  const a = Object.assign({
+    id: vgId("auf"),
+    vorgang_id: null,            // NULLABLE (§5.5): erfasst-Auftrag lebt ohne Vorgang
+    objekt_id: null,             //   … dann hängt er direkt am Objekt (Begehung §5.12)
+    firma_kontakt_id: null,      // bei "erfasst" meist noch leer
+    freigegeben_von_id: null,
+    status: "erfasst",           // §96.2-Kette; erfasst = 🔵 blau (Ball liegt bei mir)
+    beschreibung: "",
+    erfasst_am: isoHeute(),
+    beauftragt_am: null,
+    frist: null,                 // optionales Zieldatum → treibt 🔴 überfällig
+    foto_ids: [],                // Weg A (§5.10): Fotos leben in ve.fotos[], hier nur Refs
+    dateien: [],                 // Prüfprotokoll / Gutachten am Auftrag
+    demo: false,
+  }, init || {});
+  if (!Array.isArray(a.foto_ids)) a.foto_ids = [];
+  if (!Array.isArray(a.dateien)) a.dateien = [];
+  return a;
+}
+function neueAbnahme(init) {
+  // Hängt am AUFTRAG (nicht am Vorgang): bei mehreren Firmen wird jede einzeln
+  // abgenommen. Wird nur bei Kategorien mit Abnahme-Phase erzeugt — immer
+  // DASSELBE Objekt, nur nicht immer erzeugt (§5.6).
+  const a = Object.assign({
+    id: vgId("abn"),
+    auftrag_id: null,
+    datum: isoHeute(),
+    pruefer_kontakt_id: null,
+    ergebnis: "angenommen",      // angenommen | mit_maengeln | abgelehnt
+    maengel: [],                 // der Grund, warum ein Bool nicht reicht → treibt nachbesserung
+    foto_ids: [],
+    dateien: [],
+    demo: false,
+  }, init || {});
+  if (!Array.isArray(a.maengel)) a.maengel = [];
+  if (!Array.isArray(a.foto_ids)) a.foto_ids = [];
+  if (!Array.isArray(a.dateien)) a.dateien = [];
+  return a;
+}
+function neueRechnung(init) {
+  // Optional (§5.7) — nicht jeder Vorgang hat eine. Verweist auf den Auftrag,
+  // verwaltet wird sie am Vorgang (Prüfung → Freigabe → Zahlung = Verwalter-Handlungen).
+  const r = Object.assign({
+    id: vgId("re"),
+    vorgang_id: null,
+    auftrag_id: null,
+    betrag: null,
+    status: "eingegangen",       // §96.2 RECHNUNG_STATUS
+    eingegangen_am: isoHeute(),
+    bezahlt_am: null,
+    dateien: [],
+    demo: false,
+  }, init || {});
+  if (!Array.isArray(r.dateien)) r.dateien = [];
+  return r;
+}
+function neueAufgabe(init) {
+  // Delegierte Handlung an eine PERSON (≠ errechneter Hinweis). Eiserne Regel
+  // (§5.8): geht immer an eine beteiligung_id, nie an einen nackten Kontakt —
+  // Rechte hängen an der Beteiligung, nicht an der Aufgabe. Adressat darf auch
+  // der Verwalter selbst sein (Vorbereitungs-Aufgabe, B2 in §5.11).
+  return Object.assign({
+    id: vgId("aufg"),
+    vorgang_id: null,
+    beteiligung_id: null,
+    titel: "",
+    status: "offen",             // offen | erledigt | abgelehnt
+    frist: null,                 // treibt „überfällig" (🔴)
+    bezug: null,                 // optional { typ: "rechnung"|"abnahme"|…, id } — Tap landet richtig
+    rueckmeldung: "",
+    angelegt_am: isoHeute(),
+    erledigt_am: null,
+    demo: false,
+  }, init || {});
+}
+function neuerBeschluss(init) {
+  // Platzhalter-Baustein (§5.9/§9, Schema-Lücke 2): minimales Interface, damit
+  // wartet_auf_beschluss_id / entstanden_aus_beschluss_id referenzieren können.
+  // Die volle ETV-Welt (Einladung, Tagesordnung, MEA-Stimmzählung, §24 WEG)
+  // wächst SPÄTER hinter dieser Referenz.
+  return Object.assign({
+    id: vgId("bes"),
+    objekt_id: null,
+    status: "gefasst",           // gefasst | angefochten | bestandskraeftig
+    datum: null,
+    betreff: "",
+    demo: false,
+  }, init || {});
+}
+
+// ── §96.6 · Die Welt als Ganzes: neun flache Listen ─────────────────────────
+// Ein Container-Objekt, damit App-Rumpf/Storage EINEN Handle haben. Jede Liste
+// entspricht einer künftigen Supabase-Tabelle (Migration 1:1, kein Auseinander-
+// ziehen von Nestern).
+function normalisiereVorgangsWelt(roh) {
+  const r = roh || {};
+  const norm = (liste, fabrik) =>
+    (Array.isArray(liste) ? liste : []).map((x) => fabrik(x || {}));
+  return {
+    vorgaenge:     norm(r.vorgaenge, neuerVorgang),
+    beteiligungen: norm(r.beteiligungen, neueBeteiligung),
+    nachrichten:   norm(r.nachrichten, neueNachricht),
+    angebote:      norm(r.angebote, neuesAngebot),
+    auftraege:     norm(r.auftraege, neuerAuftrag),
+    abnahmen:      norm(r.abnahmen, neueAbnahme),
+    rechnungen:    norm(r.rechnungen, neueRechnung),
+    aufgaben:      norm(r.aufgaben, neueAufgabe),
+    beschluesse:   norm(r.beschluesse, neuerBeschluss),
+  };
+}
+function leereVorgangsWelt() { return normalisiereVorgangsWelt(null); }
+
+// ── §96.7 · Hinweise (errechnet, Spec §8) + Handlungs-Ampel (Spec §8.1) ─────
+// SPEICHERT NICHTS. Hinweise sind selbstheilend (Abnahme erledigt → Hinweis
+// verschwindet von allein). Die Ampel ist der max-Rang über alle Fäden eines
+// Vorgangs — EINE Funktion, die überall dasselbe zeigt (Listen-Punkt, Karten-
+// Rand, Schreibtisch-Bündelung). Farbwerte sind UI-Sache (constants.js beim
+// UI-Bau); hier nur semantische Stufen.
+//
+// Die Skala (Ball-liegt-bei-mir, aufsteigend):
+//   grau(1)  ruht berechtigt — Ball liegt NICHT bei mir (Boden der Skala)
+//   gruen(2) läuft — dabei, aber nichts gefordert
+//   blau(3)  offener Entwurf (erfasst) — bei mir, ohne Zeitdruck
+//   gelb(4)  Handlung fällig — bei mir, angestoßen
+//   rot(5)   überfällig / Frist verpasst — bei mir, dringend
+// Grün schlägt Grau (sobald IRGENDEIN Faden läuft, ruht der Vorgang nicht),
+// Blau schlägt Grün („offener Faden" ist informativer als „läuft").
+const AMPEL_RANG = { grau: 1, gruen: 2, blau: 3, gelb: 4, rot: 5 };
+const AMPEL_REIHE = ["grau", "gruen", "blau", "gelb", "rot"];
+function ampelAusRang(rang) {
+  return AMPEL_REIHE[Math.max(1, Math.min(5, rang)) - 1];
+}
+
+// Alle Hinweise (Handlungsbedarf) eines Vorgangs. Jeder Hinweis trägt seinen
+// Ampel-Rang; ampelFarbe() nimmt darüber das Maximum („dringlichste gewinnt").
+// welt = Ergebnis von normalisiereVorgangsWelt, heute = ISO-String (Test-Injektion).
+function hinweiseFuerVorgang(vorgang, welt, heute) {
+  const H = [];
+  if (!vorgang || !welt) return H;
+  const jetzt = heute || isoHeute();
+  const dazu = (rang, typ, text, bezug) => H.push({
+    rang: rang, farbe: ampelAusRang(rang), typ: typ, text: text,
+    vorgang_id: vorgang.id, bezug: bezug || null,
+  });
+
+  // Geschlossen = keine Handlung (Gewährleistungs-Reaktivierung ist ein
+  // manueller Schritt, kein automatischer Hinweis — Leitentscheid Spec §7).
+  if (vorgang.status === "geschlossen") return H;
+
+  const auftraege = welt.auftraege.filter((a) => a.vorgang_id === vorgang.id);
+  const angebote = welt.angebote.filter((a) => a.vorgang_id === vorgang.id);
+  const rechnungen = welt.rechnungen.filter((r) => r.vorgang_id === vorgang.id);
+  const aufgabenOffen = welt.aufgaben.filter(
+    (a) => a.vorgang_id === vorgang.id && a.status === "offen");
+
+  const ruhtBisDatum = !!vorgang.ruht_bis && vorgang.ruht_bis > jetzt;
+  const ruhtBisBeschluss = !!vorgang.wartet_auf_beschluss_id;
+
+  // 🔴/🟡 Aufgaben: an MICH (Fallführer-Beteiligung) = Handlung fällig; Frist
+  // verpasst = rot (gilt auch für delegierte — verpasste Frist ist mein Problem).
+  for (let i = 0; i < aufgabenOffen.length; i++) {
+    const a = aufgabenOffen[i];
+    const bet = welt.beteiligungen.filter((b) => b.id === a.beteiligung_id)[0] || null;
+    const anMich = !!bet && bet.rolle === "fallfuehrer";
+    if (a.frist && a.frist < jetzt) {
+      dazu(5, "aufgabe_ueberfaellig",
+        "Frist überschritten: " + (a.titel || "Aufgabe"),
+        { typ: "aufgabe", id: a.id });
+    } else if (anMich) {
+      dazu(4, "aufgabe_offen", a.titel || "Aufgabe offen",
+        { typ: "aufgabe", id: a.id });
+    }
+    // Delegierte Aufgabe innerhalb der Frist = Grün-Faden („warte auf jemanden")
+    // — kein Hinweis, fließt unten in ampelFarbe() ein.
+  }
+
+  // 🟡 Abnahme fällig: Auftrag fertiggemeldet + Kategorie verlangt Abnahme +
+  // noch keine angenommene Abnahme. (Fertigmeldung = Behauptung der Firma;
+  // die Prüfung ist MEINE Handlung.)
+  const brauchtAbnahme = kategorieHatPhase(vorgang.kategorie, "abnahme");
+  for (let i = 0; i < auftraege.length; i++) {
+    const a = auftraege[i];
+    if (a.status !== "fertiggemeldet") continue;
+    if (!brauchtAbnahme) {
+      // Pflege/Kleinauftrag: kein Abnahme-Objekt — Abhaken (auf „abgenommen"
+      // setzen) ist trotzdem meine Handlung, das Foto ist der Nachweis.
+      dazu(4, "erledigung_pruefen",
+        "Fertig gemeldet — abhaken: " + (a.beschreibung || "Auftrag"),
+        { typ: "auftrag", id: a.id });
+      continue;
+    }
+    const abgenommen = welt.abnahmen.filter(
+      (ab) => ab.auftrag_id === a.id && ab.ergebnis === "angenommen").length > 0;
+    if (!abgenommen) {
+      dazu(4, "abnahme_faellig",
+        "Abnahme fällig: " + (a.beschreibung || "Auftrag"),
+        { typ: "auftrag", id: a.id });
+    }
+  }
+
+  // 🔴 Auftrags-Frist verpasst (Auftrag läuft, Zieldatum überschritten).
+  for (let i = 0; i < auftraege.length; i++) {
+    const a = auftraege[i];
+    if (auftragLaeuft(a) && a.frist && a.frist < jetzt) {
+      dazu(5, "auftrag_ueberfaellig",
+        "Auftrag überfällig: " + (a.beschreibung || "Auftrag"),
+        { typ: "auftrag", id: a.id });
+    }
+  }
+
+  // 🟡 Rechnungen: eingegangen/in Prüfung → prüfen; freigegeben → zahlen.
+  for (let i = 0; i < rechnungen.length; i++) {
+    const r = rechnungen[i];
+    if (r.status === "eingegangen" || r.status === "in_pruefung") {
+      dazu(4, "rechnung_pruefen", "Rechnung prüfen", { typ: "rechnung", id: r.id });
+    } else if (r.status === "freigegeben") {
+      dazu(4, "zahlung_faellig", "Zahlung fällig", { typ: "rechnung", id: r.id });
+    }
+  }
+
+  // 🟡 Angebot auswählen: Angebote liegen vor, keins gewählt — aber NUR wenn
+  // der Vorgang nicht berechtigt ruht (wartet auf ETV-Beschluss = ⚪️, §8.1).
+  if (angebote.length > 0 && !ruhtBisBeschluss && !ruhtBisDatum) {
+    const gewaehlt = angebote.filter((a) => !!a.wurde_zu_auftrag_id).length > 0;
+    if (!gewaehlt) {
+      dazu(4, "angebot_auswaehlen",
+        "Angebot auswählen (" + angebote.length + " liegen vor)",
+        { typ: "vorgang", id: vorgang.id });
+    }
+  }
+
+  // 🟡 Wiedervorlage: ruht_bis erreicht → Grau kippt zu Gelb (Unterart 1).
+  // Unterart 2 (wartet_auf_beschluss_id) springt NIE durch Zeit um — nur
+  // durch das Ereignis Beschluss (§8.1, Jahres-Rhythmus der ETV).
+  if (vorgang.ruht_bis && vorgang.ruht_bis <= jetzt) {
+    dazu(4, "wiedervorlage", "Wiedervorlage erreicht",
+      { typ: "vorgang", id: vorgang.id });
+  }
+
+  // 🟡 Frisch gemeldet, noch nichts passiert (Schreibtisch-Quelle 4).
+  if (vorgang.status === "offen" && auftraege.length === 0
+      && angebote.length === 0 && !ruhtBisBeschluss && !ruhtBisDatum) {
+    dazu(4, "neu", "Neu gemeldet — einordnen", { typ: "vorgang", id: vorgang.id });
+  }
+
+  // 🔵 Offene Entwürfe: erfasst-Aufträge am Vorgang (Ball bei mir, ohne Druck).
+  for (let i = 0; i < auftraege.length; i++) {
+    const a = auftraege[i];
+    if (a.status === "erfasst") {
+      dazu(3, "entwurf", "Erfasst, noch nicht beauftragt: "
+        + (a.beschreibung || "Auftrag"), { typ: "auftrag", id: a.id });
+    }
+  }
+
+  return H;
+}
+
+// Die Handlungs-Ampel: max-Rang über Hinweise + Grün-/Grau-Fäden.
+// „Dringlichste gewinnt": rot > gelb > blau > grün > grau. Grau ist der BODEN —
+// ein Vorgang fällt nur auf Grau zurück, wenn NICHTS anderes ihn einfärbt.
+function ampelFarbe(vorgang, welt, heute) {
+  if (!vorgang || !welt) return "grau";
+  if (vorgang.status === "geschlossen") return "grau";
+  const jetzt = heute || isoHeute();
+  let rang = 0;
+
+  const hinweise = hinweiseFuerVorgang(vorgang, welt, jetzt);
+  for (let i = 0; i < hinweise.length; i++) {
+    if (hinweise[i].rang > rang) rang = hinweise[i].rang;
+  }
+  if (rang >= 5) return "rot";
+
+  if (rang < AMPEL_RANG.gruen) {
+    // Grün-Fäden (läuft / warte auf jemanden): laufende Aufträge, delegierte
+    // offene Aufgaben innerhalb der Frist, oder ein Vorgangsstatus jenseits
+    // von „offen" ohne akuten Handlungsbedarf.
+    const auftraege = welt.auftraege.filter((a) => a.vorgang_id === vorgang.id);
+    let laeuft = auftraege.filter(auftragLaeuft).length > 0;
+    if (!laeuft) {
+      const offeneDelegiert = welt.aufgaben.filter((a) => {
+        if (a.vorgang_id !== vorgang.id || a.status !== "offen") return false;
+        const bet = welt.beteiligungen.filter((b) => b.id === a.beteiligung_id)[0] || null;
+        return !(bet && bet.rolle === "fallfuehrer");
+      });
+      laeuft = offeneDelegiert.length > 0;
+    }
+    if (!laeuft) laeuft = vorgang.status !== "offen";
+    if (laeuft) rang = AMPEL_RANG.gruen;
+  }
+
+  return rang > 0 ? ampelAusRang(rang) : "grau";
+}
+
+// Ampel für den VORGANGSLOSEN Auftrag (Begehungsfund, §5.5/§5.12) — der taucht
+// in keiner Vorgangszeile auf, wohl aber am Schreibtisch und am Objekt.
+function ampelFarbeAuftrag(auftrag, heute) {
+  if (!auftrag) return "grau";
+  const jetzt = heute || isoHeute();
+  if (auftrag.frist && auftrag.frist < jetzt
+      && auftrag.status !== "abgenommen") return "rot";
+  if (auftrag.status === "erfasst") return "blau";
+  if (auftrag.status === "fertiggemeldet") return "gelb";
+  if (auftragLaeuft(auftrag)) return "gruen";
+  return "grau"; // abgenommen
+}
+
+// ── §96.8 · Schreibtisch Stufe 1 (Spec §8): „Was liegt an?" ────────────────
+// Errechnete, objektübergreifende Handlungsliste — Filter über alle flachen
+// Listen, gleiche Bauweise wie die Kalender-Timeline. Selbstheilend.
+// Gegenkraft zur Ampel-Verdichtung: hier erscheint JEDER Handlungsbedarf als
+// eigene Zeile (auch die gelbe Aufgabe, die in der Zeile hinter einem roten
+// Vorgang „verschwindet"). sortierung: "frist" (Default) | "alter" | "objekt".
+function schreibtischEintraege(welt, sortierung, heute) {
+  if (!welt) return [];
+  const jetzt = heute || isoHeute();
+  const E = [];
+
+  // Quelle 1–3: alle Vorgangs-Hinweise (inkl. Fristen + Aufgaben an mich).
+  for (let i = 0; i < welt.vorgaenge.length; i++) {
+    const v = welt.vorgaenge[i];
+    const hs = hinweiseFuerVorgang(v, welt, jetzt);
+    for (let j = 0; j < hs.length; j++) {
+      const h = hs[j];
+      E.push({
+        rang: h.rang, farbe: h.farbe, typ: h.typ, text: h.text,
+        vorgang_id: v.id, auftrag_id: h.bezug && h.bezug.typ === "auftrag" ? h.bezug.id : null,
+        objekt_id: v.objekt_id, einheit_id: v.einheit_id || null,
+        titel: v.titel, seit: v.angelegt_am || null,
+        frist: h.bezug && h.bezug.typ === "aufgabe"
+          ? ((welt.aufgaben.filter((a) => a.id === h.bezug.id)[0] || {}).frist || null)
+          : null,
+        bezug: h.bezug,
+      });
+    }
+  }
+
+  // Quelle „erfasst"-Ecke: vorgangslose Aufträge (Begehungsfunde) — 🔵.
+  for (let i = 0; i < welt.auftraege.length; i++) {
+    const a = welt.auftraege[i];
+    if (a.vorgang_id) continue;
+    if (a.status === "abgenommen") continue;
+    const farbe = ampelFarbeAuftrag(a, jetzt);
+    E.push({
+      rang: AMPEL_RANG[farbe] || 1, farbe: farbe,
+      typ: a.status === "erfasst" ? "entwurf" : "auftrag_lauft",
+      text: (a.status === "erfasst" ? "Erfasst: " : "") + (a.beschreibung || "Auftrag"),
+      vorgang_id: null, auftrag_id: a.id,
+      objekt_id: a.objekt_id, einheit_id: null,
+      titel: a.beschreibung || "Auftrag", seit: a.erfasst_am || null,
+      frist: a.frist || null,
+      bezug: { typ: "auftrag", id: a.id },
+    });
+  }
+
+  const s = sortierung || "frist";
+  E.sort((x, y) => {
+    if (y.rang !== x.rang) return y.rang - x.rang; // dringlichste zuerst
+    if (s === "objekt") {
+      return String(x.objekt_id || "").localeCompare(String(y.objekt_id || ""));
+    }
+    if (s === "alter") {
+      return String(x.seit || "9999").localeCompare(String(y.seit || "9999"));
+    }
+    // "frist": nächste Frist zuerst, Einträge ohne Frist danach nach Alter.
+    const fx = x.frist || "9999-12-31", fy = y.frist || "9999-12-31";
+    if (fx !== fy) return fx.localeCompare(fy);
+    return String(x.seit || "9999").localeCompare(String(y.seit || "9999"));
+  });
+  return E;
+}
+
+// ── §96.9 · Demo-Seeds: realistische Test-Vorgänge an ECHTE Objekte ────────
+// Läuft genau einmal (App-Rumpf: nur wenn noch keine Vorgangs-Welt gespeichert
+// ist). Hängt sich dynamisch an die vorhandenen Objekte/Kontakte (die Default-
+// Listen sind leer — Bennys Daten kommen per Import mit eigenen IDs). Alle
+// Datensätze tragen demo:true (gesammelt entfernbar) und relative Daten
+// (bleiben „frisch"). Deckt alle fünf Ampelfarben ab. Ohne Objekte → null.
+function erzeugeVorgangsSeeds(ves, kontakte) {
+  const objekte = Array.isArray(ves) ? ves.filter((v) => v && v.id) : [];
+  if (objekte.length === 0) return null;
+  const o1 = objekte[0].id;
+  const o2 = (objekte[1] || objekte[0]).id;
+  const o3 = (objekte[2] || objekte[0]).id;
+  const firmen = (Array.isArray(kontakte) ? kontakte : [])
+    .filter((k) => k && k.typ === "firma");
+  const personen = (Array.isArray(kontakte) ? kontakte : [])
+    .filter((k) => k && k.typ !== "firma");
+  const f1 = firmen[0] ? firmen[0].id : null;
+  const f2 = firmen[1] ? firmen[1].id : f1;
+  const p1 = personen[0] ? personen[0].id : null;
+
+  const tage = (delta) => {
+    const d = new Date();
+    d.setDate(d.getDate() + delta);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+      + "-" + String(d.getDate()).padStart(2, "0");
+  };
+  const welt = leereVorgangsWelt();
+  const D = { demo: true };
+
+  // ── V1 🔴 Wasserschaden (Instandsetzung): Auftrag läuft, Aufgabe überfällig ──
+  const v1 = neuerVorgang(Object.assign({}, D, {
+    objekt_id: o1, titel: "Wasserschaden Tiefgarage", kategorie: "instandsetzung",
+    art: "schaden", status: "ausfuehrung", angelegt_am: tage(-12),
+    ersteller_kontakt_id: p1,
+  }));
+  welt.vorgaenge.push(v1);
+  const v1ff = neueBeteiligung(Object.assign({}, D, {
+    vorgang_id: v1.id, rolle: "fallfuehrer", von: tage(-12) }));
+  welt.beteiligungen.push(v1ff);
+  if (p1) welt.beteiligungen.push(neueBeteiligung(Object.assign({}, D, {
+    vorgang_id: v1.id, kontakt_id: p1, rolle: "melder", von: tage(-12) })));
+  welt.nachrichten.push(neueNachricht(Object.assign({}, D, {
+    vorgang_id: v1.id, richtung: "eingehend", von_kontakt_id: p1,
+    betreff: "Wasser in der Tiefgarage",
+    inhalt: "Bei Stellplatz 7 tritt Wasser aus der Decke aus, vermutlich Leitung.",
+    gesendet_am: tage(-12) })));
+  welt.auftraege.push(neuerAuftrag(Object.assign({}, D, {
+    vorgang_id: v1.id, objekt_id: o1, firma_kontakt_id: f1, status: "in_arbeit",
+    beschreibung: "Leckortung und Reparatur Zuleitung TG",
+    erfasst_am: tage(-11), beauftragt_am: tage(-10) })));
+  welt.aufgaben.push(neueAufgabe(Object.assign({}, D, {
+    vorgang_id: v1.id, beteiligung_id: v1ff.id,
+    titel: "Schadenmeldung an Gebäudeversicherung nachreichen",
+    frist: tage(-4), angelegt_am: tage(-9) })));
+
+  // ── V2 🟡 Heizungsausfall (Instandhaltung): fertiggemeldet → Abnahme fällig ──
+  const v2 = neuerVorgang(Object.assign({}, D, {
+    objekt_id: o1, titel: "Heizungsausfall Haus A", kategorie: "instandhaltung",
+    art: "meldung", status: "ausfuehrung", angelegt_am: tage(-20),
+  }));
+  welt.vorgaenge.push(v2);
+  welt.beteiligungen.push(neueBeteiligung(Object.assign({}, D, {
+    vorgang_id: v2.id, rolle: "fallfuehrer", von: tage(-20) })));
+  welt.nachrichten.push(neueNachricht(Object.assign({}, D, {
+    vorgang_id: v2.id, richtung: "eingehend",
+    betreff: "Heizung kalt", inhalt: "Mehrere Bewohner melden kalte Heizkörper.",
+    gesendet_am: tage(-20) })));
+  welt.auftraege.push(neuerAuftrag(Object.assign({}, D, {
+    vorgang_id: v2.id, objekt_id: o1, firma_kontakt_id: f2, status: "fertiggemeldet",
+    beschreibung: "Umwälzpumpe tauschen", erfasst_am: tage(-19),
+    beauftragt_am: tage(-18) })));
+
+  // ── V3 🟡 Dachrinnenreinigung: abgenommen, Rechnung in Prüfung ──────────────
+  const v3 = neuerVorgang(Object.assign({}, D, {
+    objekt_id: o2, titel: "Dachrinnenreinigung", kategorie: "instandhaltung",
+    status: "rechnungspruefung", angelegt_am: tage(-35),
+  }));
+  welt.vorgaenge.push(v3);
+  welt.beteiligungen.push(neueBeteiligung(Object.assign({}, D, {
+    vorgang_id: v3.id, rolle: "fallfuehrer", von: tage(-35) })));
+  const v3a = neuerAuftrag(Object.assign({}, D, {
+    vorgang_id: v3.id, objekt_id: o2, firma_kontakt_id: f1, status: "abgenommen",
+    beschreibung: "Dachrinnen reinigen, Fallrohre spülen",
+    erfasst_am: tage(-34), beauftragt_am: tage(-30) }));
+  welt.auftraege.push(v3a);
+  welt.abnahmen.push(neueAbnahme(Object.assign({}, D, {
+    auftrag_id: v3a.id, datum: tage(-8), ergebnis: "angenommen" })));
+  welt.rechnungen.push(neueRechnung(Object.assign({}, D, {
+    vorgang_id: v3.id, auftrag_id: v3a.id, betrag: 480,
+    status: "in_pruefung", eingegangen_am: tage(-5) })));
+
+  // ── V4 🟢 Treppenhaus streichen (Pflege): läuft, nichts gefordert ───────────
+  const v4 = neuerVorgang(Object.assign({}, D, {
+    objekt_id: o2, titel: "Treppenhaus streichen EG–2. OG", kategorie: "pflege",
+    status: "ausfuehrung", angelegt_am: tage(-6),
+  }));
+  welt.vorgaenge.push(v4);
+  welt.beteiligungen.push(neueBeteiligung(Object.assign({}, D, {
+    vorgang_id: v4.id, rolle: "fallfuehrer", von: tage(-6) })));
+  welt.auftraege.push(neuerAuftrag(Object.assign({}, D, {
+    vorgang_id: v4.id, objekt_id: o2, firma_kontakt_id: f2, status: "in_arbeit",
+    beschreibung: "Wände und Decken streichen, Farbton wie Bestand",
+    erfasst_am: tage(-6), beauftragt_am: tage(-5) })));
+
+  // ── V5 ⚪️ Fassadensanierung (Sanierung): 3 Angebote, wartet auf ETV ─────────
+  const v5 = neuerVorgang(Object.assign({}, D, {
+    objekt_id: o1, titel: "Fassadensanierung Hofseite", kategorie: "sanierung",
+    status: "offen", angelegt_am: tage(-60),
+    wartet_auf_beschluss_id: "naechste_etv",
+  }));
+  welt.vorgaenge.push(v5);
+  welt.beteiligungen.push(neueBeteiligung(Object.assign({}, D, {
+    vorgang_id: v5.id, rolle: "fallfuehrer", von: tage(-60) })));
+  welt.nachrichten.push(neueNachricht(Object.assign({}, D, {
+    vorgang_id: v5.id, richtung: "eingehend",
+    betreff: "Anregung Beirat", inhalt: "Beirat bittet, Angebote für die Hoffassade einzuholen (Putzschäden).",
+    gesendet_am: tage(-60) })));
+  welt.angebote.push(neuesAngebot(Object.assign({}, D, {
+    vorgang_id: v5.id, firma_kontakt_id: f1, preis: 48200,
+    eingeholt_am: tage(-30), gueltig_bis: tage(150) })));
+  welt.angebote.push(neuesAngebot(Object.assign({}, D, {
+    vorgang_id: v5.id, firma_kontakt_id: f2, preis: 52900,
+    eingeholt_am: tage(-25), gueltig_bis: tage(150) })));
+  welt.angebote.push(neuesAngebot(Object.assign({}, D, {
+    vorgang_id: v5.id, preis: 45750, eingeholt_am: tage(-21),
+    gueltig_bis: tage(150) })));
+
+  // ── V6 ⚪️ Wiedervorlage (ruht bis Datum): Gartenpflege-Vertrag prüfen ───────
+  welt.vorgaenge.push(neuerVorgang(Object.assign({}, D, {
+    objekt_id: o3, titel: "Gartenpflege-Vertrag prüfen", kategorie: "pflege",
+    status: "offen", angelegt_am: tage(-15), ruht_bis: tage(45),
+  })));
+
+  // ── V7 🔵 Klingelanlage (Instandhaltung): erfasst-Auftrag am Vorgang ────────
+  const v7 = neuerVorgang(Object.assign({}, D, {
+    objekt_id: o3, titel: "Klingelanlage modernisieren", kategorie: "instandhaltung",
+    status: "offen", angelegt_am: tage(-3),
+  }));
+  welt.vorgaenge.push(v7);
+  welt.beteiligungen.push(neueBeteiligung(Object.assign({}, D, {
+    vorgang_id: v7.id, rolle: "fallfuehrer", von: tage(-3) })));
+  welt.auftraege.push(neuerAuftrag(Object.assign({}, D, {
+    vorgang_id: v7.id, objekt_id: o3, status: "erfasst",
+    beschreibung: "Angebot für Klingel-/Sprechanlage einholen",
+    erfasst_am: tage(-3) })));
+
+  // ── Begehungsfunde 🔵 (vorgangslose erfasst-Aufträge, §5.12) ────────────────
+  welt.auftraege.push(neuerAuftrag(Object.assign({}, D, {
+    objekt_id: o2, status: "erfasst",
+    beschreibung: "Lampe 2. OG defekt", erfasst_am: tage(-2) })));
+  welt.auftraege.push(neuerAuftrag(Object.assign({}, D, {
+    objekt_id: o2, status: "erfasst",
+    beschreibung: "Kellertür klemmt", erfasst_am: tage(-2) })));
+  welt.auftraege.push(neuerAuftrag(Object.assign({}, D, {
+    objekt_id: o2, status: "erfasst",
+    beschreibung: "Graffiti an der Rückwand", erfasst_am: tage(-2) })));
+
+  return welt;
+}
+
+// ── §96.10 · Flow-Übergänge (Spec §7) — reine Funktionen Welt → Welt ────────
+// JEDE Zustands-Änderung der Vorgangs-Welt läuft über diese Funktionen:
+// immutable (neue Welt zurück), unbekannte IDs → Welt unverändert. Das UI
+// bleibt dünn (ruft nur auf), die Logik ist ohne DOM testbar und wandert
+// später 1:1 in Supabase-Mutationen.
+
+function _ersetzeIn(liste, id, aenderung) {
+  return liste.map((x) => (x.id === id ? Object.assign({}, x, aenderung) : x));
+}
+// Vorgangs-Status nur VORWÄRTS schieben (Meilensteine, nie automatisch
+// zurück): setzt status, wenn der Zielstatus in der Kette weiter ist.
+function _vorgangMindestens(welt, vorgangId, statusId) {
+  if (!vorgangId) return welt;
+  const rangVon = (s) => VORGANG_STATUS.indexOf(s);
+  const ziel = rangVon(statusId);
+  if (ziel < 0) return welt;
+  return Object.assign({}, welt, {
+    vorgaenge: welt.vorgaenge.map((v) => {
+      if (v.id !== vorgangId) return v;
+      if (v.status === "geschlossen") return v; // geschlossen bleibt (Reaktivierung ist explizit)
+      return rangVon(v.status) < ziel ? Object.assign({}, v, { status: statusId }) : v;
+    }),
+  });
+}
+
+// erfasst → beauftragt: Firma + optionales Zieldatum. Der Vorgang (falls
+// vorhanden) rückt mindestens auf „beauftragt" vor.
+function weltAuftragBeauftragen(welt, auftragId, daten) {
+  const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
+  if (!a) return welt;
+  const d = daten || {};
+  let neu = Object.assign({}, welt, {
+    auftraege: _ersetzeIn(welt.auftraege, auftragId, {
+      status: "beauftragt",
+      firma_kontakt_id: d.firma_kontakt_id || a.firma_kontakt_id || null,
+      frist: d.frist || a.frist || null,
+      beauftragt_am: isoHeute(),
+    }),
+  });
+  return _vorgangMindestens(neu, a.vorgang_id, "beauftragt");
+}
+
+// Arbeits-Fortschritt: in_arbeit / fertiggemeldet / nachbesserung → fertiggemeldet.
+function weltAuftragStatus(welt, auftragId, status) {
+  const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
+  if (!a || AUFTRAG_STATUS.indexOf(status) < 0) return welt;
+  let neu = Object.assign({}, welt, {
+    auftraege: _ersetzeIn(welt.auftraege, auftragId, { status: status }),
+  });
+  if (status === "in_arbeit") neu = _vorgangMindestens(neu, a.vorgang_id, "ausfuehrung");
+  return neu;
+}
+
+// Abnahme: erzeugt das Abnahme-Objekt (§5.6) und koppelt den Auftrag:
+// angenommen → abgenommen, sonst → nachbesserung (Mängel als Grund).
+function weltAuftragAbnehmen(welt, auftragId, daten) {
+  const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
+  if (!a) return welt;
+  const d = daten || {};
+  const ergebnis = ABNAHME_ERGEBNISSE.indexOf(d.ergebnis) >= 0 ? d.ergebnis : "angenommen";
+  const abnahme = neueAbnahme({
+    auftrag_id: auftragId, ergebnis: ergebnis,
+    maengel: Array.isArray(d.maengel) ? d.maengel : [],
+    pruefer_kontakt_id: d.pruefer_kontakt_id || null,
+  });
+  let neu = Object.assign({}, welt, {
+    abnahmen: [...welt.abnahmen, abnahme],
+    auftraege: _ersetzeIn(welt.auftraege, auftragId, {
+      status: ergebnis === "angenommen" ? "abgenommen" : "nachbesserung",
+    }),
+  });
+  if (ergebnis === "angenommen") neu = _vorgangMindestens(neu, a.vorgang_id, "abnahme");
+  return neu;
+}
+
+// Abhaken (Pflege/Kleinauftrag + lose Begehungsfunde): direkt „abgenommen",
+// OHNE Abnahme-Objekt — das Foto am Auftrag ist der Nachweis (§5.6).
+function weltAuftragAbhaken(welt, auftragId) {
+  const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
+  if (!a) return welt;
+  return Object.assign({}, welt, {
+    auftraege: _ersetzeIn(welt.auftraege, auftragId, { status: "abgenommen" }),
+  });
+}
+
+// Rechnung erfassen (ehrlich als „eingegangen" — der Prüf-Hinweis feuert
+// sofort). Vorgang rückt mindestens auf Rechnungsprüfung vor.
+function weltRechnungNeu(welt, daten) {
+  const d = daten || {};
+  if (!d.vorgang_id) return welt;
+  const r = neueRechnung({
+    vorgang_id: d.vorgang_id, auftrag_id: d.auftrag_id || null,
+    betrag: d.betrag != null && !isNaN(Number(d.betrag)) ? Number(d.betrag) : null,
+  });
+  const neu = Object.assign({}, welt, { rechnungen: [...welt.rechnungen, r] });
+  return _vorgangMindestens(neu, d.vorgang_id, "rechnungspruefung");
+}
+function weltRechnungStatus(welt, rechnungId, status) {
+  const r = welt.rechnungen.filter((x) => x.id === rechnungId)[0];
+  if (!r || RECHNUNG_STATUS.indexOf(status) < 0) return welt;
+  const neu = Object.assign({}, welt, {
+    rechnungen: _ersetzeIn(welt.rechnungen, rechnungId,
+      status === "bezahlt" ? { status: status, bezahlt_am: isoHeute() } : { status: status }),
+  });
+  return status === "bezahlt" ? _vorgangMindestens(neu, r.vorgang_id, "bezahlt") : neu;
+}
+
+// Aufgabe an die Verwaltung selbst (v1: einziger Adressat bis Phase 5).
+// Sichert die Fallführer-Beteiligung (findet oder erzeugt sie) — eiserne
+// Regel §5.8: Aufgabe hängt IMMER an einer beteiligung_id.
+function weltAufgabeNeu(welt, vorgangId, daten) {
+  const v = welt.vorgaenge.filter((x) => x.id === vorgangId)[0];
+  if (!v) return welt;
+  const d = daten || {};
+  let ff = welt.beteiligungen.filter(
+    (b) => b.vorgang_id === vorgangId && b.rolle === "fallfuehrer")[0];
+  let beteiligungen = welt.beteiligungen;
+  if (!ff) {
+    ff = neueBeteiligung({ vorgang_id: vorgangId, rolle: "fallfuehrer" });
+    beteiligungen = [...beteiligungen, ff];
+  }
+  const aufgabe = neueAufgabe({
+    vorgang_id: vorgangId, beteiligung_id: ff.id,
+    titel: d.titel || "", frist: d.frist || null,
+  });
+  return Object.assign({}, welt, {
+    beteiligungen: beteiligungen,
+    aufgaben: [...welt.aufgaben, aufgabe],
+  });
+}
+function weltAufgabeErledigt(welt, aufgabeId) {
+  const a = welt.aufgaben.filter((x) => x.id === aufgabeId)[0];
+  if (!a) return welt;
+  return Object.assign({}, welt, {
+    aufgaben: _ersetzeIn(welt.aufgaben, aufgabeId,
+      { status: "erledigt", erledigt_am: isoHeute() }),
+  });
+}
+
+// Die Verwandlung (§5.4): gewähltes Angebot → Auftrag. Nachvollziehbar über
+// wurde_zu_auftrag_id; ein etwaiges Beschluss-Warten endet (der Fall läuft).
+function weltAngebotBeauftragen(welt, angebotId, daten) {
+  const ang = welt.angebote.filter((x) => x.id === angebotId)[0];
+  if (!ang || ang.wurde_zu_auftrag_id) return welt;
+  const v = welt.vorgaenge.filter((x) => x.id === ang.vorgang_id)[0];
+  const d = daten || {};
+  const auftrag = neuerAuftrag({
+    vorgang_id: ang.vorgang_id, objekt_id: v ? v.objekt_id : null,
+    firma_kontakt_id: ang.firma_kontakt_id || null,
+    status: "beauftragt", beauftragt_am: isoHeute(),
+    frist: d.frist || null,
+    beschreibung: d.beschreibung || (v ? v.titel : "") || "Auftrag",
+  });
+  let neu = Object.assign({}, welt, {
+    auftraege: [...welt.auftraege, auftrag],
+    angebote: _ersetzeIn(welt.angebote, angebotId, { wurde_zu_auftrag_id: auftrag.id }),
+    vorgaenge: welt.vorgaenge.map((x) => x.id === ang.vorgang_id
+      ? Object.assign({}, x, { wartet_auf_beschluss_id: null }) : x),
+  });
+  return _vorgangMindestens(neu, ang.vorgang_id, "beauftragt");
+}
+
+// Wiedervorlage aufnehmen: ruht_bis löschen — der Fall ist wieder aktiv.
+function weltWiedervorlageAufheben(welt, vorgangId) {
+  return Object.assign({}, welt, {
+    vorgaenge: _ersetzeIn(welt.vorgaenge, vorgangId, { ruht_bis: null }),
+  });
+}
+
+// Schließen / Reaktivieren (§7): geschlossen ist nie gelöscht — die Akte
+// bleibt, Gewährleistung macht sie wieder aufmachbar.
+function weltVorgangSchliessen(welt, vorgangId) {
+  return Object.assign({}, welt, {
+    vorgaenge: _ersetzeIn(welt.vorgaenge, vorgangId,
+      { status: "geschlossen", geschlossen_am: isoHeute() }),
+  });
+}
+function weltVorgangOeffnen(welt, vorgangId) {
+  return Object.assign({}, welt, {
+    vorgaenge: _ersetzeIn(welt.vorgaenge, vorgangId,
+      { status: "offen", geschlossen_am: null }),
+  });
+}
+
+// Bündeln (§5.12): lose erfasst-Aufträge bekommen einen gemeinsamen Vorgang —
+// NUR Zuordnen (vorgang_id setzen), kein Verschmelzen: „diese fünf beim
+// nächsten Rundgang" bleiben fünf Aufträge unter einem Vorgang und werden
+// dort gemeinsam oder einzeln beauftragt. ziel:
+//   { vorgang_id }                            → bestehendem Vorgang zuordnen
+//   { neu: { titel, kategorie, objekt_id } }  → neuer Sammel-Vorgang (+ Fallführer)
+function weltAuftraegeBuendeln(welt, auftragIds, ziel) {
+  const ids = Array.isArray(auftragIds) ? auftragIds.filter(Boolean) : [];
+  if (ids.length === 0 || !ziel) return welt;
+  let vorgangId = ziel.vorgang_id || null;
+  let neu = welt;
+  if (!vorgangId && ziel.neu) {
+    const v = neuerVorgang({
+      objekt_id: ziel.neu.objekt_id || null,
+      titel: ziel.neu.titel || "Gebündelte Aufträge",
+      kategorie: ziel.neu.kategorie || "pflege",
+    });
+    const ff = neueBeteiligung({ vorgang_id: v.id, rolle: "fallfuehrer" });
+    neu = Object.assign({}, welt, {
+      vorgaenge: [...welt.vorgaenge, v],
+      beteiligungen: [...welt.beteiligungen, ff],
+    });
+    vorgangId = v.id;
+  }
+  if (!vorgangId) return welt;
+  const vorgang = neu.vorgaenge.filter((v) => v.id === vorgangId)[0];
+  if (!vorgang) return welt;
+  return Object.assign({}, neu, {
+    auftraege: neu.auftraege.map((a) => ids.indexOf(a.id) >= 0
+      ? Object.assign({}, a, { vorgang_id: vorgangId }) : a),
+  });
+}
+
+// Ruhen bis Datum (Grau-Unterart 1): kippt bei Erreichen von allein zu 🟡
+// (Wiedervorlage-Hinweis) — nichts weiter zu merken.
+function weltVorgangRuhen(welt, vorgangId, bisIso) {
+  if (!bisIso) return welt;
+  return Object.assign({}, welt, {
+    vorgaenge: _ersetzeIn(welt.vorgaenge, vorgangId, { ruht_bis: bisIso }),
+  });
+}
+
+// ETV-Nahtstelle (§9): auf die Tagesordnung = Sonderwert "naechste_etv".
+// Die spätere ETV-Welt findet ihre Tagesordnung als Filter hierüber fertig
+// vor. Springt NIE durch Zeit um — nur durch das Ereignis Beschluss (oder
+// explizites Herunternehmen).
+function weltVorgangAufTagesordnung(welt, vorgangId) {
+  return Object.assign({}, welt, {
+    vorgaenge: _ersetzeIn(welt.vorgaenge, vorgangId,
+      { wartet_auf_beschluss_id: "naechste_etv" }),
+  });
+}
+function weltVorgangVonTagesordnung(welt, vorgangId) {
+  return Object.assign({}, welt, {
+    vorgaenge: _ersetzeIn(welt.vorgaenge, vorgangId,
+      { wartet_auf_beschluss_id: null }),
+  });
+}
+
+// Verwalter-Notiz in die Akte (Kanal "notiz", von mir → richtung ausgehend).
+function weltNotizNeu(welt, vorgangId, text) {
+  const v = welt.vorgaenge.filter((x) => x.id === vorgangId)[0];
+  if (!v || !text) return welt;
+  const n = neueNachricht({ vorgang_id: vorgangId, richtung: "ausgehend",
+    kanal: "notiz", inhalt: text });
+  return Object.assign({}, welt, { nachrichten: [...welt.nachrichten, n] });
+}
+
+export {
+  VORGANG_KATEGORIEN, VORGANG_PHASEN_KETTE, vorgangKategorie, kategorieHatPhase,
+  VORGANG_STATUS, AUFTRAG_STATUS, RECHNUNG_STATUS, ABNAHME_ERGEBNISSE,
+  AUFGABE_STATUS, auftragLaeuft,
+  BETEILIGUNG_ROLLEN, beteiligungRolle,
+  neuerVorgang, neueBeteiligung, neueNachricht, neuesAngebot, neuerAuftrag,
+  neueAbnahme, neueRechnung, neueAufgabe, neuerBeschluss,
+  normalisiereVorgangsWelt, leereVorgangsWelt,
+  AMPEL_RANG, AMPEL_REIHE, ampelAusRang,
+  hinweiseFuerVorgang, ampelFarbe, ampelFarbeAuftrag, schreibtischEintraege,
+  erzeugeVorgangsSeeds,
+  weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
+  weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus,
+  weltAufgabeNeu, weltAufgabeErledigt, weltAngebotBeauftragen,
+  weltWiedervorlageAufheben, weltVorgangSchliessen, weltVorgangOeffnen,
+  weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
+  weltVorgangVonTagesordnung, weltNotizNeu,
+  _kontaktAnzeigename as kontaktAnzeigename,
+};

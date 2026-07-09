@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getContrastColor } from "./constants.js";
+import { AMPEL_FARBEN, FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getContrastColor } from "./constants.js";
 import { parseDatumWert, dateiBlobUrl, dateiSpeichern, dateiLoeschen, fotoExifLesen } from "./utils-basis.js";
 import {
   FOTO_ALBEN, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
@@ -714,7 +714,10 @@ const HANDLUNGSBEDARF_QUELLEN = [
   { id: "sev",         label: "SEV-Wechsel",                              vorlauf: 30,  default: false },
   { id: "termin",      label: "Manuelle Termine",                         vorlauf: 14,  default: false },
 ];
-const HANDLUNGSBEDARF_FARBEN = { gruen: "#22C55E", gelb: "#F59E0B", rot: "#EF4444" };
+// Töne aus der zentralen Ampel-Quelle (constants.js §96) — Objekt-Punkt und
+// Vorgangs-Ampel zeigen dieselben Farben für dieselbe Bedeutung.
+const HANDLUNGSBEDARF_FARBEN = {
+  gruen: AMPEL_FARBEN.gruen, gelb: AMPEL_FARBEN.gelb, rot: AMPEL_FARBEN.rot };
 
 function hbQuelleAktiv(cfg, typId) {
   const q = (cfg && cfg.quellen) || {};
