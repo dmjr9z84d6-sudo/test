@@ -15,10 +15,10 @@
 //   VorgangsBereichFuerObjekt / …FuerFirma · fertige Detail-Inhalte für die
 //                       beiden Achsen der Vorgänge-Kachel (Objekte | Firmen)
 // ═══════════════════════════════════════════════════════════════════════════
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
-import { datumDe, isoHeute } from "./utils-basis.js";
-import { overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
+import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
+import { SegmentControl, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
@@ -29,6 +29,8 @@ import {
   weltWiedervorlageAufheben, weltVorgangSchliessen, weltVorgangOeffnen,
   weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
   weltVorgangVonTagesordnung, weltNotizNeu,
+  weltVorgangLoeschen, weltAuftragLoeschen, weltDemoEntfernen, zaehleDemoDaten,
+  timelineEintraege,
 } from "./datenmodell.js";
 
 // ── UI-Labels der Statusketten (reine Anzeige; ids siehe datenmodell §96.2) ──
@@ -149,8 +151,9 @@ function baueVerlauf(vorgang, welt, kontakte) {
 // Karten-Klapp-Muster: der GESAMTE Kopf ist die Klick-Fläche (kein Chevron,
 // kein Pfeil). Zu: Punkt + Titel + Status-Pille + Sub (Kategorie · seit).
 // Auf: zusätzlich Handlungs-Hinweise (farbig) und der Verlauf.
-function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onWelt = null, DatumFeld = null }) {
+function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null }) {
   const [schliessConfirm, setSchliessConfirm] = useState(false);
+  const [loeschConfirm, setLoeschConfirm] = useState(false);
   const [aufgabeFormOffen, setAufgabeFormOffen] = useState(false);
   const [aufgabeTitel, setAufgabeTitel] = useState("");
   const [rechnungFormOffen, setRechnungFormOffen] = useState(false);
@@ -233,7 +236,8 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
                 <AuftragFlowZeile key={a.id} auftrag={a}
                   brauchtAbnahme={brauchtAbnahme} firmen={firmen}
                   kontakte={kontakte} t={t} accent={accent}
-                  onWelt={onWelt} DatumFeld={DatumFeld}/>
+                  onWelt={onWelt} DatumFeld={DatumFeld}
+                  ve={ve} onFotoHinzu={onFotoHinzu}/>
               ))}
             </div>
           ) : null}
@@ -373,6 +377,16 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
           {onWelt ? (
             <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end",
               gap: 6, flexWrap: "wrap" }}>
+              <button style={loeschConfirm
+                  ? Object.assign({}, flowKnopf(t, accent, true),
+                      { background: AMPEL_FARBEN.rot, color: "#fff", marginRight: "auto" })
+                  : Object.assign({}, flowKnopf(t, accent, false),
+                      { color: AMPEL_FARBEN.rot, borderColor: AMPEL_FARBEN.rot + "60", marginRight: "auto" })}
+                onClick={() => {
+                  if (!loeschConfirm) { setLoeschConfirm(true); return; }
+                  onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
+                }}>
+                {loeschConfirm ? "Wirklich löschen?" : "Löschen"}</button>
               {kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
                 <button style={flowKnopf(t, accent, false)}
                   onClick={() => setRuhenFormOffen(true)}>Ruhen bis …</button>
@@ -409,7 +423,8 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
 // Vorgangsloser Auftrag (Begehungsfund): dieselbe Zeilen-Optik, ohne Klapp
 // (es gibt noch keinen Verlauf — nur der festgehaltene Fund).
 function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt = null, DatumFeld = null,
-  auswahlModus = false, ausgewaehlt = false, onAuswahl = null }) {
+  auswahlModus = false, ausgewaehlt = false, onAuswahl = null, ve = null, onFotoHinzu = null }) {
+  const [loeschConfirm, setLoeschConfirm] = useState(false);
   const farbe = ampelFarbeAuftrag(auftrag);
   const firmen = (kontakte || []).filter((k) => k && k.typ === "firma");
   return (
@@ -426,9 +441,28 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
         <StatusPille t={t} farbe={AMPEL_FARBEN[farbe]}
           text={AUFTRAG_STATUS_LABEL[auftrag.status] || auftrag.status}/>
       </div>
-      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4, marginBottom: onWelt ? 6 : 0 }}>
-        {"erfasst " + datumDe(auftrag.erfasst_am)}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4,
+        marginBottom: onWelt && !auswahlModus ? 6 : 0 }}>
+        <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
+          {"erfasst " + datumDe(auftrag.erfasst_am)}
+        </div>
+        {onWelt && !auswahlModus ? (
+          <button style={loeschConfirm
+              ? Object.assign({}, flowKnopf(t, accent, true), { background: AMPEL_FARBEN.rot, color: "#fff" })
+              : Object.assign({}, flowKnopf(t, accent, false), { color: AMPEL_FARBEN.rot, borderColor: AMPEL_FARBEN.rot + "60" })}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!loeschConfirm) { setLoeschConfirm(true); return; }
+              onWelt((w) => weltAuftragLoeschen(w, auftrag.id));
+            }}>{loeschConfirm ? "Wirklich löschen?" : "Löschen"}</button>
+        ) : null}
       </div>
+      {!auswahlModus ? (
+        <div style={{ marginBottom: onWelt ? 6 : 0 }}>
+          <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
+            onFotoHinzu={onFotoHinzu}/>
+        </div>
+      ) : null}
       {onWelt && !auswahlModus ? (
         <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={false}
           firmen={firmen} t={t} accent={accent}
@@ -459,22 +493,29 @@ const leerText = (t, text) => (
 // lose Aufträge (Begehungsfunde) dieses Objekts. Klapp-State lebt hier; der
 // Aufrufer instanziiert per key={veId} neu (React-Key-Lehre: kein Recycling
 // über Objekt-Wechsel hinweg).
-function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null }) {
+function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null }) {
   const [offeneId, setOffeneId] = useState(initialOffeneId);
+  // Kategorie-Tabs (Benny 09.07.): Alle | Wartung | Pflege | Instandhaltung |
+  // Instandsetzung | Sanierung — Filter auf die Vorgänge des Objekts.
+  const [katTab, setKatTab] = useState("alle");
   const [buendelModus, setBuendelModus] = useState(false);
   const [buendelIds, setBuendelIds] = useState([]);
   const [buendelZiel, setBuendelZiel] = useState(null); // null | "neu" | "bestehend"
   const [buendelTitel, setBuendelTitel] = useState("");
   const [buendelKategorie, setBuendelKategorie] = useState("pflege");
   const [buendelVorgangId, setBuendelVorgangId] = useState("");
-  const vorgaenge = sortiereVorgaenge(
+  const alleVorgaenge = sortiereVorgaenge(
     welt.vorgaenge.filter((v) => v.objekt_id === veId), welt);
+  const vorgaenge = katTab === "alle" ? alleVorgaenge
+    : alleVorgaenge.filter((v) => vorgangKategorie(v.kategorie).id === katTab);
   const lose = welt.auftraege.filter(
     (a) => !a.vorgang_id && a.objekt_id === veId && a.status !== "abgenommen");
-  const offeneVorgaenge = vorgaenge.filter((v) => v.status !== "geschlossen");
-  if (vorgaenge.length === 0 && lose.length === 0) {
+  const offeneVorgaenge = alleVorgaenge.filter((v) => v.status !== "geschlossen");
+  if (alleVorgaenge.length === 0 && lose.length === 0) {
     return leerText(t, "Keine Vorgänge.");
   }
+  const katOptionen = [{ id: "alle", label: "Alle" }].concat(
+    VORGANG_KATEGORIEN.map((k) => ({ id: k.id, label: k.kurz || k.label })));
   const buendelReset = () => {
     setBuendelModus(false); setBuendelIds([]); setBuendelZiel(null);
     setBuendelTitel(""); setBuendelVorgangId("");
@@ -493,10 +534,20 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {alleVorgaenge.length > 0 ? (
+        <div>
+          <SegmentControl t={t} accent={accent} voll={false}
+            options={katOptionen} value={katTab} onChange={setKatTab}/>
+        </div>
+      ) : null}
+      {vorgaenge.length === 0 && alleVorgaenge.length > 0 ? (
+        leerText(t, "Keine Vorgänge in dieser Kategorie.")
+      ) : null}
       {vorgaenge.map((v) => (
         <VorgangKarte key={v.id} vorgang={v} welt={welt} kontakte={kontakte}
           t={t} accent={accent} offen={offeneId === v.id}
           onWelt={onWelt} DatumFeld={DatumFeld}
+          ve={ve} onFotoHinzu={onFotoHinzu}
           onToggle={() => setOffeneId(offeneId === v.id ? null : v.id)}/>
       ))}
       {lose.length > 0 ? (
@@ -519,6 +570,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
       {lose.map((a) => (
         <LoseAuftragKarte key={a.id} auftrag={a} t={t} kontakte={kontakte}
           accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
+          ve={ve} onFotoHinzu={onFotoHinzu}
           auswahlModus={buendelModus}
           ausgewaehlt={buendelIds.indexOf(a.id) >= 0}
           onAuswahl={() => setBuendelIds(buendelIds.indexOf(a.id) >= 0
@@ -703,7 +755,7 @@ const flowZeileStil = (t) => ({ display: "flex", flexDirection: "column",
 // Ein Auftrag mit seinem nächsten Schritt: erfasst→Beauftragen (Form),
 // beauftragt→In Arbeit, in_arbeit/nachbesserung→Fertig gemeldet,
 // fertiggemeldet→Abnehmen (Form) bzw. Abhaken (ohne Abnahme-Phase).
-function AuftragFlowZeile({ auftrag, brauchtAbnahme, firmen, kontakte, t, accent, onWelt, DatumFeld }) {
+function AuftragFlowZeile({ auftrag, brauchtAbnahme, firmen, kontakte, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null }) {
   const firmaName = nameVon(kontakte, auftrag.firma_kontakt_id);
   const statusFarbe = AMPEL_FARBEN[ampelFarbeAuftrag(auftrag)];
   return (
@@ -722,8 +774,76 @@ function AuftragFlowZeile({ auftrag, brauchtAbnahme, firmen, kontakte, t, accent
         <StatusPille t={t} farbe={statusFarbe}
           text={AUFTRAG_STATUS_LABEL[auftrag.status] || auftrag.status}/>
       </div>
+      <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
+        onFotoHinzu={onFotoHinzu}/>
       <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={brauchtAbnahme}
         firmen={firmen} t={t} accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}/>
+    </div>
+  );
+}
+
+// ── Auftragsfotos (Weg A §5.10, v13.59) ─────────────────────────────────────
+// Thumbnails der referenzierten ve.fotos + „+ Foto" (Kamera/Galerie). Die
+// Ablage (IndexedDB + ve.fotos-Eintrag) macht der Rumpf-Callback onFotoHinzu —
+// hier nur Auswahl und Anzeige. HEIC wird wie im Foto-Feature abgewiesen (§93.10).
+function FotoThumb({ foto, t }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let aktiv = true;
+    dateiBlobUrl(foto.dateiRef).then((u) => { if (aktiv) setUrl(u); });
+    return () => { aktiv = false; };
+  }, [foto.dateiRef]);
+  return url ? (
+    <img src={url} alt={foto.name || "Foto"} title={foto.notiz || foto.name || ""}
+      style={{ width: 46, height: 46, objectFit: "cover", borderRadius: RAD.sm,
+        border: "1px solid " + t.border, flexShrink: 0 }}/>
+  ) : (
+    <div style={{ width: 46, height: 46, borderRadius: RAD.sm, flexShrink: 0,
+      background: t.surface, border: "1px solid " + t.border }}/>
+  );
+}
+function istHeicDatei(f) {
+  const n = ((f && f.name) || "").toLowerCase();
+  const ty = ((f && f.type) || "").toLowerCase();
+  return n.endsWith(".heic") || n.endsWith(".heif") || ty.indexOf("heic") >= 0 || ty.indexOf("heif") >= 0;
+}
+function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu }) {
+  const [heicHinweis, setHeicHinweis] = useState(false);
+  const fotoIds = Array.isArray(auftrag.foto_ids) ? auftrag.foto_ids : [];
+  const fotos = ((ve && ve.fotos) || []).filter((f) => f && fotoIds.indexOf(f.id) >= 0);
+  if (!onFotoHinzu && fotos.length === 0) return null;
+  const waehle = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.style.display = "none";
+    input.onchange = (e) => {
+      const roh = Array.from((e.target && e.target.files) || []);
+      try { document.body.removeChild(input); } catch (err) {}
+      if (roh.length === 0) return;
+      const ok = roh.filter((f) => !istHeicDatei(f));
+      setHeicHinweis(ok.length < roh.length);
+      if (ok.length > 0) onFotoHinzu(auftrag, ok);
+    };
+    document.body.appendChild(input);
+    input.click();
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        {fotos.map((f) => (
+          <FotoThumb key={f.id} foto={f} t={t}/>
+        ))}
+        {onFotoHinzu ? (
+          <button onClick={waehle} style={flowKnopf(t, accent, false)}>+ Foto</button>
+        ) : null}
+      </div>
+      {heicHinweis ? (
+        <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
+          HEIC-Bilder kann der Browser nicht anzeigen — bitte als JPEG aufnehmen/teilen (§93.10).
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -910,7 +1030,7 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
 
 const SCHREIBTISCH_SORTIERUNGEN = [
   { id: "frist", label: "Frist" },
-  { id: "alter", label: "Alter" },
+  { id: "alter", label: "Älteste" },
   { id: "objekt", label: "Objekt" },
 ];
 
@@ -946,12 +1066,13 @@ const feldLabelStil = (t) => ({ fontSize: FS.s, fontWeight: FW.med,
   color: t.sub, display: "block", marginBottom: 4 });
 
 function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
-  onErfasseAuftrag, Inp, SegmentControl }) {
+  onErfasseAuftrag, Inp, kontakteAlle = [] }) {
   const [modus, setModus] = useState("vorgang"); // "vorgang" | "auftrag"
   // Vorgang-Felder
   const [titel, setTitel] = useState("");
   const [kategorie, setKategorie] = useState("instandhaltung");
   const [einheitId, setEinheitId] = useState("");
+  const [melderId, setMelderId] = useState(""); // "" = ich / die Verwaltung
   const [notiz, setNotiz] = useState("");
   // Auftrag-Felder + Begehungszähler
   const [beschreibung, setBeschreibung] = useState("");
@@ -965,6 +1086,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
     onAnlegenVorgang({
       titel: titel.trim(), kategorie: kategorie,
       einheit_id: einheitId || null, notiz: notiz.trim(),
+      melder_kontakt_id: melderId || null,
     });
     onClose();
   };
@@ -1021,6 +1143,15 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                   </select>
                 </div>
               ) : null}
+              <label style={feldLabelStil(t)}>Gemeldet von</label>
+              <select value={melderId}
+                onChange={(e) => setMelderId(e.target.value)}
+                style={selectStil(t, accent, !!melderId)}>
+                <option value="">Ich / die Verwaltung</option>
+                {(kontakteAlle || []).map((k) => (
+                  <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
+                ))}
+              </select>
               <label style={feldLabelStil(t)}>Erste Notiz (optional)</label>
               <textarea value={notiz} onChange={(e) => setNotiz(e.target.value)}
                 rows={3} placeholder="Was wurde gemeldet?"
@@ -1067,7 +1198,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   );
 }
 
-function SchreibtischBereich({ welt, ves, t, accent, onSpringe, SegmentControl }) {
+function SchreibtischBereich({ welt, ves, t, accent, onSpringe }) {
   const [sortierung, setSortierung] = useState("frist");
   const eintraege = schreibtischEintraege(welt, sortierung);
   const objektText = (id) => {
@@ -1077,7 +1208,7 @@ function SchreibtischBereich({ welt, ves, t, accent, onSpringe, SegmentControl }
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {eintraege.length > 0 && SegmentControl ? (
+      {eintraege.length > 0 ? (
         <div style={{ marginBottom: 2 }}>
           <SegmentControl t={t} accent={accent} voll={false}
             options={SCHREIBTISCH_SORTIERUNGEN} value={sortierung}
@@ -1098,10 +1229,82 @@ function SchreibtischBereich({ welt, ves, t, accent, onSpringe, SegmentControl }
   );
 }
 
+// ── Timeline (Benny 09.07.): die Chronik als dritte Achse ──────────────────
+// Alle Vorgänge (auch geschlossene) + lose Funde, jüngste Aktivität zuerst.
+// Zeile: Ampelpunkt · Titel · [Objekt · Kategorie · zuletzt TT.MM.JJJJ].
+// Tap springt in die Objekt-Akte (gleiches Muster wie der Schreibtisch).
+function TimelineZeile({ eintrag, objektText, t, onSpringe }) {
+  const kat = eintrag.kategorie ? (vorgangKategorie(eintrag.kategorie).kurz || "") : "Erfasst";
+  const sub = [objektText, kat, "zuletzt " + datumDe(eintrag.letzte)]
+    .filter(Boolean).join(" · ");
+  return (
+    <div onClick={onSpringe}
+      style={{ background: t.card, border: "1px solid " + t.border,
+        borderRadius: RAD.lg, padding: "11px 14px", cursor: "pointer",
+        minWidth: 0, boxSizing: "border-box", width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <AmpelPunkt farbe={eintrag.farbe}/>
+        <div style={{ flex: 1, minWidth: 0, fontSize: FS.m, fontWeight: FW.bold,
+          color: t.text, overflowWrap: "anywhere" }}>{eintrag.titel}</div>
+        {eintrag.status === "geschlossen" ? (
+          <StatusPille t={t} farbe={AMPEL_FARBEN.grau} text="Geschlossen"/>
+        ) : null}
+      </div>
+      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 3,
+        paddingLeft: 17, overflowWrap: "anywhere" }}>{sub}</div>
+    </div>
+  );
+}
+
+function TimelineBereich({ welt, ves, t, accent, onSpringe }) {
+  const eintraege = timelineEintraege(welt);
+  const objektText = (id) => {
+    if (!id) return "";
+    const v = (ves || []).filter((x) => x && x.id === id)[0];
+    return v ? (v.nr || v.name || "") : "";
+  };
+  if (eintraege.length === 0) {
+    return leerText(t, "Noch keine Vorgänge.");
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {eintraege.map((e, i) => (
+        <TimelineZeile key={(e.vorgang_id || e.auftrag_id || "") + ":" + i}
+          eintrag={e} objektText={objektText(e.objekt_id)} t={t}
+          onSpringe={() => onSpringe && onSpringe(e)}/>
+      ))}
+    </div>
+  );
+}
+
+// ── Demo-Hinweis: Seed-Daten gesammelt entfernen (Zwei-Klick) ───────────────
+function DemoHinweis({ welt, t, accent, onWelt }) {
+  const [confirm, setConfirm] = useState(false);
+  const n = zaehleDemoDaten(welt);
+  if (!onWelt || n === 0) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8,
+      padding: "6px 2px", marginBottom: 4 }}>
+      <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
+        {n + " Demo-Datensätze (Beispiele)"}
+      </div>
+      <button style={confirm
+          ? Object.assign({}, flowKnopf(t, accent, true), { background: AMPEL_FARBEN.rot, color: "#fff" })
+          : flowKnopf(t, accent, false)}
+        onClick={() => {
+          if (!confirm) { setConfirm(true); return; }
+          onWelt((w) => weltDemoEntfernen(w));
+          setConfirm(false);
+        }}>{confirm ? "Wirklich alle entfernen?" : "Demo-Daten entfernen"}</button>
+    </div>
+  );
+}
+
 export {
   AmpelPunkt, StatusPille, VorgangKarte, LoseAuftragKarte,
   VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma,
   vorgangAnzahlFuerObjekt,
   SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay, AuftragFlowAktionen,
+  TimelineBereich, DemoHinweis,
   VORGANG_STATUS_LABEL, AUFTRAG_STATUS_LABEL,
 };

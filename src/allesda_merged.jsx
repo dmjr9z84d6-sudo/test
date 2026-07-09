@@ -117,7 +117,8 @@ import {
 import {
   datumDe, isoHeute, istDatumGueltig, istEmailGueltig, istIbanGueltig,
   istPlzGueltig, istSteuerNrGueltig, istTelefonGueltig, istUrlGueltig,
-  joinPlzOrt, listeBreiteAus, matchScore, parseDatumWert, splitPlzOrt, zuIsoDatum
+  joinPlzOrt, listeBreiteAus, matchScore, parseDatumWert, splitPlzOrt, zuIsoDatum,
+  dateiSpeichern
 } from "./utils-basis.js";
 
 import {
@@ -193,12 +194,14 @@ import {
   neuerVorgang,
   neueBeteiligung,
   neueNachricht,
-  neuerAuftrag
+  neuerAuftrag,
+  weltAuftragFotoRefs
 } from "./datenmodell.js";
 
 import {
   VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma, vorgangAnzahlFuerObjekt,
-  SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay
+  SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay,
+  TimelineBereich, DemoHinweis
 } from "./vorgang.jsx";
 
 
@@ -3085,6 +3088,42 @@ export default function App() {
             const vo = (vesSichtbar || []).find(v => v.id === auftragViewVEId);
             detailKopf = vo ? (vo.nr || "Objekt") : "";
             detailSub = (vo && vo.adresse) ? vo.adresse : null;
+            // Auftragsfotos (Weg A §5.10, v13.59): Bild in IndexedDB + Eintrag
+            // in ve.fotos[] (exakt die §93-Struktur, Album „sonstiges", Notiz =
+            // Auftragsbeschreibung → in der Foto-Ansicht auffindbar) + Referenz
+            // am Auftrag. EIN setVes je Auswahl (Mehrfach-Upload gesammelt).
+            const auftragFotoHinzu = (auftrag, files) => {
+              if (!vo || !files || files.length === 0) return;
+              const vId = auftrag.vorgang_id
+                ? ((vorgangsWelt.vorgaenge.find(x => x.id === auftrag.vorgang_id) || {}).einheit_id || null)
+                : null;
+              const p2 = (n) => String(n).padStart(2, "0");
+              const h = new Date();
+              const heuteDE = p2(h.getDate()) + "." + p2(h.getMonth() + 1) + "." + h.getFullYear();
+              const eintraege = [];
+              let kette = Promise.resolve();
+              files.forEach((f, i) => {
+                kette = kette.then(() => dateiSpeichern(f).then(meta => {
+                  eintraege.push({
+                    id: "foto_" + Date.now().toString(36) + "_" + i + "_" + Math.random().toString(36).slice(2, 8),
+                    dateiRef: meta.id, name: meta.name, typ: meta.typ, groesse: meta.groesse,
+                    album: "sonstiges",
+                    zuordnung: { art: vId ? "einheit" : "gemeinschaft",
+                      hausId: null, einheitId: vId, raumId: null },
+                    geraetId: null, aufgenommen: heuteDE, exifQuelle: "upload",
+                    gps: null, notiz: auftrag.beschreibung || "Auftragsfoto",
+                    angelegt: new Date().toISOString(),
+                  });
+                }));
+              });
+              kette.then(() => {
+                if (eintraege.length === 0) return;
+                setVes(prev => prev.map(v => v.id === vo.id
+                  ? { ...v, fotos: [...(Array.isArray(v.fotos) ? v.fotos : []), ...eintraege] }
+                  : v));
+                setVorgangsWelt(prev => weltAuftragFotoRefs(prev, auftrag.id, eintraege.map(e => e.id)));
+              }).catch(() => {});
+            };
             // Echte Quelle (§96): Vorgänge dieses Objekts + „Erfasst"-Ecke
             // (vorgangslose Begehungsfunde). key=veId → frischer Klapp-State
             // je Objekt (React-Key-Lehre).
@@ -3094,7 +3133,8 @@ export default function App() {
                 kontakte={kontakteSichtbar} t={t} accent={aAccent}
                 initialOffeneId={auftragSprungId}
                 onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
-                DatumFeld={DatumFeld}/>
+                DatumFeld={DatumFeld}
+                ve={vo} onFotoHinzu={auftragFotoHinzu}/>
             );
           } else if (auftragView === "firma" && auftragFirmaId) {
             const fk = firmen.find(f => f.id === auftragFirmaId);
@@ -3159,7 +3199,7 @@ export default function App() {
             <ScreenKopf t={t} accent={aAccent} titel="Vorgänge"
               mitte={
                 <KopfPille t={t} accent={aAccent}
-                  optionen={[{ id: "objekt", label: "Objekte" }, { id: "firma", label: "Firmen" }]}
+                  optionen={[{ id: "objekt", label: "Objekte" }, { id: "firma", label: "Firmen" }, { id: "timeline", label: "Timeline" }]}
                   aktiv={auftragView} onWaehle={setAuftragView}/>
               }
               rechts={(auftragView === "objekt" && auftragViewVEId) || (hatAuswahl && auftragNurDetail) ? (
@@ -3183,19 +3223,27 @@ export default function App() {
             ? (vesSichtbar || []).find(v => v.id === auftragViewVEId) : null;
           const auftragNeuOverlay = anlegenVe ? (
             <VorgangNeuOverlay ve={anlegenVe} t={t} accent={aAccent}
-              Inp={Inp} SegmentControl={SegmentControl}
+              Inp={Inp} kontakteAlle={kontakteSichtbar}
               onClose={() => setAuftragNeuOffen(false)}
               onAnlegenVorgang={(d) => {
                 const v = neuerVorgang({ objekt_id: anlegenVe.id,
-                  einheit_id: d.einheit_id, titel: d.titel, kategorie: d.kategorie });
-                const bet = neueBeteiligung({ vorgang_id: v.id, rolle: "fallfuehrer" });
+                  einheit_id: d.einheit_id, titel: d.titel, kategorie: d.kategorie,
+                  ersteller_kontakt_id: d.melder_kontakt_id || null });
+                const bets = [neueBeteiligung({ vorgang_id: v.id, rolle: "fallfuehrer" })];
+                // Melder (Benny 09.07.): „Gemeldet von" — als Melder-Beteiligung
+                // in der Akte, die Notiz trägt ihn als Absender.
+                if (d.melder_kontakt_id) {
+                  bets.push(neueBeteiligung({ vorgang_id: v.id,
+                    kontakt_id: d.melder_kontakt_id, rolle: "melder" }));
+                }
                 const nachricht = d.notiz
                   ? neueNachricht({ vorgang_id: v.id, richtung: "eingehend",
+                      von_kontakt_id: d.melder_kontakt_id || null,
                       inhalt: d.notiz })
                   : null;
                 setVorgangsWelt(prev => ({ ...prev,
                   vorgaenge: [...prev.vorgaenge, v],
-                  beteiligungen: [...prev.beteiligungen, bet],
+                  beteiligungen: [...prev.beteiligungen, ...bets],
                   nachrichten: nachricht ? [...prev.nachrichten, nachricht] : prev.nachrichten,
                 }));
               }}
@@ -3206,6 +3254,32 @@ export default function App() {
                   auftraege: [...prev.auftraege, a] }));
               }}/>
           ) : null;
+
+          // Timeline (Benny 09.07.): dritte Achse — Chronik quer über alles,
+          // kein Master-Detail. Tap springt in die Objekt-Akte (wie Schreibtisch).
+          if (auftragView === "timeline") {
+            const springeT = (e) => {
+              if (!e || !e.objekt_id) return;
+              setAuftragView("objekt");
+              setAuftragFirmaId(null);
+              setAuftragViewVEId(e.objekt_id);
+              setAuftragSprungId(e.vorgang_id || null);
+            };
+            return (
+              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                {auftragHeader}
+                <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+                  <div style={{ maxWidth: 720, margin: "0 auto", width: "100%",
+                    boxSizing: "border-box" }}>
+                    <DemoHinweis welt={vorgangsWelt} t={t} accent={aAccent}
+                      onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}/>
+                    <TimelineBereich welt={vorgangsWelt} ves={vesSichtbar}
+                      t={t} accent={aAccent} onSpringe={springeT}/>
+                  </div>
+                </div>
+              </div>
+            );
+          }
 
           if (!istDesk) {
             return (
@@ -3273,8 +3347,7 @@ export default function App() {
                 <div style={{ maxWidth: 720, margin: "0 auto", width: "100%",
                   boxSizing: "border-box" }}>
                   <SchreibtischBereich welt={vorgangsWelt} ves={vesSichtbar}
-                    t={t} accent={sAccent} onSpringe={springe}
-                    SegmentControl={SegmentControl}/>
+                    t={t} accent={sAccent} onSpringe={springe}/>
                 </div>
               </div>
             </div>

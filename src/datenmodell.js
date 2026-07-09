@@ -2591,20 +2591,27 @@ const VORGANG_PHASEN_KETTE = [
   "abnahme", "rechnung", "abschluss", "gewaehrleistung",
 ];
 const VORGANG_KATEGORIEN = [
-  { id: "pflege", label: "Pflege / Kleinauftrag",
+  // Wartung (NEU v13.58): das Wiederkehrende (Wartungsverträge, Prüfungen) —
+  // keine Abnahme-Phase (das Wartungsprotokoll ist der Nachweis → Abhaken),
+  // aber Rechnung. Eigener Tab am Objekt (Benny 09.07.).
+  { id: "wartung", label: "Wartung", kurz: "Wartung",
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "rechnung", "abschluss"] },
+  { id: "pflege", label: "Pflege / Kleinauftrag", kurz: "Pflege",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "abschluss"] },
-  { id: "instandhaltung", label: "Instandhaltung",
+  { id: "instandhaltung", label: "Instandhaltung", kurz: "Instandhaltung",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss"] },
-  { id: "instandsetzung", label: "Instandsetzung",
+  { id: "instandsetzung", label: "Instandsetzung", kurz: "Instandsetzung",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss", "gewaehrleistung"] },
-  { id: "sanierung", label: "Sanierung / Modernisierung",
+  { id: "sanierung", label: "Sanierung / Modernisierung", kurz: "Sanierung",
     phasen: VORGANG_PHASEN_KETTE.slice() },
 ];
 function vorgangKategorie(id) {
   for (let i = 0; i < VORGANG_KATEGORIEN.length; i++) {
     if (VORGANG_KATEGORIEN[i].id === id) return VORGANG_KATEGORIEN[i];
   }
-  return VORGANG_KATEGORIEN[1]; // Default: Instandhaltung (der „Standard"-Fall)
+  // Default: Instandhaltung — per id gesucht, NICHT per Index (Index hat sich
+  // mit der Wartungs-Kategorie verschoben).
+  return VORGANG_KATEGORIEN.filter((k) => k.id === "instandhaltung")[0];
 }
 function kategorieHatPhase(kategorieId, phase) {
   return vorgangKategorie(kategorieId).phasen.indexOf(phase) >= 0;
@@ -3527,6 +3534,138 @@ function weltNotizNeu(welt, vorgangId, text) {
   return Object.assign({}, welt, { nachrichten: [...welt.nachrichten, n] });
 }
 
+// ── §96.11 · Löschen, Demo-Entfernen, Timeline (v13.58) ─────────────────────
+// Löschen ist die harte Ausnahme zur „Akte bleibt"-Regel — für Fehleingaben
+// und Demo-Daten in der Einzelplatz-Phase. IMMER kaskadiert: keine Waisen.
+
+// Vorgang + ALLE Kinder entfernen (Beteiligungen, Nachrichten, Angebote,
+// Aufträge inkl. deren Abnahmen, Rechnungen, Aufgaben).
+function weltVorgangLoeschen(welt, vorgangId) {
+  const v = welt.vorgaenge.filter((x) => x.id === vorgangId)[0];
+  if (!v) return welt;
+  const wegAuftraege = {};
+  welt.auftraege.forEach((a) => { if (a.vorgang_id === vorgangId) wegAuftraege[a.id] = true; });
+  return {
+    vorgaenge: welt.vorgaenge.filter((x) => x.id !== vorgangId),
+    beteiligungen: welt.beteiligungen.filter((x) => x.vorgang_id !== vorgangId),
+    nachrichten: welt.nachrichten.filter((x) => x.vorgang_id !== vorgangId),
+    angebote: welt.angebote.filter((x) => x.vorgang_id !== vorgangId),
+    auftraege: welt.auftraege.filter((x) => x.vorgang_id !== vorgangId),
+    abnahmen: welt.abnahmen.filter((x) => !wegAuftraege[x.auftrag_id]),
+    rechnungen: welt.rechnungen.filter((x) => x.vorgang_id !== vorgangId),
+    aufgaben: welt.aufgaben.filter((x) => x.vorgang_id !== vorgangId),
+    beschluesse: welt.beschluesse,
+  };
+}
+
+// Einzelnen Auftrag entfernen (auch lose Begehungsfunde): nimmt seine
+// Abnahmen mit; ein darauf zeigendes Angebot wird wieder wählbar.
+function weltAuftragLoeschen(welt, auftragId) {
+  const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
+  if (!a) return welt;
+  return Object.assign({}, welt, {
+    auftraege: welt.auftraege.filter((x) => x.id !== auftragId),
+    abnahmen: welt.abnahmen.filter((x) => x.auftrag_id !== auftragId),
+    angebote: welt.angebote.map((x) => x.wurde_zu_auftrag_id === auftragId
+      ? Object.assign({}, x, { wurde_zu_auftrag_id: null }) : x),
+  });
+}
+
+// Alle Seed-/Demo-Datensätze (demo:true) auf einen Schlag entfernen.
+function weltDemoEntfernen(welt) {
+  const k = (liste) => liste.filter((x) => !x.demo);
+  return {
+    vorgaenge: k(welt.vorgaenge), beteiligungen: k(welt.beteiligungen),
+    nachrichten: k(welt.nachrichten), angebote: k(welt.angebote),
+    auftraege: k(welt.auftraege), abnahmen: k(welt.abnahmen),
+    rechnungen: k(welt.rechnungen), aufgaben: k(welt.aufgaben),
+    beschluesse: k(welt.beschluesse),
+  };
+}
+function zaehleDemoDaten(welt) {
+  if (!welt) return 0;
+  let n = 0;
+  const z = (liste) => { liste.forEach((x) => { if (x.demo) n++; }); };
+  z(welt.vorgaenge); z(welt.beteiligungen); z(welt.nachrichten);
+  z(welt.angebote); z(welt.auftraege); z(welt.abnahmen);
+  z(welt.rechnungen); z(welt.aufgaben); z(welt.beschluesse);
+  return n;
+}
+
+// Foto-Referenzen (Weg A §5.10, v13.59): die Bilder leben in ve.fotos[] —
+// der Auftrag merkt sich nur die ids. Anzeigen/Löschen läuft über das
+// bestehende Foto-Feature (§93), hier nur das Verknüpfen.
+function weltAuftragFotoRefs(welt, auftragId, fotoIds) {
+  const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
+  const ids = Array.isArray(fotoIds) ? fotoIds.filter(Boolean) : [];
+  if (!a || ids.length === 0) return welt;
+  return Object.assign({}, welt, {
+    auftraege: _ersetzeIn(welt.auftraege, auftragId, {
+      foto_ids: [...(Array.isArray(a.foto_ids) ? a.foto_ids : []), ...ids],
+    }),
+  });
+}
+
+// ── Timeline (Benny 09.07.): die Chronik quer über alles ───────────────────
+// Jüngste Aktivität eines Vorgangs = das späteste Datum irgendeines seiner
+// Ereignisse (dieselben Quellen wie der Akten-Verlauf).
+function vorgangLetzteAktivitaet(vorgang, welt) {
+  let max = vorgang.angelegt_am || "";
+  const nimm = (d) => { if (d && d > max) max = d; };
+  nimm(vorgang.geschlossen_am);
+  welt.nachrichten.forEach((n) => { if (n.vorgang_id === vorgang.id) nimm(n.gesendet_am); });
+  welt.angebote.forEach((a) => { if (a.vorgang_id === vorgang.id) nimm(a.eingeholt_am); });
+  welt.auftraege.forEach((a) => {
+    if (a.vorgang_id !== vorgang.id) return;
+    nimm(a.erfasst_am); nimm(a.beauftragt_am);
+  });
+  welt.abnahmen.forEach((ab) => {
+    const auf = welt.auftraege.filter((a) => a.id === ab.auftrag_id)[0];
+    if (auf && auf.vorgang_id === vorgang.id) nimm(ab.datum);
+  });
+  welt.rechnungen.forEach((r) => {
+    if (r.vorgang_id !== vorgang.id) return;
+    nimm(r.eingegangen_am); nimm(r.bezahlt_am);
+  });
+  welt.aufgaben.forEach((a) => {
+    if (a.vorgang_id !== vorgang.id) return;
+    nimm(a.angelegt_am); nimm(a.erledigt_am);
+  });
+  return max;
+}
+
+// Flache Chronik-Liste: alle Vorgänge (auch geschlossene — es ist die
+// Historie) + lose Aufträge, jüngste Aktivität zuerst.
+function timelineEintraege(welt, heute) {
+  if (!welt) return [];
+  const jetzt = heute || isoHeute();
+  const E = [];
+  for (let i = 0; i < welt.vorgaenge.length; i++) {
+    const v = welt.vorgaenge[i];
+    E.push({
+      typ: "vorgang", vorgang_id: v.id, auftrag_id: null,
+      objekt_id: v.objekt_id, einheit_id: v.einheit_id || null,
+      titel: v.titel || "Vorgang", kategorie: v.kategorie, status: v.status,
+      farbe: ampelFarbe(v, welt, jetzt),
+      letzte: vorgangLetzteAktivitaet(v, welt),
+    });
+  }
+  for (let i = 0; i < welt.auftraege.length; i++) {
+    const a = welt.auftraege[i];
+    if (a.vorgang_id) continue;
+    E.push({
+      typ: "auftrag", vorgang_id: null, auftrag_id: a.id,
+      objekt_id: a.objekt_id, einheit_id: null,
+      titel: a.beschreibung || "Auftrag", kategorie: null, status: a.status,
+      farbe: ampelFarbeAuftrag(a, jetzt),
+      letzte: a.beauftragt_am && a.beauftragt_am > (a.erfasst_am || "")
+        ? a.beauftragt_am : (a.erfasst_am || ""),
+    });
+  }
+  E.sort((x, y) => String(y.letzte).localeCompare(String(x.letzte)));
+  return E;
+}
+
 export {
   VORGANG_KATEGORIEN, VORGANG_PHASEN_KETTE, vorgangKategorie, kategorieHatPhase,
   VORGANG_STATUS, AUFTRAG_STATUS, RECHNUNG_STATUS, ABNAHME_ERGEBNISSE,
@@ -3544,5 +3683,7 @@ export {
   weltWiedervorlageAufheben, weltVorgangSchliessen, weltVorgangOeffnen,
   weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
   weltVorgangVonTagesordnung, weltNotizNeu,
+  weltVorgangLoeschen, weltAuftragLoeschen, weltDemoEntfernen, zaehleDemoDaten,
+  vorgangLetzteAktivitaet, timelineEintraege, weltAuftragFotoRefs,
   _kontaktAnzeigename as kontaktAnzeigename,
 };
