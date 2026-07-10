@@ -14,7 +14,7 @@ import {
 } from "./datenmodell.js";
 import {
   I, StickySectionHeader, formatNameMitCtx, passendeMasterSpalten, useAvatarIcons,
-  useContentWidth, useFirmenRollen, useKategorien,
+  useContentWidth, useFirmenRollen, useKartenIcons, useKategorien,
   useKontaktAnzeige, useKontaktFarbe, useLeistungen, useRollen, useVerwendungen,
   useZeitPicker, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
@@ -50,6 +50,54 @@ function Toggle({ value, onChange, color = ACCENT, disabled = false }) {
         position: "absolute", top: 2, left: value ? 15 : 2,
         transition: "left 0.2s",
       }}/>
+    </div>
+  );
+}
+
+// ── TabLeiste — KANONISCHER horizontaler Reiter-Umschalter (DESIGN §97) ──────
+// EIN Aussehen für ALLE oberen Reiter-Navigationen, die den Hauptinhalt eines
+// Screens umschalten (Objekt-Tabs, Vorgangs-Kategorien, künftige). Icon+Label,
+// aktiver Reiter mit 2px-Unterstrich in accent + fett; card-Hintergrund/Rand;
+// horizontal scrollbar; der aktive Reiter scrollt automatisch ins Sichtfeld
+// (rein über scrollLeft — scrollIntoView zöge auf Mobile den Body hoch).
+// Icons folgen dem globalen Schalter „Symbole an Karten" (kartenIconsAn) —
+// aus → nur Text. tabs: [{ id, label, icon? }].
+// ABGRENZUNG (§76): Optionen im Inhalt/Formular → SegmentControl (§37);
+// Sicht-Umschalter im Kopf → KopfPille (§73); Reiter, die den Screen-Inhalt
+// umschalten → hier.
+function TabLeiste({ tabs, aktiv, onWaehle, t, accent = ACCENT }) {
+  const zeigeIcons = useKartenIcons();
+  const leisteRef = useRef(null);
+  const btnRefs = useRef({});
+  useEffect(() => {
+    const leiste = leisteRef.current;
+    const btn = btnRefs.current[aktiv];
+    if (!leiste || !btn) return;
+    const ziel = btn.offsetLeft - (leiste.clientWidth / 2) + (btn.offsetWidth / 2);
+    leiste.scrollLeft = Math.max(0, ziel);
+  }, [aktiv]);
+  return (
+    <div ref={leisteRef} style={{ display: "flex", background: t.card,
+      border: `1px solid ${t.border}`, borderRadius: RAD.lg, marginBottom: 16,
+      overflowX: "auto", overflowY: "hidden",
+      scrollbarWidth: "thin", WebkitOverflowScrolling: "touch" }}>
+      {(tabs || []).map(tb => {
+        const ist = aktiv === tb.id;
+        return (
+          <button key={tb.id} onClick={() => onWaehle(tb.id)}
+            ref={el => { btnRefs.current[tb.id] = el; }}
+            style={{ flex: "0 0 auto", display: "flex", alignItems: "center",
+              justifyContent: "center", gap: 6, padding: "11px 18px",
+              background: "none", border: "none", cursor: "pointer",
+              borderBottom: ist ? `2px solid ${accent}` : "2px solid transparent",
+              fontSize: FS.m, fontWeight: ist ? 700 : 500,
+              color: ist ? accent : t.sub, fontFamily: "inherit",
+              whiteSpace: "nowrap" }}>
+            {zeigeIcons && tb.icon ? <I name={tb.icon} size={13} color={ist ? accent : t.sub}/> : null}
+            {tb.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -3686,6 +3734,7 @@ export {
   MasterDetailRahmen,
   Toggle,
   SegmentControl,
+  TabLeiste,
   Inp,
   DATUM_MONATE_KURZ,
   DATUM_MONATE,

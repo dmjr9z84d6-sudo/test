@@ -18,7 +18,7 @@
 import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
-import { SegmentControl, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
+import { SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
@@ -514,8 +514,8 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   if (alleVorgaenge.length === 0 && lose.length === 0) {
     return leerText(t, "Keine Vorgänge.");
   }
-  const katOptionen = [{ id: "alle", label: "Alle" }].concat(
-    VORGANG_KATEGORIEN.map((k) => ({ id: k.id, label: k.kurz || k.label })));
+  const katOptionen = [{ id: "alle", label: "Alle", icon: "list" }].concat(
+    VORGANG_KATEGORIEN.map((k) => ({ id: k.id, label: k.kurz || k.label, icon: k.icon })));
   const buendelReset = () => {
     setBuendelModus(false); setBuendelIds([]); setBuendelZiel(null);
     setBuendelTitel(""); setBuendelVorgangId("");
@@ -535,10 +535,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {alleVorgaenge.length > 0 ? (
-        <div>
-          <SegmentControl t={t} accent={accent} voll={false}
-            options={katOptionen} value={katTab} onChange={setKatTab}/>
-        </div>
+        <TabLeiste tabs={katOptionen} aktiv={katTab} onWaehle={setKatTab} t={t} accent={accent}/>
       ) : null}
       {vorgaenge.length === 0 && alleVorgaenge.length > 0 ? (
         leerText(t, "Keine Vorgänge in dieser Kategorie.")

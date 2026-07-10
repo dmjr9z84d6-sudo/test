@@ -2594,15 +2594,15 @@ const VORGANG_KATEGORIEN = [
   // Wartung (NEU v13.58): das Wiederkehrende (Wartungsverträge, Prüfungen) —
   // keine Abnahme-Phase (das Wartungsprotokoll ist der Nachweis → Abhaken),
   // aber Rechnung. Eigener Tab am Objekt (Benny 09.07.).
-  { id: "wartung", label: "Wartung", kurz: "Wartung",
+  { id: "wartung", label: "Wartung", kurz: "Wartung", icon: "settings",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "rechnung", "abschluss"] },
-  { id: "pflege", label: "Pflege / Kleinauftrag", kurz: "Pflege",
+  { id: "pflege", label: "Pflege / Kleinauftrag", kurz: "Pflege", icon: "sparkles",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "abschluss"] },
-  { id: "instandhaltung", label: "Instandhaltung", kurz: "Instandhaltung",
+  { id: "instandhaltung", label: "Instandhaltung", kurz: "Instandhaltung", icon: "wrench",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss"] },
-  { id: "instandsetzung", label: "Instandsetzung", kurz: "Instandsetzung",
+  { id: "instandsetzung", label: "Instandsetzung", kurz: "Instandsetzung", icon: "swap",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss", "gewaehrleistung"] },
-  { id: "sanierung", label: "Sanierung / Modernisierung", kurz: "Sanierung",
+  { id: "sanierung", label: "Sanierung / Modernisierung", kurz: "Sanierung", icon: "building",
     phasen: VORGANG_PHASEN_KETTE.slice() },
 ];
 function vorgangKategorie(id) {

@@ -15,7 +15,7 @@ import {
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
-  objektHatZentralesWarmwasser, SegmentControl, wjEndeDatum
+  objektHatZentralesWarmwasser, SegmentControl, TabLeiste, wjEndeDatum
 } from "./components.jsx";
 import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
@@ -1299,22 +1299,8 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
       setTimeout(() => scrollToCard(cardId), 50);
     }
   };
-  // Aktiven Reiter horizontal ins Sichtfeld bringen — NUR bei echtem Tab-Wechsel
-  // (über useEffect auf `tab`), nicht bei jedem Re-Render. Früher saß ein
-  // scrollIntoView in einem ref-Callback, der bei JEDEM Render feuerte (z. B.
-  // beim Hinzufügen einer Kontakt-Karte) und auf Mobile den Body vertikal
-  // hochzog ("Screen läuft hoch"). scrollLeft statt scrollIntoView hält die
-  // vertikale Position garantiert unberührt.
-  const tabLeisteRef = useRef(null);
-  const tabBtnRefs = useRef({});
-  useEffect(() => {
-    const leiste = tabLeisteRef.current;
-    const btn = tabBtnRefs.current[tab];
-    if (!leiste || !btn) return;
-    // Ziel: aktiven Button horizontal zentrieren, rein über scrollLeft.
-    const ziel = btn.offsetLeft - (leiste.clientWidth / 2) + (btn.offsetWidth / 2);
-    leiste.scrollLeft = Math.max(0, ziel);
-  }, [tab]);
+  // (Auto-Scroll des aktiven Reiters ins Sichtfeld lebt jetzt im TabLeiste-
+  // Baustein, §97.)
 
   // Beteiligte Kontakte ermitteln
   const beteiligteIds = [...new Set(
@@ -1369,27 +1355,10 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
           )
         ) : null}/>
 
-      {/* Reiter — horizontal scrollbar (wie der Schnellzugriff im Header), damit
-          auch 6+ Reiter auf Mobile Platz finden. Aktiver Reiter scrollt
-          automatisch ins Sichtfeld. */}
-      <div ref={tabLeisteRef} style={{ display: "flex", background: t.card, border: `1px solid ${t.border}`,
-        borderRadius: RAD.lg, marginBottom: 16,
-        overflowX: "auto", overflowY: "hidden",
-        scrollbarWidth: "thin", WebkitOverflowScrolling: "touch" }}>
-        {TABS.map(tb => (
-          <button key={tb.id} onClick={() => wechselTab(tb.id)}
-            ref={el => { tabBtnRefs.current[tb.id] = el; }}
-            style={{
-              flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              padding: "11px 18px", background: "none", border: "none", cursor: "pointer",
-              borderBottom: tab === tb.id ? `2px solid ${accent}` : "2px solid transparent",
-              fontSize: FS.m, fontWeight: tab === tb.id ? 700 : 500,
-              color: tab === tb.id ? accent : t.sub, fontFamily: "inherit",
-              whiteSpace: "nowrap" }}>
-            <I name={tb.icon} size={13} color={tab === tb.id ? accent : t.sub}/>{tb.label}
-          </button>
-        ))}
-      </div>
+      {/* Reiter — kanonische TabLeiste (§97). Horizontal scrollbar, aktiver
+          Reiter scrollt automatisch ins Sichtfeld; Icons folgen „Symbole an
+          Karten". EIN Aussehen für alle oberen Reiter (auch Vorgangs-Kategorien). */}
+      <TabLeiste tabs={TABS} aktiv={tab} onWaehle={wechselTab} t={t} accent={accent}/>
 
       {/* Liegenschaft */}
       {tab === "liegenschaft" && <LiegenschaftAnsicht ve={ve} setVes={setVes} t={t} accent={accent} kontakte={kontakte} setKontakte={setKontakte} editMode={editMode} onKontaktClick={onKontaktClick} ves={ves} etvStamm={etvStamm} onSyncChange={setEtvStamm} sprungKarte={sprungZiel && sprungZiel.tab === "liegenschaft" ? { karteId: sprungZiel.karteId, nonce: sprungZiel.nonce } : null}/>}
