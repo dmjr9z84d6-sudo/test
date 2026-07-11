@@ -705,7 +705,7 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle }) {
 // Übersicht: Stand-Karte (Phasen-Linie + nächster Schritt) oben, dann Daten
 // (inkl. Verlauf — Bennys Wahl D), dann Aufträge/Aufgaben/Notiz wie gehabt.
 // ═════════════════════════════════════════════════════════════════════════
-function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null }) {
+function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, zurueckKnopf = true }) {
   const [tab, setTab] = useState("uebersicht");
   const [tabZwang, setTabZwang] = useState({}); // Katalog erzwingt Tab vor erstem Inhalt
   const [offenerBaustein, setOffenerBaustein] = useState(null);
@@ -972,7 +972,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
       {/* ── Kopf (Objekt-Vorbild): Nummer groß · Titel + Liegenschaft klein ── */}
       <div style={{ padding: "12px 14px", borderBottom: "1px solid " + t.border }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          {onZurueck ? <HeaderZurueck onClick={onZurueck} t={t}/> : null}
+          {onZurueck && zurueckKnopf ? <HeaderZurueck onClick={onZurueck} t={t}/> : null}
           <AmpelPunkt farbe={farbe}/>
           <div style={{ fontSize: FS.xxl, fontWeight: FW.bold, color: t.text,
             letterSpacing: 0.5 }}>{vorgang.nummer || "Vorgang"}</div>
@@ -2283,13 +2283,14 @@ function SchreibtischBereich({ welt, ves, t, accent, onSpringe }) {
 // Alle Vorgänge (auch geschlossene) + lose Funde, jüngste Aktivität zuerst.
 // Zeile: Ampelpunkt · Titel · [Objekt · Kategorie · zuletzt TT.MM.JJJJ].
 // Tap springt in die Objekt-Akte (gleiches Muster wie der Schreibtisch).
-function TimelineZeile({ eintrag, objektText, t, onSpringe }) {
+function TimelineZeile({ eintrag, objektText, t, accent = null, aktiv = false, onSpringe }) {
   const kat = eintrag.kategorie ? (vorgangKategorie(eintrag.kategorie).kurz || "") : "Erfasst";
-  const sub = [objektText, kat, "zuletzt " + datumDe(eintrag.letzte)]
+  const sub = [eintrag.nummer, objektText, kat, "zuletzt " + datumDe(eintrag.letzte)]
     .filter(Boolean).join(" · ");
   return (
     <div onClick={onSpringe}
-      style={{ background: t.card, border: "1px solid " + t.border,
+      style={{ background: t.card,
+        border: "1px solid " + (aktiv && accent ? accent : t.border),
         borderRadius: RAD.lg, padding: "11px 14px", cursor: "pointer",
         minWidth: 0, boxSizing: "border-box", width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2306,7 +2307,19 @@ function TimelineZeile({ eintrag, objektText, t, onSpringe }) {
   );
 }
 
-function TimelineBereich({ welt, ves, t, accent, onSpringe }) {
+// Timeline im KANONISCHEN Kalender-Baustein-Muster (§95-Optik, Benny 11.07.):
+// Dringlichkeits-Buckets nach Ampel mit Großbuchstaben-Kopf + Zähler,
+// linksbündige Zeilen, Antippen WÄHLT AUS (Akte als Detail — kein Sprung
+// mehr zum Objekt). Lose Erfasst-Funde haben keine Akte → onSpringe
+// (Objektliste) bleibt für sie der Weg.
+const TIMELINE_BUCKETS = [
+  { id: "rot",   label: "Überfällig" },
+  { id: "gelb",  label: "Handlung fällig" },
+  { id: "blau",  label: "Offene Entwürfe" },
+  { id: "gruen", label: "Läuft" },
+  { id: "grau",  label: "Ruht / erledigt" },
+];
+function TimelineBereich({ welt, ves, t, accent, onSpringe, offeneIdCtrl = null, onOeffneId = null }) {
   const eintraege = timelineEintraege(welt);
   const objektText = (id) => {
     if (!id) return "";
@@ -2316,13 +2329,43 @@ function TimelineBereich({ welt, ves, t, accent, onSpringe }) {
   if (eintraege.length === 0) {
     return leerText(t, "Noch keine Vorgänge.");
   }
+  const gruppen = {};
+  TIMELINE_BUCKETS.forEach((b) => { gruppen[b.id] = []; });
+  eintraege.forEach((e) => {
+    (gruppen[e.farbe] || gruppen.grau).push(e);
+  });
+  const tippe = (e) => {
+    if (e.vorgang_id && onOeffneId) {
+      onOeffneId(offeneIdCtrl === e.vorgang_id ? null : e.vorgang_id);
+    } else if (onSpringe) {
+      onSpringe(e);
+    }
+  };
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {eintraege.map((e, i) => (
-        <TimelineZeile key={(e.vorgang_id || e.auftrag_id || "") + ":" + i}
-          eintrag={e} objektText={objektText(e.objekt_id)} t={t}
-          onSpringe={() => onSpringe && onSpringe(e)}/>
-      ))}
+    <div style={{ minWidth: 0 }}>
+      {TIMELINE_BUCKETS.map((b) => {
+        if (gruppen[b.id].length === 0) return null;
+        return (
+          <div key={b.id} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: FS.s, fontWeight: FW.bold,
+              color: b.id === "rot" ? AMPEL_FARBEN.rot : t.muted,
+              textTransform: "uppercase", letterSpacing: "0.04em",
+              marginBottom: 8, marginTop: 4 }}>
+              {b.label}{" "}
+              <span style={{ color: t.muted, fontWeight: FW.med }}>
+                {"(" + gruppen[b.id].length + ")"}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {gruppen[b.id].map((e, i) => (
+                <TimelineZeile key={(e.vorgang_id || e.auftrag_id || "") + ":" + i}
+                  eintrag={e} objektText={objektText(e.objekt_id)} t={t}
+                  accent={accent} aktiv={!!e.vorgang_id && offeneIdCtrl === e.vorgang_id}
+                  onSpringe={() => tippe(e)}/>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

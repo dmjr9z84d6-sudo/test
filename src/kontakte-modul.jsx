@@ -3595,7 +3595,7 @@ function KontaktListenZeile({ k, t, accent, aktiv, onClick, id, kbItem = false }
 }
 
 // ── KontaktKarte (kompakte Karten-Darstellung im Stil der VEKachel) ─────────
-function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = false, kbItem = false }) {
+function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = false, kbItem = false, auswahlAccentOverride = null }) {
   const istFirma = k.typ === "firma";
   const kontaktFarben = useKontaktFarbe();
   const farbe = istFirma ? kontaktFarben.firma : kontaktFarben.person;
@@ -3667,7 +3667,9 @@ function KontaktKarte({ k, t, aktiv, onClick, id, ohneRahmen = false, kompakt = 
     ? berechneKontaktStatus(k, statusLeisteSettings.inhalte || {})
     : null;
 
-  const bc = aktiv ? (kontaktFarben.auswahlKontakt || farbe) : t.border;
+  // auswahlAccentOverride (Muster VEKachel): fremde Screens (z. B. Vorgänge)
+  // färben den Auswahl-Rahmen in IHREM Akzent — Farbkonzept bleibt konsistent.
+  const bc = aktiv ? (auswahlAccentOverride || kontaktFarben.auswahlKontakt || farbe) : t.border;
   // In der kleinen/eingebetteten Kontaktkarte (kompakt) wird die Statusleiste
   // nie gezeigt — sie ist dort nicht relevant.
   const zeigeStatus = statusLeisteSettings.kontakt && !kompakt;

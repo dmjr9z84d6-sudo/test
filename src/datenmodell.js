@@ -3874,6 +3874,7 @@ function timelineEintraege(welt, heute) {
     E.push({
       typ: "vorgang", vorgang_id: v.id, auftrag_id: null,
       objekt_id: v.objekt_id, einheit_id: v.einheit_id || null,
+      nummer: v.nummer || null,
       titel: v.titel || "Vorgang", kategorie: v.kategorie, status: v.status,
       farbe: ampelFarbe(v, welt, jetzt),
       letzte: vorgangLetzteAktivitaet(v, welt),

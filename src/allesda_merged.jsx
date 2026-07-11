@@ -3193,6 +3193,7 @@ export default function App() {
               ) : firmen.map(f => (
                 <KontaktKarte key={f.id} k={f} t={t}
                   aktiv={auftragFirmaId === f.id} kbItem id={"auffirma-" + f.id}
+                  auswahlAccentOverride={aAccent}
                   onClick={() => { setVorgangAkteId(null); setAuftragFirmaId(auftragFirmaId === f.id ? null : f.id); }}/>
               ))}
             </div>
@@ -3282,7 +3283,8 @@ export default function App() {
                 onZurueck={() => setVorgangAkteId(null)}
                 onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
                 DatumFeld={DatumFeld} ve={akteVe}
-                onFotoHinzu={akteVe ? auftragFotoHinzu : null}/>
+                onFotoHinzu={akteVe ? auftragFotoHinzu : null}
+                zurueckKnopf={!istDesk}/>
             );
             if (!istDesk) {
               return (
@@ -3300,7 +3302,16 @@ export default function App() {
                 {auftragNeuOverlay}
                 {auftragHeader}
                 <MasterDetailRahmen
-                  master={() => detailListe}
+                  master={() => (
+                    <div style={{ display: "flex", flexDirection: "column",
+                      gap: 10, minWidth: 0 }}>
+                      {/* Zurück am großen Screen im Listenmenü (Benny) */}
+                      <div><HeaderZurueck onClick={() => setVorgangAkteId(null)} t={t}/></div>
+                      {/* DetailRahmen bleibt: hält die Vorgänge optisch
+                          gebündelt + trägt den Objekt-/Firmen-Bezug */}
+                      {detailInhalt}
+                    </div>
+                  )}
                   detail={akteDetail}
                   istDesktop={true}
                   listenAnsicht={effectiveSettings.listenAnsicht} listeOpt={listeOpt}
@@ -3314,6 +3325,11 @@ export default function App() {
           // Timeline (Benny 09.07.): dritte Achse — Chronik quer über alles,
           // kein Master-Detail. Tap springt in die Objekt-Akte (wie Schreibtisch).
           if (auftragView === "timeline") {
+            // Timeline im kanonischen Kalender-Muster (Benny 11.07.):
+            // LINKSBÜNDIGE Bucket-Liste als Master (uebersichtBreite="master"
+            // → gleiche Listenbreite wie im Kalender), Antippen öffnet die
+            // AKTE als Detail. Lose Erfasst-Funde (keine Akte) springen
+            // weiterhin in die Objektliste.
             const springeT = (e) => {
               if (!e || !e.objekt_id) return;
               setAuftragView("objekt");
@@ -3322,18 +3338,64 @@ export default function App() {
               setAuftragSprungId(e.vorgang_id || null);
               setVorgangAkteId(e.vorgang_id || null);
             };
+            const tlVorgang = vorgangAkteId
+              ? (vorgangsWelt.vorgaenge.find(v => v.id === vorgangAkteId) || null) : null;
+            const tlVe = tlVorgang
+              ? ((vesSichtbar || []).find(v => v.id === tlVorgang.objekt_id) || null) : null;
+            const tlDetail = tlVorgang ? (
+              <VorgangDetail vorgang={tlVorgang} welt={vorgangsWelt}
+                kontakte={kontakteSichtbar} t={t} accent={aAccent}
+                onZurueck={() => setVorgangAkteId(null)}
+                onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
+                DatumFeld={DatumFeld} ve={tlVe} onFotoHinzu={null}
+                zurueckKnopf={!istDesk}/>
+            ) : null;
+            const tlMaster = () => (
+              <div style={{ minWidth: 0 }}>
+                {tlVorgang && istDesk ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <HeaderZurueck onClick={() => setVorgangAkteId(null)} t={t}/>
+                  </div>
+                ) : null}
+                <DemoHinweis welt={vorgangsWelt} t={t} accent={aAccent}
+                  onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}/>
+                <TimelineBereich welt={vorgangsWelt} ves={vesSichtbar}
+                  t={t} accent={aAccent} onSpringe={springeT}
+                  offeneIdCtrl={vorgangAkteId} onOeffneId={setVorgangAkteId}/>
+              </div>
+            );
+            if (!istDesk && tlVorgang) {
+              return (
+                <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                  {auftragHeader}
+                  <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+                    {tlDetail}
+                  </div>
+                </div>
+              );
+            }
+            if (!istDesk) {
+              return (
+                <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                  {auftragHeader}
+                  <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+                    {tlMaster()}
+                  </div>
+                </div>
+              );
+            }
             return (
               <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                 {auftragHeader}
-                <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
-                  <div style={{ maxWidth: 720, margin: "0 auto", width: "100%",
-                    boxSizing: "border-box" }}>
-                    <DemoHinweis welt={vorgangsWelt} t={t} accent={aAccent}
-                      onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}/>
-                    <TimelineBereich welt={vorgangsWelt} ves={vesSichtbar}
-                      t={t} accent={aAccent} onSpringe={springeT}/>
-                  </div>
-                </div>
+                <MasterDetailRahmen
+                  master={tlMaster}
+                  detail={tlDetail}
+                  istDesktop={true}
+                  listenAnsicht={effectiveSettings.listenAnsicht} listeOpt={listeOpt}
+                  kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+                  kartenMin={kartenMinBreiteEff} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff}
+                  t={t} onNurDetail={() => {}}
+                  uebersichtBreite="master"/>
               </div>
             );
           }
