@@ -2617,6 +2617,16 @@ function kategorieHatPhase(kategorieId, phase) {
   return vorgangKategorie(kategorieId).phasen.indexOf(phase) >= 0;
 }
 
+// Abnahme PRO AUFTRAG wählbar (Umbau §6b, Bennys Korrektur der Spec): der
+// explizite Schalter am Auftrag gewinnt; ohne Schalter gilt der
+// Kategorie-Default. Auch im großen Vorgang gibt es Kleinaufträge ohne
+// Abnahmebedarf neben dem abnahmepflichtigen Hauptauftrag.
+function auftragBrauchtAbnahme(auftrag, kategorieId) {
+  if (auftrag && auftrag.abnahme_noetig === true) return true;
+  if (auftrag && auftrag.abnahme_noetig === false) return false;
+  return kategorieHatPhase(kategorieId, "abnahme");
+}
+
 // ── §96.2 · Statusketten (Spec §7 — zwei gekoppelte Ketten) ────────────────
 // Kopplung ist BEWUSST lose: Auftrags-Fertigmeldung schaltet den Vorgang
 // NICHT automatisch weiter — sie erzeugt einen Hinweis („Abnahme fällig") an
@@ -2789,6 +2799,7 @@ function neuerAuftrag(init) {
     erfasst_am: isoHeute(),
     beauftragt_am: null,
     frist: null,                 // optionales Zieldatum → treibt 🔴 überfällig
+    abnahme_noetig: null,        // §6b (Umbau): Abnahme PRO AUFTRAG wählbar — null = Kategorie-Default, true/false = explizit
     foto_ids: [],                // Weg A (§5.10): Fotos leben in ve.fotos[], hier nur Refs
     dateien: [],                 // Prüfprotokoll / Gutachten am Auftrag
     demo: false,
@@ -2807,7 +2818,8 @@ function neueAbnahme(init) {
     datum: isoHeute(),
     pruefer_kontakt_id: null,
     ergebnis: "angenommen",      // angenommen | mit_maengeln | abgelehnt
-    maengel: [],                 // der Grund, warum ein Bool nicht reicht → treibt nachbesserung
+    maengel: [],                 // strukturierte Liste bleibt möglich; Start schlank über notiz (§6b)
+    notiz: "",                   // freies Notizfeld (§6b: was, warum, was fehlt — das Inhaltliche)
     foto_ids: [],
     dateien: [],
     demo: false,
@@ -2954,14 +2966,14 @@ function hinweiseFuerVorgang(vorgang, welt, heute) {
     // — kein Hinweis, fließt unten in ampelFarbe() ein.
   }
 
-  // 🟡 Abnahme fällig: Auftrag fertiggemeldet + Kategorie verlangt Abnahme +
-  // noch keine angenommene Abnahme. (Fertigmeldung = Behauptung der Firma;
-  // die Prüfung ist MEINE Handlung.)
-  const brauchtAbnahme = kategorieHatPhase(vorgang.kategorie, "abnahme");
+  // 🟡 Abnahme fällig: Auftrag fertiggemeldet + DIESER Auftrag verlangt
+  // Abnahme (§6b: Schalter pro Auftrag, Kategorie nur Default) + noch keine
+  // angenommene Abnahme. (Fertigmeldung = Behauptung der Firma; die Prüfung
+  // ist MEINE Handlung.)
   for (let i = 0; i < auftraege.length; i++) {
     const a = auftraege[i];
     if (a.status !== "fertiggemeldet") continue;
-    if (!brauchtAbnahme) {
+    if (!auftragBrauchtAbnahme(a, vorgang.kategorie)) {
       // Pflege/Kleinauftrag: kein Abnahme-Objekt — Abhaken (auf „abgenommen"
       // setzen) ist trotzdem meine Handlung, das Foto ist der Nachweis.
       dazu(4, "erledigung_pruefen",
@@ -3372,6 +3384,8 @@ function weltAuftragAbnehmen(welt, auftragId, daten) {
   const abnahme = neueAbnahme({
     auftrag_id: auftragId, ergebnis: ergebnis,
     maengel: Array.isArray(d.maengel) ? d.maengel : [],
+    notiz: d.notiz || "",
+    datum: d.datum || isoHeute(),
     pruefer_kontakt_id: d.pruefer_kontakt_id || null,
   });
   let neu = Object.assign({}, welt, {
@@ -3695,6 +3709,7 @@ function timelineEintraege(welt, heute) {
 
 export {
   VORGANG_KATEGORIEN, VORGANG_PHASEN_KETTE, vorgangKategorie, kategorieHatPhase,
+  auftragBrauchtAbnahme,
   VORGANG_STATUS, AUFTRAG_STATUS, RECHNUNG_STATUS, ABNAHME_ERGEBNISSE,
   AUFGABE_STATUS, auftragLaeuft,
   BETEILIGUNG_ROLLEN, beteiligungRolle, ANLASS_TYPEN, anlassTyp,

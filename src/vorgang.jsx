@@ -24,7 +24,7 @@ import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
-  vorgangKategorie, kategorieHatPhase,
+  vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
   weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus,
   weltAufgabeNeu, weltAufgabeErledigt, weltAngebotBeauftragen,
@@ -81,7 +81,9 @@ function vorgangPhase(vorgang, welt) {
     return "abschluss";
   }
   const status = (s) => auftraege.filter((a) => a.status === s).length > 0;
-  if (status("fertiggemeldet") && hat("abnahme")) return "abnahme";
+  const abnahmeWartet = auftraege.filter((a) => a.status === "fertiggemeldet"
+    && auftragBrauchtAbnahme(a, vorgang.kategorie)).length > 0;
+  if (abnahmeWartet && hat("abnahme")) return "abnahme";
   if (status("in_arbeit") || status("nachbesserung") || status("fertiggemeldet")) {
     return "ausfuehrung";
   }
@@ -162,13 +164,16 @@ function BausteinKarte({ titel, anzahl, sub, offen, onToggle, t, accent, childre
 // ── AuftragNeuForm — Auftrag im Vorgang anlegen (§6b: an wen/was/bis wann) ──
 // „Womit" (zugrundeliegendes Angebot) kommt mit der Angebots-Verbreiterung.
 // Ohne Firma bleibt er „erfasst" (Entwurf); mit Firma wird direkt beauftragt.
-function AuftragNeuForm({ vorgangId, firmen, t, accent, onWelt, DatumFeld, onFertig }) {
+function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWelt, DatumFeld, onFertig }) {
   const [beschreibung, setBeschreibung] = useState("");
   const [firmaId, setFirmaId] = useState("");
   const [frist, setFrist] = useState("");
+  // §6b: Kategorie schlägt den Default vor, entschieden wird pro Auftrag.
+  const [abnahme, setAbnahme] = useState(kategorieHatPhase(kategorieId, "abnahme"));
   const legeAn = () => {
     if (!beschreibung.trim()) return;
-    const d = { vorgang_id: vorgangId, beschreibung: beschreibung.trim() };
+    const d = { vorgang_id: vorgangId, beschreibung: beschreibung.trim(),
+      abnahme_noetig: abnahme };
     onWelt((w) => {
       const a = neuerAuftrag(d);
       let neu = Object.assign({}, w, { auftraege: [...w.auftraege, a] });
@@ -198,6 +203,13 @@ function AuftragNeuForm({ vorgangId, firmen, t, accent, onWelt, DatumFeld, onFer
         <DatumFeld t={t} accent={accent} label="Bis wann (Ausführungsfrist)"
           value={frist} onChange={setFrist} iso defaultHeute={false}/>
       ) : null}
+      <label style={{ display: "flex", alignItems: "center", gap: 8,
+        fontSize: FS.s, color: t.text, cursor: "pointer" }}>
+        <input type="checkbox" checked={abnahme}
+          onChange={(e) => setAbnahme(e.target.checked)}
+          style={{ width: 18, height: 18 }}/>
+        Abnahme erforderlich
+      </label>
       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
         <button onClick={onFertig} style={flowKnopf(t, accent, false)}>Abbrechen</button>
         <button onClick={legeAn} style={flowKnopf(t, accent, true)}>
@@ -281,8 +293,9 @@ function baueVerlauf(vorgang, welt, kontakte) {
     for (let j = 0; j < abnahmen.length; j++) {
       const ab = abnahmen[j];
       dazu(ab.datum, "Abnahme: " + (ab.ergebnis === "angenommen" ? "angenommen"
-        : ab.ergebnis === "mit_maengeln"
-          ? "mit Mängeln (" + ab.maengel.length + ")" : "abgelehnt"));
+        : ab.ergebnis === "mit_maengeln" ? "mit Mängeln" : "abgelehnt")
+        + (ab.notiz ? " — " + ab.notiz : (Array.isArray(ab.maengel) && ab.maengel.length > 0
+          ? " (" + ab.maengel.length + ")" : "")));
     }
   }
   const rechnungen = welt.rechnungen.filter((r) => r.vorgang_id === vorgang.id);
@@ -579,7 +592,7 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
   const faedenOffen = nachrichten.filter((n) =>
     n.richtung === "ausgehend" && n.antwort_erwartet && !beantwortetIds[n.id]).length;
   const firmen = (kontakte || []).filter((k) => k && k.typ === "firma");
-  const brauchtAbnahme = kategorieHatPhase(vorgang.kategorie, "abnahme");
+  const abnahmenAlle = offen ? welt.abnahmen : [];
   const keinsGewaehlt = angebote.filter((a) => !!a.wurde_zu_auftrag_id).length === 0;
   const auftraegeOffen = auftraege.filter((a) => a.status !== "abgenommen").length;
   const alleDurch = auftraege.length > 0 && auftraegeOffen === 0;
@@ -744,13 +757,14 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
               onToggle={() => toggleBaustein("auftraege")}>
               {auftraege.map((a) => (
                 <AuftragFlowZeile key={a.id} auftrag={a}
-                  brauchtAbnahme={brauchtAbnahme} firmen={firmen}
+                  kategorieId={vorgang.kategorie} firmen={firmen}
+                  abnahmen={abnahmenAlle.filter((ab) => ab.auftrag_id === a.id)}
                   kontakte={kontakte} t={t} accent={accent}
                   onWelt={onWelt} DatumFeld={DatumFeld}
                   ve={ve} onFotoHinzu={onFotoHinzu}/>
               ))}
               {kannFlows && formBaustein === "auftraege" ? (
-                <AuftragNeuForm vorgangId={vorgang.id} firmen={firmen} t={t}
+                <AuftragNeuForm vorgangId={vorgang.id} kategorieId={vorgang.kategorie} firmen={firmen} t={t}
                   accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
                   onFertig={() => setFormBaustein(null)}/>
               ) : (kannFlows ? (
@@ -1275,9 +1289,22 @@ const flowZeileStil = (t) => ({ display: "flex", flexDirection: "column",
 // Ein Auftrag mit seinem nächsten Schritt: erfasst→Beauftragen (Form),
 // beauftragt→In Arbeit, in_arbeit/nachbesserung→Fertig gemeldet,
 // fertiggemeldet→Abnehmen (Form) bzw. Abhaken (ohne Abnahme-Phase).
-function AuftragFlowZeile({ auftrag, brauchtAbnahme, firmen, kontakte, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null }) {
+function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null, abnahmen = [] }) {
   const firmaName = nameVon(kontakte, auftrag.firma_kontakt_id);
   const statusFarbe = AMPEL_FARBEN[ampelFarbeAuftrag(auftrag)];
+  // §6b (Umbau): Abnahme PRO AUFTRAG — Schalter am Auftrag, Kategorie nur Default.
+  const brauchtAbnahme = auftragBrauchtAbnahme(auftrag, kategorieId);
+  const schalterSichtbar = !!onWelt && auftrag.status !== "abgenommen";
+  const setzeAbnahme = (wert) => {
+    onWelt((w) => Object.assign({}, w, {
+      auftraege: w.auftraege.map((x) => x.id === auftrag.id
+        ? Object.assign({}, x, { abnahme_noetig: wert }) : x),
+    }));
+  };
+  const ergebnisLabel = (id) => {
+    const o = ABNAHME_ERGEBNIS_OPTIONEN.filter((x) => x.id === id)[0];
+    return o ? o.label : id;
+  };
   return (
     <div style={flowZeileStil(t)}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1294,10 +1321,34 @@ function AuftragFlowZeile({ auftrag, brauchtAbnahme, firmen, kontakte, t, accent
         <StatusPille t={t} farbe={statusFarbe}
           text={AUFTRAG_STATUS_LABEL[auftrag.status] || auftrag.status}/>
       </div>
+      {/* Abnahme-Historie (§6b): abnahmen[] flach, IN der Auftragskarte —
+          die Nachbesserungs-Schleife lebt IM Auftrag, Nachweis fällt frei heraus. */}
+      {abnahmen.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          {abnahmen.map((ab, i) => (
+            <div key={ab.id} style={{ fontSize: FS.xs, color: t.muted,
+              overflowWrap: "anywhere" }}>
+              {(i + 1) + ". Abnahme " + datumDe(ab.datum) + " – " + ergebnisLabel(ab.ergebnis)
+                + (nameVon(kontakte, ab.pruefer_kontakt_id)
+                  ? " – " + nameVon(kontakte, ab.pruefer_kontakt_id) : "")
+                + (ab.notiz ? " – " + ab.notiz : "")}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {schalterSichtbar ? (
+        <label style={{ display: "flex", alignItems: "center", gap: 8,
+          fontSize: FS.xs, color: t.muted, cursor: "pointer" }}>
+          <input type="checkbox" checked={brauchtAbnahme}
+            onChange={(e) => setzeAbnahme(e.target.checked)}
+            style={{ width: 16, height: 16 }}/>
+          Abnahme erforderlich
+        </label>
+      ) : null}
       <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
         onFotoHinzu={onFotoHinzu}/>
       <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={brauchtAbnahme}
-        firmen={firmen} t={t} accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}/>
+        firmen={firmen} kontakte={kontakte} t={t} accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}/>
     </div>
   );
 }
@@ -1370,12 +1421,13 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu }) {
 
 // Nur die Aktionen (Buttons + Mini-Formulare) — genutzt von AuftragFlowZeile
 // (Vorgangs-Detail) UND LoseAuftragKarte (Begehungsfund), ein Bau (§76).
-function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, t, accent, onWelt, DatumFeld }) {
+function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, kontakte = [], t, accent, onWelt, DatumFeld }) {
   const [formOffen, setFormOffen] = useState(null); // "beauftragen" | "abnehmen" | null
   const [firmaId, setFirmaId] = useState(auftrag.firma_kontakt_id || "");
   const [frist, setFrist] = useState("");
   const [ergebnis, setErgebnis] = useState("angenommen");
-  const [maengelText, setMaengelText] = useState("");
+  const [abnahmeNotiz, setAbnahmeNotiz] = useState("");
+  const [prueferId, setPrueferId] = useState("");
   const s = auftrag.status;
 
   const beauftrage = () => {
@@ -1383,11 +1435,14 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, t, accent, onWel
       { firma_kontakt_id: firmaId || null, frist: frist || null }));
     setFormOffen(null);
   };
+  // Abnahme SCHLANK (§6b): Datum (heute) · Prüfer · Ergebnis · freies
+  // Notizfeld — keine strukturierte Mängelliste; das Ergebnis treibt die
+  // Mechanik (mit Mängeln → nachbesserung), das Inhaltliche steckt in der Notiz.
   const nimmAb = () => {
-    const maengel = maengelText.split("\n").map((x) => x.trim()).filter(Boolean);
     onWelt((w) => weltAuftragAbnehmen(w, auftrag.id,
-      { ergebnis: ergebnis, maengel: maengel }));
-    setFormOffen(null); setMaengelText("");
+      { ergebnis: ergebnis, notiz: abnahmeNotiz.trim(),
+        pruefer_kontakt_id: prueferId || null }));
+    setFormOffen(null); setAbnahmeNotiz(""); setPrueferId("");
   };
 
   return (
@@ -1407,7 +1462,7 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, t, accent, onWel
               style={flowKnopf(t, accent, true)}>Fertig gemeldet</button>
           ) : null}
           {s === "fertiggemeldet" ? (brauchtAbnahme ? (
-            <button onClick={() => { setErgebnis("angenommen"); setMaengelText(""); setFormOffen("abnehmen"); }}
+            <button onClick={() => { setErgebnis("angenommen"); setAbnahmeNotiz(""); setPrueferId(""); setFormOffen("abnehmen"); }}
               style={flowKnopf(t, accent, true)}>Abnehmen</button>
           ) : (
             <button onClick={() => onWelt((w) => weltAuftragAbhaken(w, auftrag.id))}
@@ -1444,16 +1499,22 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, t, accent, onWel
                   ergebnis === o.id ? {} : { color: t.text })}>{o.label}</button>
             ))}
           </div>
-          {ergebnis !== "angenommen" ? (
-            <div>
-              <label style={feldLabelStil(t)}>Mängel (eine Zeile je Mangel)</label>
-              <textarea value={maengelText}
-                onChange={(e) => setMaengelText(e.target.value)} rows={2}
-                placeholder={"z. B. Pumpe läuft laut"}
-                style={Object.assign({}, selectStil(t, accent, !!maengelText),
-                  { resize: "vertical", minHeight: 44 })}/>
-            </div>
-          ) : null}
+          <label style={feldLabelStil(t)}>Prüfer (optional)</label>
+          <select value={prueferId} onChange={(e) => setPrueferId(e.target.value)}
+            style={selectStil(t, accent, !!prueferId)}>
+            <option value="">Ich / die Verwaltung</option>
+            {(kontakte || []).map((k) => (
+              <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
+            ))}
+          </select>
+          <label style={feldLabelStil(t)}>
+            {ergebnis === "angenommen" ? "Notiz (optional)" : "Was ist Sache? (Notiz)"}</label>
+          <textarea value={abnahmeNotiz}
+            onChange={(e) => setAbnahmeNotiz(e.target.value)} rows={2}
+            placeholder={ergebnis === "angenommen" ? "z. B. alles sauber übergeben"
+              : "z. B. Pumpe läuft laut, Nacharbeit zugesagt"}
+            style={Object.assign({}, selectStil(t, accent, !!abnahmeNotiz),
+              { resize: "vertical", minHeight: 44 })}/>
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
             <button onClick={() => setFormOffen(null)} style={flowKnopf(t, accent, false)}>Abbrechen</button>
             <button onClick={nimmAb} style={flowKnopf(t, accent, true)}>
