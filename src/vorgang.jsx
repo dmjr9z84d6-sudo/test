@@ -18,14 +18,15 @@
 import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
-import { HeaderZurueck, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
+import { HeaderZurueck, KontaktPicker, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu } from "./liegenschaft.jsx";
-import { DESKTOP_MIN_WIDTH, useFristen, useWindowWidth } from "./utils-icons.jsx";
+import { DESKTOP_MIN_WIDTH, useFristen, useVorlagen, useWindowWidth } from "./utils-icons.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
+  vorlageFuerSchritt, fuelleVorlage,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
   auftragsNummerNeu, angebotsNummerNeu,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
@@ -173,6 +174,7 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
   // §4.3: Ausführungsfrist-Default aus den Einstellungen — der am häufigsten
   // pro Fall überschriebene Wert, darum vorbelegt statt erzwungen.
   const fristen = useFristen();
+  const vorlagen = useVorlagen();
   const [frist, setFrist] = useState(isoInTagen(fristen.ausfuehrung_tage));
   // §6b: Kategorie schlägt den Default vor, entschieden wird pro Auftrag.
   const [abnahme, setAbnahme] = useState(kategorieHatPhase(kategorieId, "abnahme"));
@@ -188,6 +190,11 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
         neu = weltAuftragBeauftragen(neu, a.id,
           { firma_kontakt_id: firmaId, frist: frist || null,
             nachfass_ab: fristMinusTage(frist, fristen.nachfass_vorlauf_tage) });
+        // Beauftragung → Kommunikation (dokumentiert + hält nach)
+        neu = logBeauftragung(neu, { vorgangId: vorgangId, nummer: a.nummer,
+          beschreibung: a.beschreibung, firmaId: firmaId,
+          firmaName: nameVon(firmen, firmaId), frist: frist || null,
+          vorlagen: vorlagen, rueckmeldungTage: fristen.rueckmeldung_tage });
       }
       return neu;
     });
@@ -199,14 +206,10 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
       <input value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)}
         placeholder="z. B. Dach decken (abgegrenzter Leistungsteil)"
         style={Object.assign({}, selectStil(t, accent, !!beschreibung), { marginBottom: 0 })}/>
-      <label style={feldLabelStil(t)}>An wen (Firma)</label>
-      <select value={firmaId} onChange={(e) => setFirmaId(e.target.value)}
-        style={Object.assign({}, selectStil(t, accent, !!firmaId), { marginBottom: 0 })}>
-        <option value="">— noch offen (nur erfassen) —</option>
-        {(firmen || []).map((f) => (
-          <option key={f.id} value={f.id}>{f.name || ""}</option>
-        ))}
-      </select>
+      <KontaktPicker value={firmaId || null}
+        onChange={(id) => setFirmaId(id || "")}
+        label="An wen (Firma) — leer = nur erfassen" t={t} accent={accent} nurFirmen
+        kontakte={pickerListe(firmen)}/>
       {firmaId && DatumFeld ? (
         <DatumFeld t={t} accent={accent} label="Bis wann (Ausführungsfrist)"
           value={frist} onChange={setFrist} iso defaultHeute={false}/>
@@ -225,6 +228,41 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
       </div>
     </div>
   );
+}
+
+// KontaktPicker-Adapter (§76): der kanonische Baustein erwartet ein
+// name-Feld — Personen bekommen es aus kontaktAnzeigename.
+function pickerListe(kontakte) {
+  return (kontakte || []).map((k) =>
+    Object.assign({}, k, { name: kontaktAnzeigename(k) || k.name || "" }));
+}
+
+// Beauftragung → Kommunikation (Benny 11.07.): jede Auftragserteilung
+// schreibt einen AUSGEHENDEN Eintrag in die Kommunikation des Vorgangs —
+// Text aus der Vorlage „Auftragsvergabe", Antwort (Auftragsbestätigung)
+// erwartet, Rückmeldefrist läuft. Die Karte ist das Gedächtnis: Klicks
+// allein beauftragen keine Firma, aber ab jetzt ist jede Vergabe als
+// Kommunikationsvorgang dokumentiert und wird nachgehalten.
+function logBeauftragung(w, args) {
+  const v = w.vorgaenge.filter((x) => x.id === args.vorgangId)[0] || null;
+  const vorlage = vorlageFuerSchritt(args.vorlagen, "beauftragung");
+  const text = fuelleVorlage(vorlage ? vorlage.text : "Auftrag {nummer} erteilt: {beschreibung} (bis {frist})", {
+    nummer: args.nummer || (v ? v.nummer : ""),
+    titel: v ? v.titel : "",
+    objekt: args.objektText || "",
+    beschreibung: args.beschreibung || "",
+    firma: args.firmaName || "",
+    frist: args.frist ? datumDe(args.frist) : "",
+  });
+  return Object.assign({}, w, {
+    nachrichten: [...w.nachrichten, neueNachricht({
+      vorgang_id: args.vorgangId, richtung: "ausgehend",
+      an_kontakt_id: args.firmaId || null, kanal: "notiz",
+      anlass: "beauftragung", inhalt: text,
+      antwort_erwartet: true,
+      rueckmeldung_bis: isoInTagen(args.rueckmeldungTage),
+    })],
+  });
 }
 
 // §4.3: interner Nachfass-Zeitpunkt = Ausführungsfrist − Vorlauf (Tage).
@@ -402,14 +440,10 @@ function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, t, accent, kannFlo
       ) : null}
       {kannFlows && formOffen ? (
         <div style={flowZeileStil(t)}>
-          <label style={feldLabelStil(t)}>Wer?</label>
-          <select value={kontaktId} onChange={(e) => setKontaktId(e.target.value)}
-            style={Object.assign({}, selectStil(t, accent, !!kontaktId), { marginBottom: 0 })}>
-            <option value="">Kontakt wählen …</option>
-            {(kontakte || []).map((k) => (
-              <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
-            ))}
-          </select>
+          <KontaktPicker value={kontaktId || null}
+            onChange={(id) => setKontaktId(id || "")}
+            label="Wer?" t={t} accent={accent}
+            kontakte={pickerListe(kontakte)}/>
           <label style={feldLabelStil(t)}>Rolle am Vorgang</label>
           <select value={rolle} onChange={(e) => setRolle(e.target.value)}
             style={Object.assign({}, selectStil(t, accent, true), { marginBottom: 0 })}>
@@ -500,14 +534,10 @@ function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, an
         <div style={{ fontSize: FS.xs, color: t.muted, overflowWrap: "anywhere" }}>
           {"Antwort auf: " + (antwortAuf.inhalt || antwortAuf.betreff || "Nachricht")}</div>
       ) : null}
-      <label style={feldLabelStil(t)}>Mit wem?</label>
-      <select value={gegenueberId} onChange={(e) => setGegenueberId(e.target.value)}
-        style={Object.assign({}, selectStil(t, accent, true), { marginBottom: 0 })}>
-        <option value="">— ohne Gegenüber (Akte-Notiz) —</option>
-        {(kontakte || []).map((k) => (
-          <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
-        ))}
-      </select>
+      <KontaktPicker value={gegenueberId || null}
+        onChange={(id) => setGegenueberId(id || "")}
+        label="Mit wem? (leer = Akte-Notiz)" t={t} accent={accent}
+        kontakte={pickerListe(kontakte)}/>
       <SegmentControl t={t} accent={accent} voll={true}
         options={[{ id: "ausgehend", label: "Von mir (ausgehend)" },
           { id: "eingehend", label: "An mich (eingehend)" }]}
@@ -1812,10 +1842,21 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false
   const [prueferId, setPrueferId] = useState("");
   const s = auftrag.status;
 
+  const vorlagen = useVorlagen();
   const beauftrage = () => {
-    onWelt((w) => weltAuftragBeauftragen(w, auftrag.id,
-      { firma_kontakt_id: firmaId || null, frist: frist || null,
-        nachfass_ab: fristMinusTage(frist, fristen.nachfass_vorlauf_tage) }));
+    onWelt((w) => {
+      let neu = weltAuftragBeauftragen(w, auftrag.id,
+        { firma_kontakt_id: firmaId || null, frist: frist || null,
+          nachfass_ab: fristMinusTage(frist, fristen.nachfass_vorlauf_tage) });
+      if (firmaId && auftrag.vorgang_id) {
+        const a2 = neu.auftraege.filter((x) => x.id === auftrag.id)[0] || auftrag;
+        neu = logBeauftragung(neu, { vorgangId: auftrag.vorgang_id,
+          nummer: a2.nummer, beschreibung: a2.beschreibung, firmaId: firmaId,
+          firmaName: nameVon(kontakte, firmaId), frist: frist || null,
+          vorlagen: vorlagen, rueckmeldungTage: fristen.rueckmeldung_tage });
+      }
+      return neu;
+    });
     setFormOffen(null);
   };
   // Abnahme SCHLANK (§6b): Datum (heute) · Prüfer · Ergebnis · freies
@@ -1859,14 +1900,10 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false
       ) : null}
       {formOffen === "beauftragen" ? (
         <div>
-          <label style={feldLabelStil(t)}>Firma</label>
-          <select value={firmaId} onChange={(e) => setFirmaId(e.target.value)}
-            style={selectStil(t, accent, !!firmaId)}>
-            <option value="">— noch offen —</option>
-            {(firmen || []).map((f) => (
-              <option key={f.id} value={f.id}>{f.name || ""}</option>
-            ))}
-          </select>
+          <KontaktPicker value={firmaId || null}
+            onChange={(id) => setFirmaId(id || "")}
+            label="Firma" t={t} accent={accent} nurFirmen
+            kontakte={pickerListe(firmen)}/>
           {DatumFeld ? (
             <DatumFeld t={t} accent={accent} label="Zieldatum (optional)"
               value={frist} onChange={setFrist} iso defaultHeute={false}/>
@@ -1886,14 +1923,10 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false
                   ergebnis === o.id ? {} : { color: t.text })}>{o.label}</button>
             ))}
           </div>
-          <label style={feldLabelStil(t)}>Prüfer (optional)</label>
-          <select value={prueferId} onChange={(e) => setPrueferId(e.target.value)}
-            style={selectStil(t, accent, !!prueferId)}>
-            <option value="">Ich / die Verwaltung</option>
-            {(kontakte || []).map((k) => (
-              <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
-            ))}
-          </select>
+          <KontaktPicker value={prueferId || null}
+            onChange={(id) => setPrueferId(id || "")}
+            label="Prüfer (leer = ich / die Verwaltung)" t={t} accent={accent}
+            kontakte={pickerListe(kontakte)}/>
           <label style={feldLabelStil(t)}>
             {ergebnis === "angenommen" ? "Notiz (optional)" : "Was ist Sache? (Notiz)"}</label>
           <textarea value={abnahmeNotiz}
@@ -2057,6 +2090,8 @@ function AufgabeFlowZeile({ aufgabe, t, accent, onWelt }) {
   );
 }
 function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt }) {
+  const fristenAB = useFristen();
+  const vorlagenAB = useVorlagen();
   const [confirm, setConfirm] = useState(false);
   const [summeFormOffen, setSummeFormOffen] = useState(false);
   const [summe, setSumme] = useState("");
@@ -2090,7 +2125,23 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
           <button style={flowKnopf(t, accent, confirm)}
             onClick={() => {
               if (!confirm) { setConfirm(true); return; }
-              onWelt((w) => weltAngebotBeauftragen(w, angebot.id, {}));
+              onWelt((w) => {
+                let neu = weltAngebotBeauftragen(w, angebot.id, {});
+                // Beauftragung → Kommunikation: der eben entstandene Auftrag
+                // (Kette wurde_zu_auftrag_id) liefert Nummer + Beschreibung.
+                const ang2 = neu.angebote.filter((x) => x.id === angebot.id)[0];
+                const auf2 = ang2 && ang2.wurde_zu_auftrag_id
+                  ? neu.auftraege.filter((x) => x.id === ang2.wurde_zu_auftrag_id)[0] : null;
+                if (auf2 && angebot.vorgang_id) {
+                  neu = logBeauftragung(neu, { vorgangId: angebot.vorgang_id,
+                    nummer: auf2.nummer, beschreibung: auf2.beschreibung,
+                    firmaId: angebot.firma_kontakt_id,
+                    firmaName: nameVon(kontakte, angebot.firma_kontakt_id),
+                    frist: auf2.frist || null,
+                    vorlagen: vorlagenAB, rueckmeldungTage: fristenAB.rueckmeldung_tage });
+                }
+                return neu;
+              });
               setConfirm(false);
             }}>{confirm ? "Wirklich beauftragen?" : "Beauftragen"}</button>
         ) : null}
@@ -2153,14 +2204,10 @@ function AngebotNeuForm({ vorgangId, firmen, t, accent, onWelt, onFertig }) {
   };
   return (
     <div style={flowZeileStil(t)}>
-      <label style={feldLabelStil(t)}>Von welcher Firma?</label>
-      <select value={firmaId} onChange={(e) => setFirmaId(e.target.value)}
-        style={Object.assign({}, selectStil(t, accent, !!firmaId), { marginBottom: 0 })}>
-        <option value="">Firma wählen …</option>
-        {(firmen || []).map((f) => (
-          <option key={f.id} value={f.id}>{f.name || ""}</option>
-        ))}
-      </select>
+      <KontaktPicker value={firmaId || null}
+        onChange={(id) => setFirmaId(id || "")}
+        label="Von welcher Firma?" t={t} accent={accent} nurFirmen
+        kontakte={pickerListe(firmen)}/>
       <label style={feldLabelStil(t)}>Summe (€) — leer = erst angefragt</label>
       <input value={summe} inputMode="decimal"
         onChange={(e) => setSumme(e.target.value)}
@@ -2271,15 +2318,10 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
           {modus === "vorgang" ? (
             <div>
               {/* WER meldet — immer ein Kontakt (harte Regel §1). */}
-              <label style={feldLabelStil(t)}>Wer meldet?</label>
-              <select value={melderId}
-                onChange={(e) => setMelderId(e.target.value)}
-                style={selectStil(t, accent, true)}>
-                <option value="">Ich / die Verwaltung</option>
-                {(kontakteAlle || []).map((k) => (
-                  <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
-                ))}
-              </select>
+              <KontaktPicker value={melderId || null}
+                onChange={(id) => setMelderId(id || "")}
+                label="Wer meldet? (leer = ich / die Verwaltung)" t={t} accent={accent}
+                kontakte={pickerListe(kontakteAlle)}/>
               {/* WO — „ganzes Objekt" ist gleichwertige Antwort. */}
               {einheiten.length > 0 ? (
                 <div>

@@ -2018,6 +2018,11 @@ const FristenContext = createContext({
 });
 function useFristen() { return useContext(FristenContext); }
 
+// ── VorlagenContext: Textbausteine je Arbeitsschritt (Einstellungen →
+// Vorgänge). Muster FristenContext — kein Prop-Durchfädeln.
+const VorlagenContext = createContext([]);
+function useVorlagen() { return useContext(VorlagenContext); }
+
 // ── DokumenteKartenContext: zeigt die Dokument-Detailkarten unter der
 // WEG-Unterlagen-Checkliste an. false = aus (Default, nur Checkliste), true =
 // Karten einblenden. Gedacht als Platz für KI-ausgelesene Zusatzinfos (später).
@@ -2204,7 +2209,7 @@ export {
   useDokumenteKarten,
   DokumentViewerBgContext,
   useDokumentViewerBg,
-  useKartenIcons, FristenContext, useFristen,
+  useKartenIcons, FristenContext, useFristen, VorlagenContext, useVorlagen,
   KartenBadgesContext,
   useKartenBadges,
   veKartenFeldWert,

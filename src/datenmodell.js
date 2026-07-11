@@ -237,6 +237,16 @@ const DEFAULT_SETTINGS = {
   // §4.3 (Vorgang-Umbau) · Fristen-Standards: Defaults, im Einzelfall
   // überschreibbar. Rückmeldung bewusst nur EINMAL global (gilt für Angebot
   // UND Auftrag — kein doppelter Regler für denselben Wert).
+  // Vorlagen/Textbausteine (Benny 11.07.): je Arbeitsschritt ein Text mit
+  // Platzhaltern {nummer} {titel} {objekt} {beschreibung} {firma} {frist}.
+  // Genutzt beim automatischen Kommunikations-Eintrag (Beauftragung) und
+  // später fürs Auftragsschreiben (mailto) + KI-„formulieren" (Spec K0).
+  vorgangsVorlagen: [
+    { id: "vl_beauftragung", schritt: "beauftragung", titel: "Auftragsvergabe",
+      text: "Auftrag {nummer} · {titel} · {objekt}\nHiermit beauftragen wir Sie mit: {beschreibung}.\nAusführung bis {frist}. Bitte bestätigen Sie den Auftrag kurz." },
+    { id: "vl_angebotsanfrage", schritt: "angebotsanfrage", titel: "Angebotsanfrage",
+      text: "Anfrage {nummer} · {titel} · {objekt}\nBitte um Angebot für: {beschreibung}.\nAngebotsabgabe bis {frist}." },
+  ],
   fristen: {
     rueckmeldung_tage: 3,        // global · außen (steht sichtbar in der Nachricht)
     angebotsabgabe_tage: 14,     // Angebot · außen
@@ -2759,6 +2769,24 @@ function fristenVon(settings) {
     rechnung_erwartet_tage: f.rechnung_erwartet_tage != null ? f.rechnung_erwartet_tage : d.rechnung_erwartet_tage,
   };
 }
+// Vorlagen lesen (Settings partiell → Defaults) + Platzhalter füllen.
+function vorlagenVon(settings) {
+  const v = settings && Array.isArray(settings.vorgangsVorlagen)
+    ? settings.vorgangsVorlagen : null;
+  return v && v.length > 0 ? v : DEFAULT_SETTINGS.vorgangsVorlagen;
+}
+function vorlageFuerSchritt(vorlagen, schritt) {
+  return (vorlagen || []).filter((v) => v.schritt === schritt)[0] || null;
+}
+function fuelleVorlage(text, ctx) {
+  let out = String(text || "");
+  const c = ctx || {};
+  ["nummer", "titel", "objekt", "beschreibung", "firma", "frist"].forEach((k) => {
+    out = out.split("{" + k + "}").join(c[k] != null && c[k] !== "" ? String(c[k]) : "—");
+  });
+  return out;
+}
+
 // ISO-Datum heute + n Tage (für berechnete Frist-Felder, §4).
 function isoInTagen(n) {
   const d = new Date();
@@ -3921,6 +3949,7 @@ export {
   neuerVorgang, neueBeteiligung, neueNachricht, neuesAngebot, neuerAuftrag,
   neueAbnahme, neueRechnung, neueAufgabe, neuerBeschluss,
   normalisiereVorgangsWelt, leereVorgangsWelt, fristenVon, isoInTagen,
+  vorlagenVon, vorlageFuerSchritt, fuelleVorlage,
   vorgangsNummerNeu, auftragsNummerNeu, angebotsNummerNeu,
   AMPEL_RANG, AMPEL_REIHE, ampelAusRang,
   hinweiseFuerVorgang, ampelFarbe, ampelFarbeAuftrag, schreibtischEintraege,

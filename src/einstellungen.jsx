@@ -3762,7 +3762,136 @@ function SektionKalenderPanel({ settings, setSettings, t, accent }) {
 // Angebot bleibt aus, Firma kommt spät, keine Rechnung. Werte sind DEFAULTS,
 // im Einzelfall (am Auftrag/Angebot) überschreibbar. Rückmeldung bewusst nur
 // EINMAL global (gilt für Angebot UND Auftrag — Bennys Entscheidung).
-function SektionFristen({ settings, setSettings, t, accent }) {
+// ── Sektion: VORGÄNGE (Benny 11.07.) — das Zuhause der Vorgangswelt-Regeln:
+// Fristen-Standards (eine Karte) + Vorlagen/Textbausteine (eine Karte).
+// Wächst mit (Nummernkreise, Kategorien-Defaults …).
+function SektionVorgaenge({ settings, setSettings, t, accent }) {
+  return (
+    <>
+      <SektionFristenKarte settings={settings} setSettings={setSettings} t={t} accent={accent}/>
+      <SektionVorlagenKarte settings={settings} setSettings={setSettings} t={t} accent={accent}/>
+    </>
+  );
+}
+
+// ── Karte: Vorlagen (Textbausteine) je Arbeitsschritt ───────────────────────
+const VORLAGEN_SCHRITTE = [
+  { id: "angebotsanfrage", label: "Angebotsanfrage" },
+  { id: "beauftragung", label: "Auftragsvergabe" },
+  { id: "frei", label: "Frei / Sonstiges" },
+];
+function SektionVorlagenKarte({ settings, setSettings, t, accent }) {
+  const vorlagen = Array.isArray(settings.vorgangsVorlagen) && settings.vorgangsVorlagen.length > 0
+    ? settings.vorgangsVorlagen : DEFAULT_SETTINGS.vorgangsVorlagen;
+  const [offenId, setOffenId] = useState(null);
+  const [neuOffen, setNeuOffen] = useState(false);
+  const [fTitel, setFTitel] = useState("");
+  const [fSchritt, setFSchritt] = useState("beauftragung");
+  const [fText, setFText] = useState("");
+  const speichere = (liste) => setSettings(s2 => ({ ...s2, vorgangsVorlagen: liste }));
+  const oeffneBearbeiten = (v) => {
+    setOffenId(v.id); setNeuOffen(false);
+    setFTitel(v.titel || ""); setFSchritt(v.schritt || "frei"); setFText(v.text || "");
+  };
+  const oeffneNeu = () => {
+    setNeuOffen(true); setOffenId(null);
+    setFTitel(""); setFSchritt("beauftragung"); setFText("");
+  };
+  const uebernehmen = () => {
+    if (!fText.trim()) return;
+    if (neuOffen) {
+      speichere([...vorlagen, { id: "vl_" + Date.now().toString(36),
+        schritt: fSchritt, titel: fTitel.trim() || "Vorlage", text: fText }]);
+    } else if (offenId) {
+      speichere(vorlagen.map(v => v.id === offenId
+        ? { ...v, schritt: fSchritt, titel: fTitel.trim() || v.titel, text: fText } : v));
+    }
+    setOffenId(null); setNeuOffen(false);
+  };
+  const loesche = (id) => {
+    speichere(vorlagen.filter(v => v.id !== id));
+    if (offenId === id) setOffenId(null);
+  };
+  const schrittLabel = (id) => (VORLAGEN_SCHRITTE.find(x => x.id === id) || {}).label || id;
+  const eingabeStil = { width: "100%", padding: "9px 11px", borderRadius: RAD.md,
+    border: `1px solid ${t.border}`, background: t.surface, color: t.text,
+    fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
+  const form = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+      <input value={fTitel} onChange={e => setFTitel(e.target.value)}
+        placeholder="Titel der Vorlage" style={eingabeStil}/>
+      <select value={fSchritt} onChange={e => setFSchritt(e.target.value)} style={eingabeStil}>
+        {VORLAGEN_SCHRITTE.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
+      </select>
+      <textarea value={fText} onChange={e => setFText(e.target.value)} rows={4}
+        placeholder={"Text mit Platzhaltern: {nummer} {titel} {objekt} {beschreibung} {firma} {frist}"}
+        style={{ ...eingabeStil, resize: "vertical", minHeight: 90 }}/>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button onClick={() => { setOffenId(null); setNeuOffen(false); }}
+          style={{ padding: "8px 14px", borderRadius: RAD.md, cursor: "pointer",
+            fontFamily: "inherit", fontSize: FS.s, fontWeight: FW.bold,
+            background: "transparent", border: `1px solid ${t.border}`, color: t.sub }}>
+          Abbrechen</button>
+        <button onClick={uebernehmen}
+          style={{ padding: "8px 14px", borderRadius: RAD.md, cursor: "pointer",
+            fontFamily: "inherit", fontSize: FS.s, fontWeight: FW.bold,
+            background: accent, border: `1px solid ${accent}`, color: "#fff" }}>
+          Speichern</button>
+      </div>
+    </div>
+  );
+  return (
+    <EinstellKarte title="Vorlagen (Textbausteine)" t={t} accent={accent}>
+      <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 8, lineHeight: 1.4 }}>
+        Ein Textbaustein je Arbeitsschritt — z. B. Angebotsanfrage oder
+        Auftragsvergabe. Platzhalter wie {"{nummer}"} oder {"{frist}"} füllt
+        die App beim Verwenden automatisch. Die Beauftragung schreibt damit
+        ihren Eintrag in die Kommunikation des Vorgangs.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {vorlagen.map(v => (
+          <div key={v.id} style={{ border: `1px solid ${t.border}`,
+            borderRadius: RAD.md, padding: "10px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: FS.m, fontWeight: FW.bold,
+                color: t.text, overflowWrap: "anywhere" }}>
+                {v.titel}
+                <span style={{ color: t.muted, fontWeight: FW.medium }}>
+                  {" · " + schrittLabel(v.schritt)}</span>
+              </div>
+              <button onClick={() => (offenId === v.id ? setOffenId(null) : oeffneBearbeiten(v))}
+                style={{ background: "none", border: `1px solid ${t.border}`, color: t.text,
+                  borderRadius: RAD.md, padding: "5px 10px", cursor: "pointer",
+                  fontFamily: "inherit", fontSize: FS.xs, fontWeight: FW.bold }}>
+                {offenId === v.id ? "Zuklappen" : "Bearbeiten"}</button>
+              <button onClick={() => loesche(v.id)}
+                style={{ background: "none", border: "1px solid #DC262660", color: "#DC2626",
+                  borderRadius: RAD.md, padding: "5px 10px", cursor: "pointer",
+                  fontFamily: "inherit", fontSize: FS.xs, fontWeight: FW.bold }}>
+                Löschen</button>
+            </div>
+            {offenId === v.id ? form : (
+              <div style={{ fontSize: FS.s, color: t.muted, marginTop: 5,
+                whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v.text}</div>
+            )}
+          </div>
+        ))}
+        {neuOffen ? (
+          <div style={{ border: `1px solid ${accent}55`, borderRadius: RAD.md,
+            padding: "10px 12px" }}>{form}</div>
+        ) : (
+          <button onClick={oeffneNeu}
+            style={{ background: "none", border: `1px dashed ${t.border}`, color: t.sub,
+              borderRadius: RAD.md, padding: "10px 12px", cursor: "pointer",
+              fontFamily: "inherit", fontSize: FS.s, fontWeight: FW.bold }}>
+            + Vorlage anlegen</button>
+        )}
+      </div>
+    </EinstellKarte>
+  );
+}
+
+function SektionFristenKarte({ settings, setSettings, t, accent }) {
   const f = Object.assign({
     rueckmeldung_tage: 3, angebotsabgabe_tage: 14, ausfuehrung_tage: 35,
     nachfass_vorlauf_tage: 7, rechnung_erwartet_tage: 14,
@@ -3815,7 +3944,7 @@ const SEKTIONEN = [
   { id: "objekte",       icon: "building", farbe: "#06B6D4", title: "Objekte",           sub: "Anzeige, Filter-Pillen, Gruppen" },
   { id: "kontakte",      icon: "users",    farbe: "#A855F7", title: "Kontakte",          sub: "Anzeige, Filter-Pillen, Gruppen" },
   { id: "statusleiste",  icon: "bell",     farbe: "#F97316", title: "Statusleiste",      sub: "Objekt- & Kontakt-Hinweise, Jahrestage" },
-  { id: "fristen",       icon: "calendar", farbe: "#DC2626", title: "Fristen-Standards", sub: "Rückmeldung, Angebote, Ausführung, Nachfass, Rechnung" },
+  { id: "vorgaenge",     icon: "clipboard", farbe: "#EF4444", title: "Vorgänge",          sub: "Fristen-Standards, Vorlagen (Textbausteine)" },
   { id: "filter",        icon: "search",   farbe: "#F59E0B", title: "Filter-Optionen",   sub: "Großer Filter im Header" },
   { id: "kalender",      icon: "calendar", farbe: "#F59E0B", title: "Kalender",          sub: "Wochenstart, KW, Termin-Bezeichnungen" },
   { id: "dokumente",     icon: "document", farbe: "#0E7490", title: "Dokumente",         sub: "Dokument-Karten, Anzeige" },
@@ -3886,7 +4015,7 @@ export {
   SektionObjekte,
   SektionProfil,
   SektionStatusleiste,
-  SektionFristen,
+  SektionVorgaenge,
   SektionSuche,
   SektionTastatur,
   TASTATUR_AKTIONEN,
