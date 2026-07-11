@@ -3214,17 +3214,29 @@ export default function App() {
                   optionen={[{ id: "objekt", label: "Objekte" }, { id: "firma", label: "Firmen" }, { id: "timeline", label: "Timeline" }]}
                   aktiv={auftragView} onWaehle={setAuftragView}/>
               }
-              rechts={(auftragView === "objekt" && auftragViewVEId) || (hatAuswahl && auftragNurDetail) ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {auftragView === "objekt" && auftragViewVEId ? (
-                    <HeaderPlus onClick={() => setAuftragNeuOffen(true)}
-                      accent={aAccent} title="Neu (Vorgang / Auftrag erfassen)" t={t}/>
-                  ) : null}
-                  {(hatAuswahl && auftragNurDetail) ? (
-                    <HeaderZurueck onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} t={t}/>
-                  ) : null}
-                </div>
-              ) : null}/>
+              rechts={(() => {
+                // Zurück gehört RECHTS in den Screen-Kopf (Benny 11.07.,
+                // Objekte-Muster): mobil zuerst die Akte schließen, dann die
+                // Objekt-/Firmen-Auswahl — eine Kaskade, ein Platz.
+                const akteOffenMobil = !istDesk && !!vorgangAkteId
+                  && (hatAuswahl || auftragView === "timeline");
+                const zurueck = akteOffenMobil
+                  ? () => setVorgangAkteId(null)
+                  : ((hatAuswahl && (auftragNurDetail || !istDesk))
+                    ? () => { setAuftragViewVEId(null); setAuftragFirmaId(null); }
+                    : null);
+                const plus = auftragView === "objekt" && auftragViewVEId && !akteOffenMobil;
+                if (!zurueck && !plus) return null;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {plus ? (
+                      <HeaderPlus onClick={() => setAuftragNeuOffen(true)}
+                        accent={aAccent} title="Neu (Vorgang / Auftrag erfassen)" t={t}/>
+                    ) : null}
+                    {zurueck ? <HeaderZurueck onClick={zurueck} t={t}/> : null}
+                  </div>
+                );
+              })()}/>
           );
 
           // Erfassen-Overlay (§96 Etappe 4). Mutationen laufen über die
@@ -3286,7 +3298,7 @@ export default function App() {
                 onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
                 DatumFeld={DatumFeld} ve={akteVe}
                 onFotoHinzu={akteVe ? auftragFotoHinzu : null}
-                zurueckKnopf={!istDesk}/>
+                zurueckKnopf={false}/>
             );
             if (!istDesk) {
               return (
@@ -3349,7 +3361,7 @@ export default function App() {
                 onZurueck={() => setVorgangAkteId(null)}
                 onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
                 DatumFeld={DatumFeld} ve={tlVe} onFotoHinzu={null}
-                zurueckKnopf={!istDesk}/>
+                zurueckKnopf={false}/>
             ) : null;
             const tlMaster = () => (
               <div style={{ minWidth: 0 }}>
@@ -3408,14 +3420,11 @@ export default function App() {
                 {auftragHeader}
                 {hatAuswahl ? (
                   <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
-                    <div style={{ marginBottom: 12 }}>
-                      <HeaderZurueck onClick={() => { setAuftragViewVEId(null); setAuftragFirmaId(null); }} t={t}/>
-                    </div>
                     {detailInhalt}
                   </div>
                 ) : (
                   <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
-                    {masterInhalt({ cols: 1, kartenBreite: kartenMaxBreite })}
+                    {masterInhalt({ einspaltig: true })}
                   </div>
                 )}
               </div>

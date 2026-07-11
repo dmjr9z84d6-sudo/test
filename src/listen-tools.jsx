@@ -2160,7 +2160,7 @@ function StatistikScreen({ ves, kontakte, t, accent, settings = null, listenAnsi
         ) : (
           <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
             {statView === "objekte" ? legendeEl : null}
-            {masterInhalt({ cols: 1, kartenBreite: kartenMaxBreite })}
+            {masterInhalt({ einspaltig: true })}
           </div>
         )}
       </div>

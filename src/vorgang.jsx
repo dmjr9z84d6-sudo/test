@@ -21,6 +21,7 @@ import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
 import { Avatar, HeaderZurueck, KontaktPicker, KontaktPickerMitAllen, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu } from "./liegenschaft.jsx";
 import { KontaktDetailKarte, KontaktZeile, objektBezugInfo } from "./kontakte.jsx";
+import { AktionsButton } from "./kontakte-modul.jsx";
 import { DESKTOP_MIN_WIDTH, useFristen, useVorlagen, useWindowWidth, useRollen, useFirmenRollen, useKontaktFarbe } from "./utils-icons.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
@@ -1109,17 +1110,17 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const fussAktionen = onWelt ? (
     <div style={{ display: "flex", justifyContent: "flex-end",
       gap: 6, flexWrap: "wrap" }}>
-      <button style={loeschConfirm
-          ? Object.assign({}, flowKnopf(t, accent, true),
-              { background: AMPEL_FARBEN.rot, color: "#fff", marginRight: "auto" })
-          : Object.assign({}, flowKnopf(t, accent, false),
-              { color: AMPEL_FARBEN.rot, borderColor: AMPEL_FARBEN.rot + "60", marginRight: "auto" })}
-        onClick={() => {
-          if (!loeschConfirm) { setLoeschConfirm(true); return; }
-          onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
-          onZurueck();
-        }}>
-        {loeschConfirm ? "Wirklich löschen?" : "Löschen"}</button>
+      {/* §76: AktionsButton (variante breit) ist der kanonische Confirm-Baustein */}
+      <div style={{ marginRight: "auto" }}>
+        <AktionsButton rolle="loeschen" variante="breit" t={t} accent={accent}
+          confirm={loeschConfirm}
+          text={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+          onClick={() => {
+            if (!loeschConfirm) { setLoeschConfirm(true); return; }
+            onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
+            onZurueck();
+          }}/>
+      </div>
       {kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
         <button style={flowKnopf(t, accent, false)}
           onClick={() => setRuhenFormOffen(true)}>Ruhen bis …</button>
@@ -1134,15 +1135,14 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
           onClick={() => onWelt((w) => weltVorgangOeffnen(w, vorgang.id))}>
           Wieder öffnen</button>
       ) : (
-        <button style={schliessConfirm
-            ? Object.assign({}, flowKnopf(t, accent, true), { background: "#F59E0B", color: "#fff" })
-            : flowKnopf(t, accent, false)}
+        <AktionsButton rolle="loesen" variante="breit" t={t} accent={accent}
+          confirm={schliessConfirm}
+          text={schliessConfirm ? "Wirklich schließen?" : "Vorgang schließen"}
           onClick={() => {
             if (!schliessConfirm) { setSchliessConfirm(true); return; }
             onWelt((w) => weltVorgangSchliessen(w, vorgang.id));
             setSchliessConfirm(false);
-          }}>
-          {schliessConfirm ? "Wirklich schließen?" : "Vorgang schließen"}</button>
+          }}/>
       )}
     </div>
   ) : null;
@@ -1450,14 +1450,14 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
           {"erfasst " + datumDe(auftrag.erfasst_am)}
         </div>
         {onWelt && !auswahlModus ? (
-          <button style={loeschConfirm
-              ? Object.assign({}, flowKnopf(t, accent, true), { background: AMPEL_FARBEN.rot, color: "#fff" })
-              : Object.assign({}, flowKnopf(t, accent, false), { color: AMPEL_FARBEN.rot, borderColor: AMPEL_FARBEN.rot + "60" })}
+          <AktionsButton rolle="loeschen" variante="breit" t={t} accent={accent}
+            confirm={loeschConfirm}
+            text={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
             onClick={(e) => {
-              e.stopPropagation();
+              if (e && e.stopPropagation) e.stopPropagation();
               if (!loeschConfirm) { setLoeschConfirm(true); return; }
               onWelt((w) => weltAuftragLoeschen(w, auftrag.id));
-            }}>{loeschConfirm ? "Wirklich löschen?" : "Löschen"}</button>
+            }}/>
         ) : null}
       </div>
       {!auswahlModus ? (
@@ -2701,14 +2701,14 @@ function DemoHinweis({ welt, t, accent, onWelt }) {
       <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
         {n + " Demo-Datensätze (Beispiele)"}
       </div>
-      <button style={confirm
-          ? Object.assign({}, flowKnopf(t, accent, true), { background: AMPEL_FARBEN.rot, color: "#fff" })
-          : flowKnopf(t, accent, false)}
+      <AktionsButton rolle="loeschen" variante="breit" t={t} accent={accent}
+        confirm={confirm}
+        text={confirm ? "Wirklich alle entfernen?" : "Demo-Daten entfernen"}
         onClick={() => {
           if (!confirm) { setConfirm(true); return; }
           onWelt((w) => weltDemoEntfernen(w));
           setConfirm(false);
-        }}>{confirm ? "Wirklich alle entfernen?" : "Demo-Daten entfernen"}</button>
+        }}/>
     </div>
   );
 }
