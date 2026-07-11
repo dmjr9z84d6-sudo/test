@@ -1237,8 +1237,15 @@ const leerText = (t, text) => (
 // lose Aufträge (Begehungsfunde) dieses Objekts. Klapp-State lebt hier; der
 // Aufrufer instanziiert per key={veId} neu (React-Key-Lehre: kein Recycling
 // über Objekt-Wechsel hinweg).
-function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null }) {
-  const [offeneId, setOffeneId] = useState(initialOffeneId);
+function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, offeneIdCtrl = null, onOeffneId = null }) {
+  // GESTEUERTER Modus (Feinschliff 11.07., Skizze Spalten 2/3): der Screen
+  // (allesda_merged) hält die Akten-Auswahl und baut das Master-Detail
+  // selbst — dieser Bereich ist dann NUR die Liste (Spalte 2). Ungesteuert
+  // (Tests/Fallback) bleibt das interne Verhalten.
+  const gesteuert = typeof onOeffneId === "function";
+  const [offeneIdIntern, setOffeneIdIntern] = useState(initialOffeneId);
+  const offeneId = gesteuert ? offeneIdCtrl : offeneIdIntern;
+  const setOffeneId = gesteuert ? onOeffneId : setOffeneIdIntern;
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   // Kategorie-Tabs (Benny 09.07.): Alle | Wartung | Pflege | Instandhaltung |
   // Instandsetzung | Sanierung — Filter auf die Vorgänge des Objekts.
@@ -1392,6 +1399,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
       t={t} accent={accent} onZurueck={() => setOffeneId(null)}
       onWelt={onWelt} DatumFeld={DatumFeld} ve={ve} onFotoHinzu={onFotoHinzu}/>
   ) : null;
+  if (gesteuert) return liste;
   if (offenerVorgang && !istDesktop) return detail;
   if (offenerVorgang) {
     return (
@@ -1407,8 +1415,11 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
 // ── Detail-Inhalt Achse FIRMA ────────────────────────────────────────────────
 // Alle Vorgänge, an denen die Firma über einen Auftrag ODER ein Angebot hängt
 // — die Auftragshistorie einer Firma über alle Objekte hinweg.
-function VorgangsBereichFuerFirma({ firmaId, welt, kontakte, t, accent, onWelt = null, DatumFeld = null }) {
-  const [offeneId, setOffeneId] = useState(null);
+function VorgangsBereichFuerFirma({ firmaId, welt, kontakte, t, accent, onWelt = null, DatumFeld = null, offeneIdCtrl = null, onOeffneId = null }) {
+  const gesteuert = typeof onOeffneId === "function";
+  const [offeneIdIntern, setOffeneIdIntern] = useState(null);
+  const offeneId = gesteuert ? offeneIdCtrl : offeneIdIntern;
+  const setOffeneId = gesteuert ? onOeffneId : setOffeneIdIntern;
   const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const idsAuftrag = welt.auftraege
     .filter((a) => a.firma_kontakt_id === firmaId && a.vorgang_id)
@@ -1457,6 +1468,7 @@ function VorgangsBereichFuerFirma({ firmaId, welt, kontakte, t, accent, onWelt =
       t={t} accent={accent} onZurueck={() => setOffeneId(null)}
       onWelt={onWelt} DatumFeld={DatumFeld} ve={null} onFotoHinzu={null}/>
   ) : null;
+  if (gesteuert) return liste;
   if (offenerVorgang && !istDesktop) return detail;
   if (offenerVorgang) {
     return (
@@ -2339,7 +2351,7 @@ function DemoHinweis({ welt, t, accent, onWelt }) {
 }
 
 export {
-  AmpelPunkt, StatusPille, VorgangKarte, LoseAuftragKarte,
+  AmpelPunkt, StatusPille, VorgangKarte, VorgangDetail, LoseAuftragKarte,
   VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma,
   vorgangAnzahlFuerObjekt,
   SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay, AuftragFlowAktionen,

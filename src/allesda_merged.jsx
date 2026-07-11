@@ -199,7 +199,7 @@ import {
 } from "./datenmodell.js";
 
 import {
-  VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma, vorgangAnzahlFuerObjekt,
+  VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma, VorgangDetail, vorgangAnzahlFuerObjekt,
   SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay,
   TimelineBereich, DemoHinweis
 } from "./vorgang.jsx";
@@ -1773,6 +1773,9 @@ export default function App() {
   const [auftragView, setAuftragView] = useState("objekt"); // "objekt" | "firma"
   const [auftragFirmaId, setAuftragFirmaId] = useState(null);
   const [auftragNurDetail, setAuftragNurDetail] = useState(false);
+  // Feinschliff 11.07. (Skizze): geöffnete Vorgangs-AKTE — hebt das
+  // Master-Detail eine Ebene hoch (Vorgangsliste = Master, Akte = Detail).
+  const [vorgangAkteId, setVorgangAkteId] = useState(null);
   const [beschlussViewVEId, setBeschlussViewVEId] = useState(null);
   const [technikViewVEId, setTechnikViewVEId] = useState(null);
   const [dokumenteViewVEId, setDokumenteViewVEId] = useState(null);
@@ -3133,7 +3136,7 @@ export default function App() {
               <VorgangsBereichFuerObjekt key={auftragViewVEId + ":" + (auftragSprungId || "")}
                 veId={auftragViewVEId} welt={vorgangsWelt}
                 kontakte={kontakteSichtbar} t={t} accent={aAccent}
-                initialOffeneId={auftragSprungId}
+                offeneIdCtrl={vorgangAkteId} onOeffneId={setVorgangAkteId}
                 onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
                 DatumFeld={DatumFeld}
                 ve={vo} onFotoHinzu={auftragFotoHinzu}/>
@@ -3147,6 +3150,7 @@ export default function App() {
               <VorgangsBereichFuerFirma key={auftragFirmaId}
                 firmaId={auftragFirmaId} welt={vorgangsWelt}
                 kontakte={kontakteSichtbar} t={t} accent={aAccent}
+                offeneIdCtrl={vorgangAkteId} onOeffneId={setVorgangAkteId}
                 onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
                 DatumFeld={DatumFeld}/>
             );
@@ -3166,12 +3170,12 @@ export default function App() {
                 <VEListenZeile key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
                   auswahlAccentOverride={aAccent} extraBadge={aufBadge(v)}
-                  onClick={() => { setAuftragSprungId(null); setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id); }}/>
+                  onClick={() => { setAuftragSprungId(null); setVorgangAkteId(null); setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id); }}/>
               ) : (
                 <VEKachel key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
                   auswahlAccentOverride={aAccent} extraBadge={aufBadge(v)}
-                  onClick={() => { setAuftragSprungId(null); setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id); }}/>
+                  onClick={() => { setAuftragSprungId(null); setVorgangAkteId(null); setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id); }}/>
               ))}
             </div>
           ) : (
@@ -3185,7 +3189,7 @@ export default function App() {
               ) : firmen.map(f => (
                 <KontaktKarte key={f.id} k={f} t={t}
                   aktiv={auftragFirmaId === f.id} kbItem id={"auffirma-" + f.id}
-                  onClick={() => setAuftragFirmaId(auftragFirmaId === f.id ? null : f.id)}/>
+                  onClick={() => { setVorgangAkteId(null); setAuftragFirmaId(auftragFirmaId === f.id ? null : f.id); }}/>
               ))}
             </div>
           );
@@ -3258,6 +3262,51 @@ export default function App() {
               }}/>
           ) : null;
 
+          // ── AKTEN-EBENE (Feinschliff 11.07., Bennys Skizze) ──────────────
+          // Ist eine Akte offen, hebt sich das Master-Detail eine Stufe:
+          // die Objekt-Spalte verschwindet, die VORGANGSLISTE wird Master
+          // (Spalte 2), die AKTE das Detail (Spalte 3) — exakt das
+          // Objekte-Muster. Mobil: Akte füllt den Screen, Zurück im Kopf.
+          const akteVorgang = vorgangAkteId && auftragView !== "timeline" && hatAuswahl
+            ? (vorgangsWelt.vorgaenge.find(v => v.id === vorgangAkteId) || null) : null;
+          if (akteVorgang) {
+            const akteVe = auftragView === "objekt"
+              ? ((vesSichtbar || []).find(v => v.id === auftragViewVEId) || null) : null;
+            const akteDetail = (
+              <VorgangDetail vorgang={akteVorgang} welt={vorgangsWelt}
+                kontakte={kontakteSichtbar} t={t} accent={aAccent}
+                onZurueck={() => setVorgangAkteId(null)}
+                onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
+                DatumFeld={DatumFeld} ve={akteVe}
+                onFotoHinzu={akteVe ? auftragFotoHinzu : null}/>
+            );
+            if (!istDesk) {
+              return (
+                <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                  {auftragNeuOverlay}
+                  {auftragHeader}
+                  <div data-ad-scroll="y" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+                    {akteDetail}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                {auftragNeuOverlay}
+                {auftragHeader}
+                <MasterDetailRahmen
+                  master={() => detailListe}
+                  detail={akteDetail}
+                  istDesktop={true}
+                  listenAnsicht={effectiveSettings.listenAnsicht} listeOpt={listeOpt}
+                  kartenSpalten={kartenSpalten} kartenMaxBreite={kartenMaxBreite}
+                  kartenMin={kartenMinBreiteEff} detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff}
+                  t={t} onNurDetail={() => {}}/>
+              </div>
+            );
+          }
+
           // Timeline (Benny 09.07.): dritte Achse — Chronik quer über alles,
           // kein Master-Detail. Tap springt in die Objekt-Akte (wie Schreibtisch).
           if (auftragView === "timeline") {
@@ -3267,6 +3316,7 @@ export default function App() {
               setAuftragFirmaId(null);
               setAuftragViewVEId(e.objekt_id);
               setAuftragSprungId(e.vorgang_id || null);
+              setVorgangAkteId(e.vorgang_id || null);
             };
             return (
               <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -3333,6 +3383,7 @@ export default function App() {
             setAuftragFirmaId(null);
             setAuftragViewVEId(e.objekt_id);
             setAuftragSprungId(e.vorgang_id || null);
+            setVorgangAkteId(e.vorgang_id || null);
             wechselScreen("auftraege");
           };
           const anzahl = schreibtischBadge ? schreibtischBadge.zahl : 0;
