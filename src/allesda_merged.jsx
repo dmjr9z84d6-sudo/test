@@ -128,7 +128,7 @@ import {
   BELEGUNG_VERWENDUNGEN,
   BEWOHNER_RECHTE,
   DEFAULT_KONTAKTE,
-  DEFAULT_SETTINGS,
+  DEFAULT_SETTINGS, fristenVon,
   DEFAULT_VES,
   EIG_STATUS,
   FIELD_TYPES,
@@ -207,7 +207,7 @@ import {
 
 import {
   AvatarIconsContext,
-  KartenIconsContext,
+  FristenContext, KartenIconsContext,
   DokumenteKartenContext,
   DokumentViewerBgContext,
   DESKTOP_MIN_WIDTH,
@@ -370,7 +370,7 @@ import {
 // Einstellungen-Modul (S8) — ausgelagert nach einstellungen.jsx. Kein Rück-
 // import aus dieser Datei nötig (EinstellungenZentrale bleibt im App-Rumpf).
 import {
-  SEKTIONEN, SektionSchnellzugriff, SektionDaten, SektionDokumente, SektionErscheinungsbild, SektionFilterOpt,
+  SEKTIONEN, SektionSchnellzugriff, SektionDaten, SektionDokumente, SektionErscheinungsbild, SektionFilterOpt, SektionFristen,
   SektionHV, SektionKalenderPanel, SektionKontakte, SektionObjekte, SektionProfil,
   SektionStatusleiste, SektionSuche, SektionTastatur, TASTATUR_AKTIONEN,
   dateiZuFotoDataUrl, tastaturBelegungVon, useStorageStatus
@@ -534,6 +534,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
         {s.id === "objekte"     && <SektionObjekte settings={settings} setSettings={setSettings} t={t} accent={s.farbe} ves={ves}/>}
         {s.id === "kontakte"    && <SektionKontakte settings={settings} setSettings={setSettings} t={t} accent={s.farbe} kontakte={kontakte}/>}
         {s.id === "statusleiste" && <SektionStatusleiste settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
+        {s.id === "fristen"     && <SektionFristen settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "filter"      && <SektionFilterOpt settings={settings} setSettings={setSettings} t={t} accent={s.farbe} ves={ves} kontakte={kontakte}/>}
         {s.id === "kalender"    && <SektionKalenderPanel settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "dokumente"   && <SektionDokumente settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
@@ -2556,6 +2557,7 @@ export default function App() {
       person: settings.avatarIconsPerson !== false,
       firma:  settings.avatarIconsFirma  !== false
     }}>
+    <FristenContext.Provider value={fristenVon(settings)}>
     <KartenIconsContext.Provider value={settings.kartenIconsAn !== false}>
     <DokumenteKartenContext.Provider value={settings.dokumenteKartenAn === true}>
     <DokumentViewerBgContext.Provider value={settings.dokumentViewerBg || "modus"}>
@@ -3889,6 +3891,7 @@ export default function App() {
     </DokumentViewerBgContext.Provider>
     </DokumenteKartenContext.Provider>
     </KartenIconsContext.Provider>
+    </FristenContext.Provider>
     </AvatarIconsContext.Provider>
     </KategorienContext.Provider>
     </VerwendungenContext.Provider>

@@ -2009,6 +2009,15 @@ function useAvatarIcons() { return useContext(AvatarIconsContext); }
 const KartenIconsContext = createContext(true);
 function useKartenIcons() { return useContext(KartenIconsContext); }
 
+// ── FristenContext (§4.3 Vorgang-Umbau): die 5 Fristen-Standards aus den
+// Einstellungen — Defaults, im Einzelfall überschreibbar. Kein
+// Prop-Durchfädeln bis in die Auftrags-Formulare (Muster KartenIcons).
+const FristenContext = createContext({
+  rueckmeldung_tage: 3, angebotsabgabe_tage: 14, ausfuehrung_tage: 35,
+  nachfass_vorlauf_tage: 7, rechnung_erwartet_tage: 14,
+});
+function useFristen() { return useContext(FristenContext); }
+
 // ── DokumenteKartenContext: zeigt die Dokument-Detailkarten unter der
 // WEG-Unterlagen-Checkliste an. false = aus (Default, nur Checkliste), true =
 // Karten einblenden. Gedacht als Platz für KI-ausgelesene Zusatzinfos (später).
@@ -2195,7 +2204,7 @@ export {
   useDokumenteKarten,
   DokumentViewerBgContext,
   useDokumentViewerBg,
-  useKartenIcons,
+  useKartenIcons, FristenContext, useFristen,
   KartenBadgesContext,
   useKartenBadges,
   veKartenFeldWert,

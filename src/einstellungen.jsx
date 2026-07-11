@@ -3757,12 +3757,65 @@ function SektionKalenderPanel({ settings, setSettings, t, accent }) {
   );
 }
 
+// ── Sektion: Fristen-Standards (§4.3 Vorgang-Umbau) ─────────────────────────
+// Regeln statt Handarbeit: Defaults für die automatische Überwachung —
+// Angebot bleibt aus, Firma kommt spät, keine Rechnung. Werte sind DEFAULTS,
+// im Einzelfall (am Auftrag/Angebot) überschreibbar. Rückmeldung bewusst nur
+// EINMAL global (gilt für Angebot UND Auftrag — Bennys Entscheidung).
+function SektionFristen({ settings, setSettings, t, accent }) {
+  const f = Object.assign({
+    rueckmeldung_tage: 3, angebotsabgabe_tage: 14, ausfuehrung_tage: 35,
+    nachfass_vorlauf_tage: 7, rechnung_erwartet_tage: 14,
+  }, settings.fristen || {});
+  const save = (key, wert) => {
+    const n = parseInt(wert, 10);
+    if (isNaN(n) || n < 0) return;
+    setSettings(s2 => ({ ...s2, fristen: Object.assign({}, f, { [key]: n }) }));
+  };
+  const feld = (key) => (
+    <input type="number" min={0} inputMode="numeric" value={f[key]}
+      onChange={e => save(key, e.target.value)}
+      style={{ width: 72, padding: "8px 10px", borderRadius: RAD.md,
+        border: `1px solid ${t.border}`, background: t.surface, color: t.text,
+        fontSize: 16, fontFamily: "inherit", textAlign: "right",
+        boxSizing: "border-box" }}/>
+  );
+  return (
+    <>
+      <EinstellKarte title="Fristen-Standards" t={t} accent={accent}>
+        <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 8, lineHeight: 1.4 }}>
+          Regeln statt Handarbeit: Diese Standards überwachen Vorgänge
+          automatisch — bleibt ein Angebot aus, wird eine Firma säumig oder
+          fehlt die Rechnung, meldet sich die Ampel. Alle Werte sind Vorgaben
+          und lassen sich im Einzelfall überschreiben.
+        </div>
+        <EinstellZeile label="Rückmeldung (Tage)"
+          sub="Global — gilt für jede Nachricht mit „Antwort erwartet”, egal ob Angebot oder Auftrag. Steht sichtbar für das Gegenüber."
+          t={t}>{feld("rueckmeldung_tage")}</EinstellZeile>
+        <EinstellZeile label="Angebotsabgabe (Tage)"
+          sub="Bis wann ein angefragtes Angebot vorliegen soll. Danach: „Angebot überfällig”."
+          t={t}>{feld("angebotsabgabe_tage")}</EinstellZeile>
+        <EinstellZeile label="Ausführung (Tage)"
+          sub="Zieldatum-Vorschlag beim Beauftragen — der am häufigsten pro Fall überschriebene Wert (Dachsanierung ≠ Türreparatur)."
+          t={t}>{feld("ausfuehrung_tage")}</EinstellZeile>
+        <EinstellZeile label="Nachfass-Vorlauf (Tage vor Ablauf)"
+          sub="Rein intern: so viele Tage vor der Ausführungsfrist erinnert die Ampel ans Nachfassen. Die Firma sieht davon nichts."
+          t={t}>{feld("nachfass_vorlauf_tage")}</EinstellZeile>
+        <EinstellZeile label="Rechnung erwartet (Tage nach fertig)"
+          sub="Nach Abnahme/Abhaken: bleibt die Rechnung so lange aus, meldet die Ampel „Rechnung fehlt”."
+          t={t}>{feld("rechnung_erwartet_tage")}</EinstellZeile>
+      </EinstellKarte>
+    </>
+  );
+}
+
 const SEKTIONEN = [
   { id: "profil",        icon: "user",     farbe: "#0E7490", title: "Mein Profil",       sub: "Name, Anrede, Kontaktdaten" },
   { id: "erscheinung",   icon: "paint",    farbe: "#EAB308", title: "Erscheinungsbild",  sub: "Dunkelmodus, Header, Farben, Kontrast" },
   { id: "objekte",       icon: "building", farbe: "#06B6D4", title: "Objekte",           sub: "Anzeige, Filter-Pillen, Gruppen" },
   { id: "kontakte",      icon: "users",    farbe: "#A855F7", title: "Kontakte",          sub: "Anzeige, Filter-Pillen, Gruppen" },
   { id: "statusleiste",  icon: "bell",     farbe: "#F97316", title: "Statusleiste",      sub: "Objekt- & Kontakt-Hinweise, Jahrestage" },
+  { id: "fristen",       icon: "calendar", farbe: "#DC2626", title: "Fristen-Standards", sub: "Rückmeldung, Angebote, Ausführung, Nachfass, Rechnung" },
   { id: "filter",        icon: "search",   farbe: "#F59E0B", title: "Filter-Optionen",   sub: "Großer Filter im Header" },
   { id: "kalender",      icon: "calendar", farbe: "#F59E0B", title: "Kalender",          sub: "Wochenstart, KW, Termin-Bezeichnungen" },
   { id: "dokumente",     icon: "document", farbe: "#0E7490", title: "Dokumente",         sub: "Dokument-Karten, Anzeige" },
@@ -3833,6 +3886,7 @@ export {
   SektionObjekte,
   SektionProfil,
   SektionStatusleiste,
+  SektionFristen,
   SektionSuche,
   SektionTastatur,
   TASTATUR_AKTIONEN,

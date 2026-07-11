@@ -20,13 +20,15 @@ import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
 import { KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu } from "./liegenschaft.jsx";
+import { useFristen } from "./utils-icons.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
-  vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme,
+  BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
+  vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
-  weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus,
+  weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus, rechnungAbgleich,
   weltAufgabeNeu, weltAufgabeErledigt, weltAngebotBeauftragen,
   weltWiedervorlageAufheben, weltVorgangSchliessen, weltVorgangOeffnen,
   weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
@@ -167,7 +169,10 @@ function BausteinKarte({ titel, anzahl, sub, offen, onToggle, t, accent, childre
 function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWelt, DatumFeld, onFertig }) {
   const [beschreibung, setBeschreibung] = useState("");
   const [firmaId, setFirmaId] = useState("");
-  const [frist, setFrist] = useState("");
+  // §4.3: Ausführungsfrist-Default aus den Einstellungen — der am häufigsten
+  // pro Fall überschriebene Wert, darum vorbelegt statt erzwungen.
+  const fristen = useFristen();
+  const [frist, setFrist] = useState(isoInTagen(fristen.ausfuehrung_tage));
   // §6b: Kategorie schlägt den Default vor, entschieden wird pro Auftrag.
   const [abnahme, setAbnahme] = useState(kategorieHatPhase(kategorieId, "abnahme"));
   const legeAn = () => {
@@ -179,7 +184,8 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
       let neu = Object.assign({}, w, { auftraege: [...w.auftraege, a] });
       if (firmaId) {
         neu = weltAuftragBeauftragen(neu, a.id,
-          { firma_kontakt_id: firmaId, frist: frist || null });
+          { firma_kontakt_id: firmaId, frist: frist || null,
+            nachfass_ab: fristMinusTage(frist, fristen.nachfass_vorlauf_tage) });
       }
       return neu;
     });
@@ -217,6 +223,15 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
       </div>
     </div>
   );
+}
+
+// §4.3: interner Nachfass-Zeitpunkt = Ausführungsfrist − Vorlauf (Tage).
+function fristMinusTage(iso, tage) {
+  if (!iso) return null;
+  const d = new Date(iso + "T12:00:00");
+  if (isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() - (Number(tage) || 0));
+  return d.toISOString().slice(0, 10);
 }
 
 function eur(n) {
@@ -319,6 +334,103 @@ function baueVerlauf(vorgang, welt, kontakte) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+// BETEILIGTEN-KARTE (Umbau-Konzept §2) — der Vorgang wächst im Kreis der
+// Menschen. Regeln: nachträglich pflegbar · NIE löschen, nur beenden
+// (bis-Datum, bleibt in der Akte auffindbar — Versicherung!) · Hinzufügen ist
+// STILL (löst nie eine Nachricht aus, macht nur erreichbar) — die Oberfläche
+// bietet danach DEZENT „auch informieren?" an: zwei bewusste Handgriffe.
+// ═════════════════════════════════════════════════════════════════════════
+function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, t, accent, kannFlows, onWelt, onInformieren }) {
+  const [formOffen, setFormOffen] = useState(false);
+  const [kontaktId, setKontaktId] = useState("");
+  const [rolle, setRolle] = useState("betroffener");
+  const [frisch, setFrisch] = useState(null); // kontakt_id des eben Hinzugefügten → „auch informieren?"
+  const aktive = beteiligungen.filter((b) => b.status !== "beendet");
+  const beendete = beteiligungen.filter((b) => b.status === "beendet");
+  const fuegeHinzu = () => {
+    if (!kontaktId) return;
+    onWelt((w) => Object.assign({}, w, {
+      beteiligungen: [...w.beteiligungen, neueBeteiligung({
+        vorgang_id: vorgang.id, kontakt_id: kontaktId, rolle: rolle })],
+    }));
+    setFrisch(kontaktId);
+    setKontaktId(""); setFormOffen(false);
+  };
+  const beende = (b) => {
+    onWelt((w) => Object.assign({}, w, {
+      beteiligungen: w.beteiligungen.map((x) => x.id === b.id
+        ? Object.assign({}, x, { status: "beendet", bis: isoHeute() }) : x),
+    }));
+  };
+  const zeile = (b, beendet) => {
+    const name = b.kontakt_id ? nameVon(kontakte, b.kontakt_id) : "die Verwaltung";
+    return (
+      <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0, fontSize: FS.s,
+          color: beendet ? t.muted : t.text, overflowWrap: "anywhere" }}>
+          {name || "Unbekannt"}
+          <span style={{ color: t.muted }}>
+            {" · " + beteiligungRolle(b.rolle).label
+              + (beendet && b.bis ? " · bis " + datumDe(b.bis)
+                : (b.von ? " · seit " + datumDe(b.von) : ""))}</span>
+        </div>
+        {kannFlows && !beendet && b.rolle !== "fallfuehrer" ? (
+          <button onClick={() => beende(b)}
+            style={flowKnopf(t, accent, false)}>Beenden</button>
+        ) : null}
+      </div>
+    );
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {aktive.map((b) => zeile(b, false))}
+      {beendete.map((b) => zeile(b, true))}
+      {/* Nach dem stillen Hinzufügen: DEZENT anbieten — Beteiligung ≠ Information. */}
+      {frisch ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 10px", borderRadius: RAD.md,
+          background: accent + "10", border: "1px solid " + accent + "30" }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: FS.xs, color: t.text }}>
+            {(nameVon(kontakte, frisch) || "Kontakt") + " hinzugefügt — auch informieren?"}</div>
+          <button onClick={() => { onInformieren(frisch); setFrisch(null); }}
+            style={flowKnopf(t, accent, true)}>Informieren</button>
+          <button onClick={() => setFrisch(null)}
+            style={flowKnopf(t, accent, false)}>Später</button>
+        </div>
+      ) : null}
+      {kannFlows && formOffen ? (
+        <div style={flowZeileStil(t)}>
+          <label style={feldLabelStil(t)}>Wer?</label>
+          <select value={kontaktId} onChange={(e) => setKontaktId(e.target.value)}
+            style={Object.assign({}, selectStil(t, accent, !!kontaktId), { marginBottom: 0 })}>
+            <option value="">Kontakt wählen …</option>
+            {(kontakte || []).map((k) => (
+              <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
+            ))}
+          </select>
+          <label style={feldLabelStil(t)}>Rolle am Vorgang</label>
+          <select value={rolle} onChange={(e) => setRolle(e.target.value)}
+            style={Object.assign({}, selectStil(t, accent, true), { marginBottom: 0 })}>
+            {BETEILIGUNG_ROLLEN.filter((r) => r.id !== "fallfuehrer").map((r) => (
+              <option key={r.id} value={r.id}>{r.label}</option>
+            ))}
+          </select>
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button onClick={() => setFormOffen(false)}
+              style={flowKnopf(t, accent, false)}>Abbrechen</button>
+            <button onClick={fuegeHinzu}
+              style={flowKnopf(t, accent, true)}>Hinzufügen</button>
+          </div>
+        </div>
+      ) : (kannFlows ? (
+        <button onClick={() => setFormOffen(true)}
+          style={flowKnopf(t, accent, false)}>+ Beteiligter</button>
+      ) : null)}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 // KOMMUNIKATIONS-KARTE (Umbau-Konzept §3.2) — primär LESE-Ort („wie kann ich
 // nachvollziehen, was geschrieben wurde"). Zwei umschaltbare Sichten auf EINE
 // flache nachrichten[]-Liste (Termin-Muster, kein Doppelmodell):
@@ -345,15 +457,18 @@ function nachrichtGegenueber(n) {
   return n.richtung === "eingehend" ? (n.von_kontakt_id || null) : (n.an_kontakt_id || null);
 }
 
-function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, antwortAuf = null }) {
+function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, antwortAuf = null, vorKontaktId = null, vorAnlass = null }) {
   // Antwort nachtragen (§3.3): Gegenüber + Richtung „eingehend" vorbelegt,
-  // antwort_auf_id schließt den Faden.
+  // antwort_auf_id schließt den Faden. §2/§3.1: Kontext setzt den Anlass —
+  // „informieren" nach Hinzufügen eines Betroffenen bringt „Betroffenheit" mit.
   const [gegenueberId, setGegenueberId] = useState(
-    antwortAuf ? (nachrichtGegenueber(antwortAuf) || "") : "");
+    antwortAuf ? (nachrichtGegenueber(antwortAuf) || "") : (vorKontaktId || ""));
   const [richtung, setRichtung] = useState(antwortAuf ? "eingehend" : "ausgehend");
   const [kanal, setKanal] = useState(antwortAuf ? (antwortAuf.kanal || "notiz") : "telefon");
-  const [anlass, setAnlass] = useState("frei");
-  const [antwortErwartet, setAntwortErwartet] = useState(false);
+  const [anlass, setAnlass] = useState(vorAnlass || "frei");
+  const [antwortErwartet, setAntwortErwartet] = useState(
+    vorAnlass ? !!anlassTyp(vorAnlass).antwort : false);
+  const fristen = useFristen();
   const [inhalt, setInhalt] = useState("");
   const waehleAnlass = (id) => {
     setAnlass(id);
@@ -361,10 +476,13 @@ function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, an
   };
   const speichere = () => {
     if (!inhalt.trim()) return;
+    const erwartet = richtung === "ausgehend" ? antwortErwartet : false;
     const d = {
       vorgang_id: vorgangId, richtung: richtung, kanal: kanal,
       anlass: anlass, inhalt: inhalt.trim(),
-      antwort_erwartet: richtung === "ausgehend" ? antwortErwartet : false,
+      antwort_erwartet: erwartet,
+      // §4.3: Rückmeldung — EIN globaler Standard für alle offenen Fäden.
+      rueckmeldung_bis: erwartet ? isoInTagen(fristen.rueckmeldung_tage) : null,
       antwort_auf_id: antwortAuf ? antwortAuf.id : null,
       von_kontakt_id: richtung === "eingehend" ? (gegenueberId || null) : null,
       an_kontakt_id: richtung === "ausgehend" ? (gegenueberId || null) : null,
@@ -433,7 +551,7 @@ function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, an
   );
 }
 
-function KommunikationsBlock({ vorgang, nachrichten, kontakte, t, accent, kannFlows, onWelt, formAuto, onFormZu }) {
+function KommunikationsBlock({ vorgang, nachrichten, kontakte, t, accent, kannFlows, onWelt, formAuto, onFormZu, vorKontaktId = null, vorAnlass = null }) {
   const [sicht, setSicht] = useState("verlauf"); // "verlauf" | "chat"
   const [chatMit, setChatMit] = useState("");
   const [antwortAuf, setAntwortAuf] = useState(null); // Nachricht | null
@@ -536,6 +654,7 @@ function KommunikationsBlock({ vorgang, nachrichten, kontakte, t, accent, kannFl
       {kannFlows && formOffen ? (
         <NachrichtNeuForm vorgangId={vorgang.id} kontakte={kontakte} t={t}
           accent={accent} onWelt={onWelt} antwortAuf={antwortAuf}
+          vorKontaktId={vorKontaktId} vorAnlass={vorAnlass}
           onFertig={() => { setAntwortAuf(null); onFormZu(); }}/>
       ) : (kannFlows ? (
         <button onClick={() => onFormZu(true)}
@@ -560,6 +679,7 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
   const [offenerBaustein, setOffenerBaustein] = useState(null);
   const [formBaustein, setFormBaustein] = useState(null);
   const [mehrOffen, setMehrOffen] = useState(false);
+  const [informierenKontakt, setInformierenKontakt] = useState(null); // §2: „auch informieren?" → Vorbelegung
   const [aufgabeTitel, setAufgabeTitel] = useState("");
   const [rechnungBetrag, setRechnungBetrag] = useState("");
   const [notizText, setNotizText] = useState("");
@@ -584,6 +704,8 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
     (a) => a.vorgang_id === vorgang.id && a.status === "offen") : [];
   const nachrichten = offen ? welt.nachrichten.filter(
     (n) => n.vorgang_id === vorgang.id) : [];
+  const beteiligungen = offen ? welt.beteiligungen.filter(
+    (b) => b.vorgang_id === vorgang.id) : [];
   // Offene Antwort-Fäden (§3.3): ausgehend + erwartet + noch unbeantwortet.
   const beantwortetIds = {};
   for (let i = 0; i < nachrichten.length; i++) {
@@ -747,6 +869,21 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
               </div>
             ) : null}
           </div>
+          {/* ══ Beteiligte (§2) — immer da (Fallführer), wächst im Kreis der Menschen ══ */}
+          <BausteinKarte titel="Beteiligte"
+            anzahl={beteiligungen.filter((b) => b.status !== "beendet").length}
+            t={t} accent={accent}
+            offen={offenerBaustein === "beteiligte"}
+            onToggle={() => toggleBaustein("beteiligte")}>
+            <BeteiligtenBlock vorgang={vorgang} beteiligungen={beteiligungen}
+              kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
+              onWelt={onWelt}
+              onInformieren={(kid) => {
+                setInformierenKontakt(kid);
+                setOffenerBaustein("kommunikation");
+                setFormBaustein("kommunikation");
+              }}/>
+          </BausteinKarte>
           {/* ══ Baustein-Stapel (§6): Karten erscheinen mit Inhalt, ══
               ══ wachsen über „+ Baustein" — Kategorie zwingt nichts. ══ */}
           {(auftraege.length > 0 || formBaustein === "auftraege") ? (
@@ -802,7 +939,8 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
               offen={offenerBaustein === "rechnungen"}
               onToggle={() => toggleBaustein("rechnungen")}>
               {rechnungen.map((r) => (
-                <RechnungFlowZeile key={r.id} rechnung={r} t={t} accent={accent} onWelt={onWelt}/>
+                <RechnungFlowZeile key={r.id} rechnung={r} welt={welt}
+                  vorgangId={vorgang.id} t={t} accent={accent} onWelt={onWelt}/>
               ))}
               {kannFlows && formBaustein === "rechnungen" ? (
                 <div style={flowZeileStil(t)}>
@@ -858,7 +996,11 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
               <KommunikationsBlock vorgang={vorgang} nachrichten={nachrichten}
                 kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
                 onWelt={onWelt} formAuto={formBaustein === "kommunikation"}
-                onFormZu={(auf) => setFormBaustein(auf ? "kommunikation" : null)}/>
+                vorKontaktId={informierenKontakt} vorAnlass={informierenKontakt ? "betroffenheit" : null}
+                onFormZu={(auf) => {
+                  setFormBaustein(auf ? "kommunikation" : null);
+                  if (!auf) setInformierenKontakt(null);
+                }}/>
             </BausteinKarte>
           ) : null}
           {formBaustein === "notiz" ? (
@@ -1185,8 +1327,13 @@ function VorgangsBereichFuerFirma({ firmaId, welt, kontakte, t, accent, onWelt =
   const idsAngebot = welt.angebote
     .filter((a) => a.firma_kontakt_id === firmaId && a.vorgang_id)
     .map((a) => a.vorgang_id);
+  // §2 (Umbau): beidseitige Verknüpfung — auch über Beteiligungen (fällt frei
+  // heraus, weil flach mit kontakt_id). Beendete zählen mit: bleibt auffindbar.
+  const idsBeteiligung = welt.beteiligungen
+    .filter((b) => b.kontakt_id === firmaId && b.vorgang_id)
+    .map((b) => b.vorgang_id);
   const ids = {};
-  idsAuftrag.concat(idsAngebot).forEach((id) => { ids[id] = true; });
+  idsAuftrag.concat(idsAngebot).concat(idsBeteiligung).forEach((id) => { ids[id] = true; });
   const vorgaenge = sortiereVorgaenge(
     welt.vorgaenge.filter((v) => ids[v.id]), welt);
   const lose = welt.auftraege.filter(
@@ -1348,6 +1495,7 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, t, ac
       <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
         onFotoHinzu={onFotoHinzu}/>
       <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={brauchtAbnahme}
+        rechnungErwartet={kategorieHatPhase(kategorieId, "rechnung")}
         firmen={firmen} kontakte={kontakte} t={t} accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}/>
     </div>
   );
@@ -1421,10 +1569,11 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu }) {
 
 // Nur die Aktionen (Buttons + Mini-Formulare) — genutzt von AuftragFlowZeile
 // (Vorgangs-Detail) UND LoseAuftragKarte (Begehungsfund), ein Bau (§76).
-function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, kontakte = [], t, accent, onWelt, DatumFeld }) {
+function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false, firmen, kontakte = [], t, accent, onWelt, DatumFeld }) {
   const [formOffen, setFormOffen] = useState(null); // "beauftragen" | "abnehmen" | null
   const [firmaId, setFirmaId] = useState(auftrag.firma_kontakt_id || "");
-  const [frist, setFrist] = useState("");
+  const fristen = useFristen();
+  const [frist, setFrist] = useState(isoInTagen(fristen.ausfuehrung_tage));
   const [ergebnis, setErgebnis] = useState("angenommen");
   const [abnahmeNotiz, setAbnahmeNotiz] = useState("");
   const [prueferId, setPrueferId] = useState("");
@@ -1432,7 +1581,8 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, kontakte = [], t
 
   const beauftrage = () => {
     onWelt((w) => weltAuftragBeauftragen(w, auftrag.id,
-      { firma_kontakt_id: firmaId || null, frist: frist || null }));
+      { firma_kontakt_id: firmaId || null, frist: frist || null,
+        nachfass_ab: fristMinusTage(frist, fristen.nachfass_vorlauf_tage) }));
     setFormOffen(null);
   };
   // Abnahme SCHLANK (§6b): Datum (heute) · Prüfer · Ergebnis · freies
@@ -1441,7 +1591,9 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, kontakte = [], t
   const nimmAb = () => {
     onWelt((w) => weltAuftragAbnehmen(w, auftrag.id,
       { ergebnis: ergebnis, notiz: abnahmeNotiz.trim(),
-        pruefer_kontakt_id: prueferId || null }));
+        pruefer_kontakt_id: prueferId || null,
+        rechnung_erwartet_bis: rechnungErwartet
+          ? isoInTagen(fristen.rechnung_erwartet_tage) : null }));
     setFormOffen(null); setAbnahmeNotiz(""); setPrueferId("");
   };
 
@@ -1465,7 +1617,9 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, firmen, kontakte = [], t
             <button onClick={() => { setErgebnis("angenommen"); setAbnahmeNotiz(""); setPrueferId(""); setFormOffen("abnehmen"); }}
               style={flowKnopf(t, accent, true)}>Abnehmen</button>
           ) : (
-            <button onClick={() => onWelt((w) => weltAuftragAbhaken(w, auftrag.id))}
+            <button onClick={() => onWelt((w) => weltAuftragAbhaken(w, auftrag.id,
+                { rechnung_erwartet_bis: rechnungErwartet
+                  ? isoInTagen(fristen.rechnung_erwartet_tage) : null }))}
               style={flowKnopf(t, accent, true)}>Abhaken</button>
           )) : null}
         </div>
@@ -1532,10 +1686,33 @@ const ABNAHME_ERGEBNIS_OPTIONEN = [
   { id: "abgelehnt", label: "Abgelehnt" },
 ];
 
-function RechnungFlowZeile({ rechnung, t, accent, onWelt }) {
+// §6c (Umbau) · Die Rechnungswelt: Auto-Abgleich (Angebot ↔ Rechnung, Abweichung
+// BERECHNET) + Freitext „warum" bei Abweichung + Prüf-Kette
+// eingegangen → geprüft → freigegeben → bezahlt. Beirats-Prüfung = AUFGABE
+// (§5.8, bezug: rechnung) — kein neuer Mechanismus, offener Faden hält nach.
+function RechnungFlowZeile({ rechnung, welt = null, vorgangId = null, t, accent, onWelt }) {
+  const [grundFormOffen, setGrundFormOffen] = useState(false);
+  const [grund, setGrund] = useState(rechnung.abweichung_grund || "");
   const s = rechnung.status;
-  const label = { eingegangen: "Eingegangen", in_pruefung: "In Prüfung",
+  const label = { eingegangen: "Eingegangen", in_pruefung: "Geprüft",
     freigegeben: "Freigegeben", bezahlt: "Bezahlt" }[s] || s;
+  const abgleich = welt ? rechnungAbgleich(rechnung, welt) : null;
+  const weicht = abgleich && abgleich.abweichung !== 0;
+  const speichereGrund = () => {
+    onWelt((w) => Object.assign({}, w, {
+      rechnungen: w.rechnungen.map((x) => x.id === rechnung.id
+        ? Object.assign({}, x, { abweichung_grund: grund.trim() }) : x),
+    }));
+    setGrundFormOffen(false);
+  };
+  const beiratsAufgabe = () => {
+    if (!vorgangId) return;
+    onWelt((w) => weltAufgabeNeu(w, vorgangId, {
+      titel: "Rechnungsprüfung Beirat — auf ok warten"
+        + (rechnung.betrag != null ? " (" + eur(rechnung.betrag) + ")" : ""),
+      bezug: { typ: "rechnung", id: rechnung.id },
+    }));
+  };
   return (
     <div style={flowZeileStil(t)}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1547,13 +1724,75 @@ function RechnungFlowZeile({ rechnung, t, accent, onWelt }) {
           farbe={s === "bezahlt" ? AMPEL_FARBEN.grau : AMPEL_FARBEN.gelb}
           text={label}/>
       </div>
-      {(s === "eingegangen" || s === "in_pruefung") ? (
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => onWelt((w) => weltRechnungStatus(w, rechnung.id, "freigegeben"))}
-            style={flowKnopf(t, accent, true)}>Freigeben</button>
+      {/* Auto-Abgleich: Gegenüberstellung + berechnete Abweichung */}
+      {abgleich ? (
+        <div style={{ fontSize: FS.xs, color: t.muted, display: "flex",
+          flexDirection: "column", gap: 2 }}>
+          <div>{"Angebot: " + eur(abgleich.angebotPreis)}</div>
+          <div>
+            {"Rechnung: " + eur(rechnung.betrag)}
+            {weicht ? (
+              <span style={{ color: AMPEL_FARBEN.gelb, fontWeight: FW.bold }}>
+                {" ← " + (abgleich.abweichung > 0 ? "+" : "")
+                  + eur(abgleich.abweichung) + " Abweichung"}</span>
+            ) : (
+              <span style={{ color: AMPEL_FARBEN.gruen, fontWeight: FW.bold }}>
+                {" ✓ stimmt überein"}</span>
+            )}
+          </div>
         </div>
       ) : null}
-      {s === "freigegeben" ? (
+      {/* Abweichung → Freitext „warum" (Nachweis der Freigabe-Begründung) */}
+      {weicht && rechnung.abweichung_grund && !grundFormOffen ? (
+        <div style={{ fontSize: FS.xs, color: t.text, overflowWrap: "anywhere" }}>
+          {"Warum: " + rechnung.abweichung_grund}
+          {onWelt && s !== "bezahlt" ? (
+            <button onClick={() => setGrundFormOffen(true)}
+              style={{ background: "none", border: "none", padding: "0 0 0 6px",
+                cursor: "pointer", fontSize: FS.xs, color: accent,
+                fontFamily: "inherit", fontWeight: FW.bold }}>ändern</button>
+          ) : null}
+        </div>
+      ) : null}
+      {onWelt && weicht && s !== "bezahlt" && (grundFormOffen || !rechnung.abweichung_grund) ? (
+        <div>
+          <label style={feldLabelStil(t)}>Warum weicht sie ab?</label>
+          <input value={grund} onChange={(e) => setGrund(e.target.value)}
+            placeholder={"z. B. Mehrarbeit, telefonisch zugestimmt"}
+            style={Object.assign({}, selectStil(t, accent, !!grund), { marginBottom: 0 })}/>
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end",
+            marginTop: 6 }}>
+            {grundFormOffen ? (
+              <button onClick={() => { setGrundFormOffen(false); setGrund(rechnung.abweichung_grund || ""); }}
+                style={flowKnopf(t, accent, false)}>Abbrechen</button>
+            ) : null}
+            <button onClick={speichereGrund}
+              style={flowKnopf(t, accent, true)}>Festhalten</button>
+          </div>
+        </div>
+      ) : null}
+      {/* Prüf-Kette: eingegangen → geprüft → freigegeben → bezahlt */}
+      {onWelt && s === "eingegangen" ? (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button onClick={() => onWelt((w) => weltRechnungStatus(w, rechnung.id, "in_pruefung"))}
+            style={flowKnopf(t, accent, true)}>Geprüft</button>
+          {vorgangId ? (
+            <button onClick={beiratsAufgabe}
+              style={flowKnopf(t, accent, false)}>An Beirat (Aufgabe)</button>
+          ) : null}
+        </div>
+      ) : null}
+      {onWelt && s === "in_pruefung" ? (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button onClick={() => onWelt((w) => weltRechnungStatus(w, rechnung.id, "freigegeben"))}
+            style={flowKnopf(t, accent, true)}>Freigeben</button>
+          {vorgangId ? (
+            <button onClick={beiratsAufgabe}
+              style={flowKnopf(t, accent, false)}>An Beirat (Aufgabe)</button>
+          ) : null}
+        </div>
+      ) : null}
+      {onWelt && s === "freigegeben" ? (
         <div style={{ display: "flex", gap: 6 }}>
           <button onClick={() => onWelt((w) => weltRechnungStatus(w, rechnung.id, "bezahlt"))}
             style={flowKnopf(t, accent, true)}>Als bezahlt markieren</button>
@@ -1604,7 +1843,8 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.med,
           color: t.text, overflowWrap: "anywhere" }}>
-          {wer + (liegtVor ? " · " + eur(angebot.preis) : "")}
+          {wer + (liegtVor ? " · " + eur(angebot.preis)
+            : (angebot.abgabe_bis ? " · erwartet bis " + datumDe(angebot.abgabe_bis) : ""))}
         </div>
         {angebot.wurde_zu_auftrag_id ? (
           <StatusPille t={t} farbe={AMPEL_FARBEN.gruen} text="Beauftragt"/>
@@ -1659,6 +1899,7 @@ function AngebotNeuForm({ vorgangId, firmen, t, accent, onWelt, onFertig }) {
   const [firmaId, setFirmaId] = useState("");
   const [summe, setSumme] = useState("");
   const [notiz, setNotiz] = useState("");
+  const fristen = useFristen();
   const legeAn = () => {
     if (!firmaId) return;
     const p = parseFloat(String(summe).replace(",", "."));
@@ -1666,6 +1907,9 @@ function AngebotNeuForm({ vorgangId, firmen, t, accent, onWelt, onFertig }) {
       angebote: [...w.angebote, neuesAngebot({
         vorgang_id: vorgangId, firma_kontakt_id: firmaId,
         preis: isNaN(p) ? null : p, notiz: notiz.trim(),
+        // §4.3: angefragt → Abgabefrist aus den Einstellungen; liegt es schon
+        // vor, braucht es keine.
+        abgabe_bis: isNaN(p) ? isoInTagen(fristen.angebotsabgabe_tage) : null,
       })],
     }));
     onFertig();

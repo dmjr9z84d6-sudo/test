@@ -234,6 +234,16 @@ const DEFAULT_VES = [];
 // ── Default-Settings ────────────────────────────────────────────────────────
 const DEFAULT_SETTINGS = {
   hvName: "Muster Hausverwaltung GmbH",
+  // §4.3 (Vorgang-Umbau) · Fristen-Standards: Defaults, im Einzelfall
+  // überschreibbar. Rückmeldung bewusst nur EINMAL global (gilt für Angebot
+  // UND Auftrag — kein doppelter Regler für denselben Wert).
+  fristen: {
+    rueckmeldung_tage: 3,        // global · außen (steht sichtbar in der Nachricht)
+    angebotsabgabe_tage: 14,     // Angebot · außen
+    ausfuehrung_tage: 35,        // Auftrag · außen (am häufigsten pro Fall überschrieben)
+    nachfass_vorlauf_tage: 7,    // übergreifend · INNEN (meine Uhr — Firma sieht ihn nie)
+    rechnung_erwartet_tage: 14,  // übergreifend · innen (nach fertig, bis Mahnung)
+  },
   hvLogoUrl: "",
   hvLogo: "",                  // hochgeladenes Logo (DataURL) — Vorrang vor hvLogoUrl im Listendruck
   tastaturAn: true,            // globale Tastaturkürzel aktiv
@@ -2729,6 +2739,26 @@ function neueBeteiligung(init) {
   }, init || {});
   return b;
 }
+// §4.3 · Fristen-Standards lesen (Settings können partiell sein — Defaults
+// füllen auf; selbes Prinzip wie ladeSettings).
+function fristenVon(settings) {
+  const d = DEFAULT_SETTINGS.fristen;
+  const f = (settings && settings.fristen) || {};
+  return {
+    rueckmeldung_tage: f.rueckmeldung_tage != null ? f.rueckmeldung_tage : d.rueckmeldung_tage,
+    angebotsabgabe_tage: f.angebotsabgabe_tage != null ? f.angebotsabgabe_tage : d.angebotsabgabe_tage,
+    ausfuehrung_tage: f.ausfuehrung_tage != null ? f.ausfuehrung_tage : d.ausfuehrung_tage,
+    nachfass_vorlauf_tage: f.nachfass_vorlauf_tage != null ? f.nachfass_vorlauf_tage : d.nachfass_vorlauf_tage,
+    rechnung_erwartet_tage: f.rechnung_erwartet_tage != null ? f.rechnung_erwartet_tage : d.rechnung_erwartet_tage,
+  };
+}
+// ISO-Datum heute + n Tage (für berechnete Frist-Felder, §4).
+function isoInTagen(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + (Number(n) || 0));
+  return d.toISOString().slice(0, 10);
+}
+
 // ── §96.x · Anlass-Typen der Information (Umbau-Konzept §3.1) ──────────────
 // Der Anlass wird meist vom KONTEXT gesetzt, nicht aus dem Dropdown gewählt —
 // darum darf die Liste fein sein (~10). `antwort` = Default für
@@ -2764,6 +2794,7 @@ function neueNachricht(init) {
     inhalt: "",
     anlass: "frei",              // Anlass-Typ (§3.1) — Haken für Vorlagen + KI `formulieren`
     antwort_erwartet: false,     // Default aus Anlass, pro Fall überschreibbar (§3.3)
+    rueckmeldung_bis: null,      // §4.3: bis wann die Antwort erwartet wird (global EIN Standard)
     antwort_auf_id: null,        // eingehende Antwort MIT Inhalt schließt den Faden (§3.3)
     gesendet_am: isoHeute(),
     demo: false,
@@ -2778,6 +2809,7 @@ function neuesAngebot(init) {
     firma_kontakt_id: null,
     preis: null,                 // Zahl (EUR) oder null solange offen
     notiz: "",                   // kurze Notiz zum Angebot (§6a: Summe + PDF + Notiz)
+    abgabe_bis: null,            // §4.3: bis wann das Angebot erwartet wird → treibt „Angebot überfällig"
     gueltig_bis: null,           // treibt „Angebot veraltet"-Frist am Schreibtisch
     eingeholt_am: isoHeute(),
     wurde_zu_auftrag_id: null,   // die Verwandlung: gewähltes Angebot → Auftrag (nachvollziehbar)
@@ -2800,6 +2832,8 @@ function neuerAuftrag(init) {
     beauftragt_am: null,
     frist: null,                 // optionales Zieldatum → treibt 🔴 überfällig
     abnahme_noetig: null,        // §6b (Umbau): Abnahme PRO AUFTRAG wählbar — null = Kategorie-Default, true/false = explizit
+    nachfass_ab: null,           // §4.3: INTERNER Nachfass-Zeitpunkt (frist − Vorlauf) — die Firma sieht ihn nie
+    rechnung_erwartet_bis: null, // §4.3: nach „fertig" gesetzt → treibt „Rechnung fehlt"
     foto_ids: [],                // Weg A (§5.10): Fotos leben in ve.fotos[], hier nur Refs
     dateien: [],                 // Prüfprotokoll / Gutachten am Auftrag
     demo: false,
@@ -2837,6 +2871,7 @@ function neueRechnung(init) {
     vorgang_id: null,
     auftrag_id: null,
     betrag: null,
+    abweichung_grund: "",        // §6c (Umbau): Freitext „warum weicht sie ab" — Nachweis der Freigabe-Begründung
     status: "eingegangen",       // §96.2 RECHNUNG_STATUS
     eingegangen_am: isoHeute(),
     bezahlt_am: null,
@@ -2991,12 +3026,60 @@ function hinweiseFuerVorgang(vorgang, welt, heute) {
   }
 
   // 🔴 Auftrags-Frist verpasst (Auftrag läuft, Zieldatum überschritten).
+  // 🟡 Nachfass-Vorlauf (§4.3, INNEN): frist − Vorlauf erreicht, frist selbst
+  // noch nicht — „schaue selbst nochmal nach", die Firma sieht davon nichts.
   for (let i = 0; i < auftraege.length; i++) {
     const a = auftraege[i];
     if (auftragLaeuft(a) && a.frist && a.frist < jetzt) {
       dazu(5, "auftrag_ueberfaellig",
         "Auftrag überfällig: " + (a.beschreibung || "Auftrag"),
         { typ: "auftrag", id: a.id });
+    } else if (auftragLaeuft(a) && a.nachfass_ab && a.nachfass_ab <= jetzt
+        && (!a.frist || a.frist >= jetzt)) {
+      dazu(4, "nachfassen",
+        "Nachfassen: " + (a.beschreibung || "Auftrag")
+          + (a.frist ? " (bis " + a.frist + ")" : ""),
+        { typ: "auftrag", id: a.id });
+    }
+  }
+
+  // 🟡 Angebot überfällig (§4.3): angefragt (kein Preis), Abgabefrist vorbei.
+  for (let i = 0; i < angebote.length; i++) {
+    const g = angebote[i];
+    if (g.preis == null && !g.wurde_zu_auftrag_id
+        && g.abgabe_bis && g.abgabe_bis < jetzt) {
+      dazu(4, "angebot_ueberfaellig", "Angebot überfällig",
+        { typ: "angebot", id: g.id });
+    }
+  }
+
+  // 🟡 Rechnung fehlt (§4.3): Auftrag fertig, Erwartungsfrist vorbei, keine
+  // Rechnung zu diesem Auftrag eingegangen.
+  for (let i = 0; i < auftraege.length; i++) {
+    const a = auftraege[i];
+    if (a.status !== "abgenommen" || !a.rechnung_erwartet_bis) continue;
+    if (a.rechnung_erwartet_bis >= jetzt) continue;
+    const hatRechnung = rechnungen.filter((r) => r.auftrag_id === a.id).length > 0;
+    if (!hatRechnung) {
+      dazu(4, "rechnung_fehlt",
+        "Rechnung fehlt: " + (a.beschreibung || "Auftrag"),
+        { typ: "auftrag", id: a.id });
+    }
+  }
+
+  // 🟡 Antwort überfällig (§4.3, Sorte A): offener Faden (ausgehend, Antwort
+  // erwartet, unbeantwortet) über der Rückmeldefrist.
+  const nachrichten = welt.nachrichten.filter((n) => n.vorgang_id === vorgang.id);
+  const beantwortet = {};
+  for (let i = 0; i < nachrichten.length; i++) {
+    if (nachrichten[i].antwort_auf_id) beantwortet[nachrichten[i].antwort_auf_id] = true;
+  }
+  for (let i = 0; i < nachrichten.length; i++) {
+    const n = nachrichten[i];
+    if (n.richtung === "ausgehend" && n.antwort_erwartet && !beantwortet[n.id]
+        && n.rueckmeldung_bis && n.rueckmeldung_bis < jetzt) {
+      dazu(4, "antwort_ueberfaellig", "Antwort überfällig",
+        { typ: "nachricht", id: n.id });
     }
   }
 
@@ -3357,6 +3440,7 @@ function weltAuftragBeauftragen(welt, auftragId, daten) {
       status: "beauftragt",
       firma_kontakt_id: d.firma_kontakt_id || a.firma_kontakt_id || null,
       frist: d.frist || a.frist || null,
+      nachfass_ab: d.nachfass_ab || a.nachfass_ab || null,
       beauftragt_am: isoHeute(),
     }),
   });
@@ -3390,9 +3474,10 @@ function weltAuftragAbnehmen(welt, auftragId, daten) {
   });
   let neu = Object.assign({}, welt, {
     abnahmen: [...welt.abnahmen, abnahme],
-    auftraege: _ersetzeIn(welt.auftraege, auftragId, {
-      status: ergebnis === "angenommen" ? "abgenommen" : "nachbesserung",
-    }),
+    auftraege: _ersetzeIn(welt.auftraege, auftragId, Object.assign(
+      { status: ergebnis === "angenommen" ? "abgenommen" : "nachbesserung" },
+      ergebnis === "angenommen" && d.rechnung_erwartet_bis
+        ? { rechnung_erwartet_bis: d.rechnung_erwartet_bis } : {})),
   });
   if (ergebnis === "angenommen") neu = _vorgangMindestens(neu, a.vorgang_id, "abnahme");
   return neu;
@@ -3400,16 +3485,35 @@ function weltAuftragAbnehmen(welt, auftragId, daten) {
 
 // Abhaken (Pflege/Kleinauftrag + lose Begehungsfunde): direkt „abgenommen",
 // OHNE Abnahme-Objekt — das Foto am Auftrag ist der Nachweis (§5.6).
-function weltAuftragAbhaken(welt, auftragId) {
+function weltAuftragAbhaken(welt, auftragId, daten) {
   const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
   if (!a) return welt;
+  const d = daten || {};
   return Object.assign({}, welt, {
-    auftraege: _ersetzeIn(welt.auftraege, auftragId, { status: "abgenommen" }),
+    auftraege: _ersetzeIn(welt.auftraege, auftragId, Object.assign(
+      { status: "abgenommen" },
+      d.rechnung_erwartet_bis ? { rechnung_erwartet_bis: d.rechnung_erwartet_bis } : {})),
   });
 }
 
 // Rechnung erfassen (ehrlich als „eingegangen" — der Prüf-Hinweis feuert
 // sofort). Vorgang rückt mindestens auf Rechnungsprüfung vor.
+// §6c (Umbau) · Auto-Abgleich: Rechnung → Auftrag → Angebot (rückwärts über
+// wurde_zu_auftrag_id). Jede Kette trägt ihre Summe; die App stellt gegenüber
+// und BERECHNET die Abweichung. Direkter Auftrag ohne Angebot → keine
+// Referenz, kein Abgleich (null).
+function rechnungAbgleich(rechnung, welt) {
+  if (!rechnung || rechnung.betrag == null || !welt) return null;
+  const auftrag = rechnung.auftrag_id
+    ? welt.auftraege.filter((a) => a.id === rechnung.auftrag_id)[0] : null;
+  if (!auftrag) return null;
+  const angebot = welt.angebote.filter(
+    (a) => a.wurde_zu_auftrag_id === auftrag.id)[0] || null;
+  if (!angebot || angebot.preis == null) return null;
+  const diff = Math.round((Number(rechnung.betrag) - Number(angebot.preis)) * 100) / 100;
+  return { angebotPreis: angebot.preis, abweichung: diff };
+}
+
 function weltRechnungNeu(welt, daten) {
   const d = daten || {};
   if (!d.vorgang_id) return welt;
@@ -3447,6 +3551,7 @@ function weltAufgabeNeu(welt, vorgangId, daten) {
   const aufgabe = neueAufgabe({
     vorgang_id: vorgangId, beteiligung_id: ff.id,
     titel: d.titel || "", frist: d.frist || null,
+    bezug: d.bezug || null,
   });
   return Object.assign({}, welt, {
     beteiligungen: beteiligungen,
@@ -3715,12 +3820,12 @@ export {
   BETEILIGUNG_ROLLEN, beteiligungRolle, ANLASS_TYPEN, anlassTyp,
   neuerVorgang, neueBeteiligung, neueNachricht, neuesAngebot, neuerAuftrag,
   neueAbnahme, neueRechnung, neueAufgabe, neuerBeschluss,
-  normalisiereVorgangsWelt, leereVorgangsWelt,
+  normalisiereVorgangsWelt, leereVorgangsWelt, fristenVon, isoInTagen,
   AMPEL_RANG, AMPEL_REIHE, ampelAusRang,
   hinweiseFuerVorgang, ampelFarbe, ampelFarbeAuftrag, schreibtischEintraege,
   erzeugeVorgangsSeeds,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
-  weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus,
+  weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus, rechnungAbgleich,
   weltAufgabeNeu, weltAufgabeErledigt, weltAngebotBeauftragen,
   weltWiedervorlageAufheben, weltVorgangSchliessen, weltVorgangOeffnen,
   weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
