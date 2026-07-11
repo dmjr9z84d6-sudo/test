@@ -18,15 +18,16 @@
 import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
-import { KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
+import { HeaderZurueck, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu } from "./liegenschaft.jsx";
-import { useFristen } from "./utils-icons.jsx";
+import { DESKTOP_MIN_WIDTH, useFristen, useWindowWidth } from "./utils-icons.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
+  auftragsNummerNeu, angebotsNummerNeu,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
   weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus, rechnungAbgleich,
   weltAufgabeNeu, weltAufgabeErledigt, weltAngebotBeauftragen,
@@ -180,7 +181,8 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
     const d = { vorgang_id: vorgangId, beschreibung: beschreibung.trim(),
       abnahme_noetig: abnahme };
     onWelt((w) => {
-      const a = neuerAuftrag(d);
+      const a = neuerAuftrag(Object.assign({}, d,
+        { nummer: auftragsNummerNeu(w, vorgangId) }));
       let neu = Object.assign({}, w, { auftraege: [...w.auftraege, a] });
       if (firmaId) {
         neu = weltAuftragBeauftragen(neu, a.id,
@@ -668,61 +670,91 @@ function KommunikationsBlock({ vorgang, nachrichten, kontakte, t, accent, kannFl
 // Karten-Klapp-Muster: der GESAMTE Kopf ist die Klick-Fläche (kein Chevron,
 // kein Pfeil). Zu: Punkt + Titel + Status-Pille + Sub (Kategorie · seit).
 // Auf: zusätzlich Handlungs-Hinweise (farbig) und der Verlauf.
-function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null }) {
+function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle }) {
+  // NUR noch die Listen-Zeile (Feinschliff 11.07.): der Vorgang ist eine AKTE
+  // — Klick öffnet das Detail-Fenster (VorgangDetail), kein Aufklappen mehr.
+  // offen = dieser Vorgang ist gerade im Detail (Akzent-Rahmen als Marker).
+  const farbe = ampelFarbe(vorgang, welt);
+  const kat = vorgangKategorie(vorgang.kategorie);
+  const sub = [vorgang.nummer, kat.label, "seit " + datumDe(vorgang.angelegt_am)]
+    .filter(Boolean).join(" · ");
+  return (
+    <div onClick={onToggle} style={{ background: t.card,
+      border: "1px solid " + (offen ? accent : t.border),
+      borderRadius: RAD.lg, minWidth: 0, boxSizing: "border-box", width: "100%",
+      padding: "12px 14px", cursor: "pointer" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <AmpelPunkt farbe={farbe}/>
+        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
+          color: t.text, overflowWrap: "anywhere" }}>{vorgang.titel || "Vorgang"}</div>
+        <StatusPille t={t} farbe={accent}
+          text={VORGANG_STATUS_LABEL[vorgang.status] || vorgang.status}/>
+      </div>
+      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4,
+        overflowWrap: "anywhere" }}>{sub}</div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// VORGANG-DETAIL (Feinschliff 11.07., Bennys Grundriss) — der Vorgang ist
+// eine AKTE, kein Klapp-Eintrag. Eigenes Detail-Fenster nach Objekt-Vorbild:
+// Kopf = Vorgangsnummer groß + Titel/Liegenschaft klein · darunter TabLeiste
+// (§97), die MIT dem Vorgang WÄCHST: Übersicht · Beteiligte · Kommunikation
+// sind das Minimum, Angebote/Rechnungen erscheinen, sobald es sie gibt.
+// Übersicht: Stand-Karte (Phasen-Linie + nächster Schritt) oben, dann Daten
+// (inkl. Verlauf — Bennys Wahl D), dann Aufträge/Aufgaben/Notiz wie gehabt.
+// ═════════════════════════════════════════════════════════════════════════
+function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null }) {
+  const [tab, setTab] = useState("uebersicht");
+  const [tabZwang, setTabZwang] = useState({}); // Katalog erzwingt Tab vor erstem Inhalt
+  const [offenerBaustein, setOffenerBaustein] = useState(null);
+  const [formBaustein, setFormBaustein] = useState(null);
+  const [mehrOffen, setMehrOffen] = useState(false);
+  const [informierenKontakt, setInformierenKontakt] = useState(null);
+  const [aufgabeTitel, setAufgabeTitel] = useState("");
+  const [rechnungBetrag, setRechnungBetrag] = useState("");
+  const [notizText, setNotizText] = useState("");
   const [schliessConfirm, setSchliessConfirm] = useState(false);
   const [loeschConfirm, setLoeschConfirm] = useState(false);
   const [ruhenFormOffen, setRuhenFormOffen] = useState(false);
   const [ruhenBis, setRuhenBis] = useState("");
-  // Baustein-Stapel (§6, Umbau 11.07.): Accordion — genau EINE Karte offen.
-  // „+ Baustein" öffnet Karte samt Anlege-Form (Wachstum durch Hinzufügen,
-  // fester Katalog + eine freie Notiz — §6.2).
-  const [offenerBaustein, setOffenerBaustein] = useState(null);
-  const [formBaustein, setFormBaustein] = useState(null);
-  const [mehrOffen, setMehrOffen] = useState(false);
-  const [informierenKontakt, setInformierenKontakt] = useState(null); // §2: „auch informieren?" → Vorbelegung
-  const [aufgabeTitel, setAufgabeTitel] = useState("");
-  const [rechnungBetrag, setRechnungBetrag] = useState("");
-  const [notizText, setNotizText] = useState("");
 
   const farbe = ampelFarbe(vorgang, welt);
   const kat = vorgangKategorie(vorgang.kategorie);
-  const hinweise = offen ? hinweiseFuerVorgang(vorgang, welt) : [];
-  const verlauf = offen ? baueVerlauf(vorgang, welt, kontakte) : [];
+  const hinweise = hinweiseFuerVorgang(vorgang, welt);
+  const verlauf = baueVerlauf(vorgang, welt, kontakte);
   const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
   const einheit = vorgang.einheit_id
     ? (einheiten.filter((e) => e.id === vorgang.einheit_id)[0] || null) : null;
   const woText = einheit
     ? (einheit.bezeichnung || einheit.nr || einheit.einheitLabel || "Einheit")
     : "Ganzes Objekt / Gemeinschaft";
-  const sub = [kat.label, "seit " + datumDe(vorgang.angelegt_am)]
-    .filter(Boolean).join(" · ");
+  const objektText = ve ? ((ve.nr || ve.name || "") +
+    (ve.adresse && ve.adresse.strasse ? " · " + ve.adresse.strasse : "")) : "";
   const kannFlows = !!onWelt && vorgang.status !== "geschlossen";
-  const auftraege = offen ? welt.auftraege.filter((a) => a.vorgang_id === vorgang.id) : [];
-  const angebote = offen ? welt.angebote.filter((a) => a.vorgang_id === vorgang.id) : [];
-  const rechnungen = offen ? welt.rechnungen.filter((r) => r.vorgang_id === vorgang.id) : [];
-  const aufgabenOffen = offen ? welt.aufgaben.filter(
-    (a) => a.vorgang_id === vorgang.id && a.status === "offen") : [];
-  const nachrichten = offen ? welt.nachrichten.filter(
-    (n) => n.vorgang_id === vorgang.id) : [];
-  const beteiligungen = offen ? welt.beteiligungen.filter(
-    (b) => b.vorgang_id === vorgang.id) : [];
-  // Offene Antwort-Fäden (§3.3): ausgehend + erwartet + noch unbeantwortet.
+  const auftraege = welt.auftraege.filter((a) => a.vorgang_id === vorgang.id);
+  const angebote = welt.angebote.filter((a) => a.vorgang_id === vorgang.id);
+  const rechnungen = welt.rechnungen.filter((r) => r.vorgang_id === vorgang.id);
+  const aufgabenOffen = welt.aufgaben.filter(
+    (a) => a.vorgang_id === vorgang.id && a.status === "offen");
+  const nachrichten = welt.nachrichten.filter((n) => n.vorgang_id === vorgang.id);
+  const beteiligungen = welt.beteiligungen.filter((b) => b.vorgang_id === vorgang.id);
+  const abnahmenAlle = welt.abnahmen;
+  const firmen = (kontakte || []).filter((k) => k && k.typ === "firma");
+  const keinsGewaehlt = angebote.filter((a) => !!a.wurde_zu_auftrag_id).length === 0;
+  const auftraegeOffen = auftraege.filter((a) => a.status !== "abgenommen").length;
+  const alleDurch = auftraege.length > 0 && auftraegeOffen === 0;
+  const abschlussReif = kannFlows && alleDurch
+    && aufgabenOffen.length === 0 && hinweise.length === 0;
   const beantwortetIds = {};
   for (let i = 0; i < nachrichten.length; i++) {
     if (nachrichten[i].antwort_auf_id) beantwortetIds[nachrichten[i].antwort_auf_id] = true;
   }
   const faedenOffen = nachrichten.filter((n) =>
     n.richtung === "ausgehend" && n.antwort_erwartet && !beantwortetIds[n.id]).length;
-  const firmen = (kontakte || []).filter((k) => k && k.typ === "firma");
-  const abnahmenAlle = offen ? welt.abnahmen : [];
-  const keinsGewaehlt = angebote.filter((a) => !!a.wurde_zu_auftrag_id).length === 0;
-  const auftraegeOffen = auftraege.filter((a) => a.status !== "abgenommen").length;
-  const alleDurch = auftraege.length > 0 && auftraegeOffen === 0;
-  // Abschluss-Vorschlag (§8.0c): App schlägt vor, Mensch drückt den Knopf.
-  const abschlussReif = kannFlows && alleDurch
-    && aufgabenOffen.length === 0 && hinweise.length === 0;
 
-  // Ampel AUSGESCHRIEBEN (§5.3): Punkt + Klartext „Ball liegt bei wem".
+  // Ampel AUSGESCHRIEBEN (§5.3)
   const laufende = auftraege.filter(auftragLaeuft);
   let ampelText;
   if (vorgang.status === "geschlossen") {
@@ -739,16 +771,34 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
     ampelText = AMPEL_TITEL[farbe] || "";
   }
 
-  // Fester Baustein-Katalog (§6.2) — Angebote folgen mit der Angebotsphase.
+  // ── Wachsende TabLeiste (Bennys Regel C) ──
+  const tabs = [{ id: "uebersicht", label: "Übersicht", icon: "list" },
+    { id: "beteiligte", label: "Beteiligte", icon: "users" },
+    { id: "kommunikation", label: "Kommunikation", icon: "mail" }];
+  if (angebote.length > 0 || tabZwang.angebote) {
+    tabs.push({ id: "angebote", label: "Angebote", icon: "document" });
+  }
+  if (rechnungen.length > 0 || tabZwang.rechnungen) {
+    tabs.push({ id: "rechnungen", label: "Rechnungen", icon: "document" });
+  }
+
+  // Katalog (§6.2): Kommunikation ist jetzt Tab (raus); Angebot/Rechnung
+  // erzeugen ihren Tab und springen hin — Wachstum auf Tab-Ebene.
   const katalog = [
     { id: "auftraege", icon: "🛠", label: "Auftrag", sub: "An wen · was · bis wann" },
-    { id: "angebote", icon: "§", label: "Angebot", sub: "Anfragen oder erfassen (je Firma eins)" },
-    { id: "kommunikation", icon: "✉", label: "Information", sub: "Nachricht festhalten (Verlauf & Chat)" },
+    { id: "angebote", icon: "§", label: "Angebot", sub: "Eigener Tab — anfragen oder erfassen" },
     { id: "aufgaben", icon: "✓", label: "Aufgabe", sub: "Delegieren + nachhalten" },
-    { id: "rechnungen", icon: "€", label: "Rechnung", sub: "Betrag erfassen + prüfen" },
+    { id: "rechnungen", icon: "€", label: "Rechnung", sub: "Eigener Tab — Betrag + Prüfung" },
     { id: "notiz", icon: "✎", label: "Notiz", sub: "Freier Text in die Akte" },
   ];
-  const bausteinAdd = (id) => { setOffenerBaustein(id); setFormBaustein(id); };
+  const bausteinAdd = (id) => {
+    if (id === "angebote" || id === "rechnungen") {
+      setTabZwang(Object.assign({}, tabZwang, { [id]: true }));
+      setTab(id); setFormBaustein(id);
+      return;
+    }
+    setOffenerBaustein(id); setFormBaustein(id);
+  };
   const toggleBaustein = (id) => {
     setOffenerBaustein(offenerBaustein === id ? null : id);
     if (formBaustein && formBaustein !== id) setFormBaustein(null);
@@ -774,326 +824,341 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
     setNotizText(""); setFormBaustein(null); setOffenerBaustein(null);
   };
 
-  return (
-    <div style={{ background: t.card,
-      border: "1px solid " + (offen ? accent : t.border),
-      borderRadius: RAD.lg, minWidth: 0, boxSizing: "border-box", width: "100%" }}>
-      <div onClick={onToggle}
-        style={{ padding: "12px 14px", cursor: "pointer" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <AmpelPunkt farbe={farbe}/>
-          <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
-            color: t.text, overflowWrap: "anywhere" }}>{vorgang.titel || "Vorgang"}</div>
-          <StatusPille t={t} farbe={accent}
-            text={VORGANG_STATUS_LABEL[vorgang.status] || vorgang.status}/>
-        </div>
-        <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4,
-          overflowWrap: "anywhere" }}>{sub}</div>
+  const standKarte = (
+    <div style={{ background: t.card, border: "1px solid " + t.border,
+      borderRadius: RAD.lg, padding: "12px 14px" }}>
+      <PhasenLeiste vorgang={vorgang} welt={welt} t={t} accent={accent}/>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+        <AmpelPunkt farbe={farbe}/>
+        <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.med,
+          color: t.text, overflowWrap: "anywhere" }}>{ampelText}</div>
       </div>
-      {offen ? (
-        <div style={{ padding: "0 14px 12px 14px", display: "flex",
-          flexDirection: "column", gap: 8 }}>
-          {/* ══ Zone „Daten" (§5): führender Kopf — komplett ERRECHNET ══ */}
-          <div>
-            <div style={blockTitelStil(t)}>Daten</div>
-            <div style={{ fontSize: FS.s, color: t.muted }}>{woText}</div>
-            <PhasenLeiste vorgang={vorgang} welt={welt} t={t} accent={accent}/>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-              <AmpelPunkt farbe={farbe}/>
-              <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.med,
-                color: t.text, overflowWrap: "anywhere" }}>{ampelText}</div>
-            </div>
-            {/* EIN nächster Schritt (§5.3) — prominent; Abschluss wirkt direkt */}
-            {abschlussReif ? (
-              <button onClick={() => onWelt((w) => weltVorgangSchliessen(w, vorgang.id))}
-                style={Object.assign({}, flowKnopf(t, accent, true), { marginTop: 8 })}>
-                Vorgang abschließen</button>
-            ) : null}
-            {!abschlussReif && hinweise.length > 0 ? (
-              <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: RAD.md,
-                background: AMPEL_FARBEN[hinweise[0].farbe] + "14",
-                border: "1px solid " + AMPEL_FARBEN[hinweise[0].farbe] + "50",
-                display: "flex", alignItems: "center", gap: 8 }}>
-                <AmpelPunkt farbe={hinweise[0].farbe}/>
-                <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.bold,
-                  color: t.text, overflowWrap: "anywhere" }}>
-                  {"Nächster Schritt: " + hinweise[0].text}</div>
-                {kannFlows && hinweise[0].typ === "wiedervorlage" ? (
-                  <button style={flowKnopf(t, accent, true)}
-                    onClick={() => onWelt((w) => weltWiedervorlageAufheben(w, vorgang.id))}>
-                    Wieder aufnehmen</button>
-                ) : null}
-              </div>
-            ) : null}
-            {hinweise.length > 1 ? (
-              <div style={{ marginTop: 6 }}>
-                <button onClick={() => setMehrOffen(!mehrOffen)}
-                  style={{ background: "none", border: "none", padding: 0,
-                    cursor: "pointer", fontSize: FS.xs, fontWeight: FW.bold,
-                    color: t.muted, fontFamily: "inherit" }}>
-                  {mehrOffen ? "Weitere ausblenden"
-                    : "+" + (hinweise.length - 1) + " weitere offene Punkte"}
-                </button>
-                {mehrOffen ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5,
-                    marginTop: 6 }}>
-                    {hinweise.slice(1).map((h, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <AmpelPunkt farbe={h.farbe}/>
-                        <div style={{ fontSize: FS.s, color: t.text, minWidth: 0,
-                          overflowWrap: "anywhere", flex: 1 }}>{h.text}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            {kannFlows && vorgang.ruht_bis && vorgang.ruht_bis > isoHeute() ? (
-              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                <AmpelPunkt farbe="grau"/>
-                <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
-                  {"Ruht bis " + datumDe(vorgang.ruht_bis)}</div>
-                <button style={flowKnopf(t, accent, false)}
-                  onClick={() => onWelt((w) => weltWiedervorlageAufheben(w, vorgang.id))}>
-                  Aufheben</button>
-              </div>
-            ) : null}
-            {kannFlows && vorgang.wartet_auf_beschluss_id ? (
-              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                <AmpelPunkt farbe="grau"/>
-                <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
-                  Wartet auf ETV-Beschluss (Tagesordnung)</div>
-                <button style={flowKnopf(t, accent, false)}
-                  onClick={() => onWelt((w) => weltVorgangVonTagesordnung(w, vorgang.id))}>
-                  Herunternehmen</button>
-              </div>
-            ) : null}
-          </div>
-          {/* ══ Beteiligte (§2) — immer da (Fallführer), wächst im Kreis der Menschen ══ */}
-          <BausteinKarte titel="Beteiligte"
-            anzahl={beteiligungen.filter((b) => b.status !== "beendet").length}
-            t={t} accent={accent}
-            offen={offenerBaustein === "beteiligte"}
-            onToggle={() => toggleBaustein("beteiligte")}>
-            <BeteiligtenBlock vorgang={vorgang} beteiligungen={beteiligungen}
-              kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
-              onWelt={onWelt}
-              onInformieren={(kid) => {
-                setInformierenKontakt(kid);
-                setOffenerBaustein("kommunikation");
-                setFormBaustein("kommunikation");
-              }}/>
-          </BausteinKarte>
-          {/* ══ Baustein-Stapel (§6): Karten erscheinen mit Inhalt, ══
-              ══ wachsen über „+ Baustein" — Kategorie zwingt nichts. ══ */}
-          {(auftraege.length > 0 || formBaustein === "auftraege") ? (
-            <BausteinKarte titel="Aufträge" anzahl={auftraege.length} t={t} accent={accent}
-              sub={auftraege.length === 0 ? null
-                : (auftraegeOffen > 0 ? auftraegeOffen + " offen" : "alle fertig")}
-              offen={offenerBaustein === "auftraege"}
-              onToggle={() => toggleBaustein("auftraege")}>
-              {auftraege.map((a) => (
-                <AuftragFlowZeile key={a.id} auftrag={a}
-                  kategorieId={vorgang.kategorie} firmen={firmen}
-                  abnahmen={abnahmenAlle.filter((ab) => ab.auftrag_id === a.id)}
-                  kontakte={kontakte} t={t} accent={accent}
-                  onWelt={onWelt} DatumFeld={DatumFeld}
-                  ve={ve} onFotoHinzu={onFotoHinzu}/>
-              ))}
-              {kannFlows && formBaustein === "auftraege" ? (
-                <AuftragNeuForm vorgangId={vorgang.id} kategorieId={vorgang.kategorie} firmen={firmen} t={t}
-                  accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
-                  onFertig={() => setFormBaustein(null)}/>
-              ) : (kannFlows ? (
-                <button onClick={() => setFormBaustein("auftraege")}
-                  style={flowKnopf(t, accent, false)}>+ Auftrag</button>
-              ) : null)}
-            </BausteinKarte>
+      {abschlussReif ? (
+        <button onClick={() => onWelt((w) => weltVorgangSchliessen(w, vorgang.id))}
+          style={Object.assign({}, flowKnopf(t, accent, true), { marginTop: 8 })}>
+          Vorgang abschließen</button>
+      ) : null}
+      {!abschlussReif && hinweise.length > 0 ? (
+        <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: RAD.md,
+          background: AMPEL_FARBEN[hinweise[0].farbe] + "14",
+          border: "1px solid " + AMPEL_FARBEN[hinweise[0].farbe] + "50",
+          display: "flex", alignItems: "center", gap: 8 }}>
+          <AmpelPunkt farbe={hinweise[0].farbe}/>
+          <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.bold,
+            color: t.text, overflowWrap: "anywhere" }}>
+            {"Nächster Schritt: " + hinweise[0].text}</div>
+          {kannFlows && hinweise[0].typ === "wiedervorlage" ? (
+            <button style={flowKnopf(t, accent, true)}
+              onClick={() => onWelt((w) => weltWiedervorlageAufheben(w, vorgang.id))}>
+              Wieder aufnehmen</button>
           ) : null}
-          {(angebote.length > 0 || formBaustein === "angebote") ? (
-            <BausteinKarte titel="Angebote" anzahl={angebote.length} t={t} accent={accent}
-              sub={angebote.length === 0 ? null
-                : (keinsGewaehlt ? "noch keins gewählt" : "gewählt")}
-              offen={offenerBaustein === "angebote"}
-              onToggle={() => toggleBaustein("angebote")}>
-              {angebote.map((a) => (
-                <AngebotFlowZeile key={a.id} angebot={a} kontakte={kontakte}
-                  keinsGewaehlt={keinsGewaehlt} t={t} accent={accent} onWelt={onWelt}/>
-              ))}
-              {kannFlows && formBaustein === "angebote" ? (
-                <AngebotNeuForm vorgangId={vorgang.id} firmen={firmen} t={t}
-                  accent={accent} onWelt={onWelt}
-                  onFertig={() => setFormBaustein(null)}/>
-              ) : (kannFlows && keinsGewaehlt ? (
-                <button onClick={() => setFormBaustein("angebote")}
-                  style={flowKnopf(t, accent, false)}>+ Angebot</button>
-              ) : null)}
-            </BausteinKarte>
-          ) : null}
-          {(rechnungen.length > 0 || formBaustein === "rechnungen") ? (
-            <BausteinKarte titel="Rechnungen" anzahl={rechnungen.length} t={t} accent={accent}
-              sub={rechnungen.length === 0 ? null
-                : (rechnungen.filter((r) => r.status !== "bezahlt").length > 0
-                  ? rechnungen.filter((r) => r.status !== "bezahlt").length + " offen"
-                  : "alle bezahlt")}
-              offen={offenerBaustein === "rechnungen"}
-              onToggle={() => toggleBaustein("rechnungen")}>
-              {rechnungen.map((r) => (
-                <RechnungFlowZeile key={r.id} rechnung={r} welt={welt}
-                  vorgangId={vorgang.id} t={t} accent={accent} onWelt={onWelt}/>
-              ))}
-              {kannFlows && formBaustein === "rechnungen" ? (
-                <div style={flowZeileStil(t)}>
-                  <label style={feldLabelStil(t)}>Betrag (€)</label>
-                  <input value={rechnungBetrag} inputMode="decimal"
-                    onChange={(e) => setRechnungBetrag(e.target.value)}
-                    placeholder="z. B. 480"
-                    style={Object.assign({}, selectStil(t, accent, !!rechnungBetrag), { marginBottom: 0 })}/>
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <button onClick={() => setFormBaustein(null)}
-                      style={flowKnopf(t, accent, false)}>Abbrechen</button>
-                    <button onClick={erfasseRechnung}
-                      style={flowKnopf(t, accent, true)}>Erfassen</button>
-                  </div>
+        </div>
+      ) : null}
+      {hinweise.length > 1 ? (
+        <div style={{ marginTop: 6 }}>
+          <button onClick={() => setMehrOffen(!mehrOffen)}
+            style={{ background: "none", border: "none", padding: 0,
+              cursor: "pointer", fontSize: FS.xs, fontWeight: FW.bold,
+              color: t.muted, fontFamily: "inherit" }}>
+            {mehrOffen ? "Weitere ausblenden"
+              : "+" + (hinweise.length - 1) + " weitere offene Punkte"}
+          </button>
+          {mehrOffen ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5,
+              marginTop: 6 }}>
+              {hinweise.slice(1).map((h, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <AmpelPunkt farbe={h.farbe}/>
+                  <div style={{ fontSize: FS.s, color: t.text, minWidth: 0,
+                    overflowWrap: "anywhere", flex: 1 }}>{h.text}</div>
                 </div>
-              ) : (kannFlows ? (
-                <button onClick={() => setFormBaustein("rechnungen")}
-                  style={flowKnopf(t, accent, false)}>+ Rechnung</button>
-              ) : null)}
-            </BausteinKarte>
-          ) : null}
-          {(aufgabenOffen.length > 0 || formBaustein === "aufgaben") ? (
-            <BausteinKarte titel="Aufgaben" anzahl={aufgabenOffen.length} t={t} accent={accent}
-              offen={offenerBaustein === "aufgaben"}
-              onToggle={() => toggleBaustein("aufgaben")}>
-              {aufgabenOffen.map((a) => (
-                <AufgabeFlowZeile key={a.id} aufgabe={a} t={t} accent={accent} onWelt={onWelt}/>
               ))}
-              {kannFlows && formBaustein === "aufgaben" ? (
-                <div style={flowZeileStil(t)}>
-                  <input value={aufgabeTitel}
-                    onChange={(e) => setAufgabeTitel(e.target.value)}
-                    placeholder="Was ist zu tun?"
-                    style={Object.assign({}, selectStil(t, accent, !!aufgabeTitel), { marginBottom: 0 })}/>
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <button onClick={() => setFormBaustein(null)}
-                      style={flowKnopf(t, accent, false)}>Abbrechen</button>
-                    <button onClick={legeAufgabeAn}
-                      style={flowKnopf(t, accent, true)}>Anlegen</button>
-                  </div>
-                </div>
-              ) : (kannFlows ? (
-                <button onClick={() => setFormBaustein("aufgaben")}
-                  style={flowKnopf(t, accent, false)}>+ Aufgabe</button>
-              ) : null)}
-            </BausteinKarte>
-          ) : null}
-          {(nachrichten.length > 0 || formBaustein === "kommunikation") ? (
-            <BausteinKarte titel="Kommunikation" anzahl={nachrichten.length} t={t} accent={accent}
-              sub={faedenOffen > 0 ? faedenOffen + " Antwort(en) offen" : null}
-              offen={offenerBaustein === "kommunikation"}
-              onToggle={() => toggleBaustein("kommunikation")}>
-              <KommunikationsBlock vorgang={vorgang} nachrichten={nachrichten}
-                kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
-                onWelt={onWelt} formAuto={formBaustein === "kommunikation"}
-                vorKontaktId={informierenKontakt} vorAnlass={informierenKontakt ? "betroffenheit" : null}
-                onFormZu={(auf) => {
-                  setFormBaustein(auf ? "kommunikation" : null);
-                  if (!auf) setInformierenKontakt(null);
-                }}/>
-            </BausteinKarte>
-          ) : null}
-          {formBaustein === "notiz" ? (
-            <BausteinKarte titel="Notiz" t={t} accent={accent}
-              offen={true} onToggle={() => { setFormBaustein(null); setOffenerBaustein(null); }}>
-              <div style={flowZeileStil(t)}>
-                <textarea value={notizText}
-                  onChange={(e) => setNotizText(e.target.value)} rows={2}
-                  placeholder="Notiz in die Akte …"
-                  style={Object.assign({}, selectStil(t, accent, !!notizText),
-                    { resize: "vertical", minHeight: 44, marginBottom: 0 })}/>
-                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                  <button onClick={() => { setFormBaustein(null); setNotizText(""); }}
-                    style={flowKnopf(t, accent, false)}>Abbrechen</button>
-                  <button onClick={speichereNotiz}
-                    style={flowKnopf(t, accent, true)}>Speichern</button>
-                </div>
-              </div>
-            </BausteinKarte>
-          ) : null}
-          {kannFlows ? (
-            <NeueKarteMenu t={t} accent={accent} onAdd={bausteinAdd} optionen={katalog}/>
-          ) : null}
-          {/* Verlauf — die Zeitleiste der Akte (Vorgeschichte, §5.1) */}
-          <div style={{ borderTop: "1px solid " + t.border, paddingTop: 8,
-            display: "flex", flexDirection: "column", gap: 5 }}>
-            {verlauf.map((e, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
-                  whiteSpace: "nowrap" }}>{datumDe(e.datum)}</span>
-                <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
-                  overflowWrap: "anywhere" }}>{e.text}</span>
-              </div>
-            ))}
-          </div>
-          {kannFlows && ruhenFormOffen ? (
-            <div style={flowZeileStil(t)}>
-              {DatumFeld ? (
-                <DatumFeld t={t} accent={accent} label="Ruhen bis"
-                  value={ruhenBis} onChange={setRuhenBis} iso defaultHeute={false}/>
-              ) : null}
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                <button onClick={() => { setRuhenFormOffen(false); setRuhenBis(""); }}
-                  style={flowKnopf(t, accent, false)}>Abbrechen</button>
-                <button onClick={() => {
-                    if (!ruhenBis) return;
-                    onWelt((w) => weltVorgangRuhen(w, vorgang.id, ruhenBis));
-                    setRuhenBis(""); setRuhenFormOffen(false);
-                  }} style={flowKnopf(t, accent, true)}>Ruhen lassen</button>
-              </div>
-            </div>
-          ) : null}
-          {onWelt ? (
-            <div style={{ display: "flex", justifyContent: "flex-end",
-              gap: 6, flexWrap: "wrap" }}>
-              <button style={loeschConfirm
-                  ? Object.assign({}, flowKnopf(t, accent, true),
-                      { background: AMPEL_FARBEN.rot, color: "#fff", marginRight: "auto" })
-                  : Object.assign({}, flowKnopf(t, accent, false),
-                      { color: AMPEL_FARBEN.rot, borderColor: AMPEL_FARBEN.rot + "60", marginRight: "auto" })}
-                onClick={() => {
-                  if (!loeschConfirm) { setLoeschConfirm(true); return; }
-                  onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
-                }}>
-                {loeschConfirm ? "Wirklich löschen?" : "Löschen"}</button>
-              {kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
-                <button style={flowKnopf(t, accent, false)}
-                  onClick={() => setRuhenFormOffen(true)}>Ruhen bis …</button>
-              ) : null}
-              {kannFlows && !vorgang.wartet_auf_beschluss_id ? (
-                <button style={flowKnopf(t, accent, false)}
-                  onClick={() => onWelt((w) => weltVorgangAufTagesordnung(w, vorgang.id))}>
-                  Auf ETV-Tagesordnung</button>
-              ) : null}
-              {vorgang.status === "geschlossen" ? (
-                <button style={flowKnopf(t, accent, false)}
-                  onClick={() => onWelt((w) => weltVorgangOeffnen(w, vorgang.id))}>
-                  Wieder öffnen</button>
-              ) : (
-                <button style={schliessConfirm
-                    ? Object.assign({}, flowKnopf(t, accent, true), { background: "#F59E0B", color: "#fff" })
-                    : flowKnopf(t, accent, false)}
-                  onClick={() => {
-                    if (!schliessConfirm) { setSchliessConfirm(true); return; }
-                    onWelt((w) => weltVorgangSchliessen(w, vorgang.id));
-                    setSchliessConfirm(false);
-                  }}>
-                  {schliessConfirm ? "Wirklich schließen?" : "Vorgang schließen"}</button>
-              )}
             </div>
           ) : null}
         </div>
       ) : null}
+      {kannFlows && vorgang.ruht_bis && vorgang.ruht_bis > isoHeute() ? (
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+          <AmpelPunkt farbe="grau"/>
+          <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
+            {"Ruht bis " + datumDe(vorgang.ruht_bis)}</div>
+          <button style={flowKnopf(t, accent, false)}
+            onClick={() => onWelt((w) => weltWiedervorlageAufheben(w, vorgang.id))}>
+            Aufheben</button>
+        </div>
+      ) : null}
+      {kannFlows && vorgang.wartet_auf_beschluss_id ? (
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+          <AmpelPunkt farbe="grau"/>
+          <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
+            Wartet auf ETV-Beschluss (Tagesordnung)</div>
+          <button style={flowKnopf(t, accent, false)}
+            onClick={() => onWelt((w) => weltVorgangVonTagesordnung(w, vorgang.id))}>
+            Herunternehmen</button>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const datenKarte = (
+    <div style={{ background: t.card, border: "1px solid " + t.border,
+      borderRadius: RAD.lg, padding: "12px 14px" }}>
+      <div style={blockTitelStil(t)}>Daten</div>
+      <div style={{ fontSize: FS.s, color: t.text }}>
+        {woText}
+        <span style={{ color: t.muted }}>
+          {" · " + kat.label + " · seit " + datumDe(vorgang.angelegt_am)}</span>
+      </div>
+      {/* Verlauf oben bei den Daten (Bennys Wahl D) */}
+      <div style={{ borderTop: "1px solid " + t.border, paddingTop: 8,
+        marginTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
+        {verlauf.map((e, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
+              whiteSpace: "nowrap" }}>{datumDe(e.datum)}</span>
+            <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
+              overflowWrap: "anywhere" }}>{e.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const fussAktionen = onWelt ? (
+    <div style={{ display: "flex", justifyContent: "flex-end",
+      gap: 6, flexWrap: "wrap" }}>
+      <button style={loeschConfirm
+          ? Object.assign({}, flowKnopf(t, accent, true),
+              { background: AMPEL_FARBEN.rot, color: "#fff", marginRight: "auto" })
+          : Object.assign({}, flowKnopf(t, accent, false),
+              { color: AMPEL_FARBEN.rot, borderColor: AMPEL_FARBEN.rot + "60", marginRight: "auto" })}
+        onClick={() => {
+          if (!loeschConfirm) { setLoeschConfirm(true); return; }
+          onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
+          onZurueck();
+        }}>
+        {loeschConfirm ? "Wirklich löschen?" : "Löschen"}</button>
+      {kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
+        <button style={flowKnopf(t, accent, false)}
+          onClick={() => setRuhenFormOffen(true)}>Ruhen bis …</button>
+      ) : null}
+      {kannFlows && !vorgang.wartet_auf_beschluss_id ? (
+        <button style={flowKnopf(t, accent, false)}
+          onClick={() => onWelt((w) => weltVorgangAufTagesordnung(w, vorgang.id))}>
+          Auf ETV-Tagesordnung</button>
+      ) : null}
+      {vorgang.status === "geschlossen" ? (
+        <button style={flowKnopf(t, accent, false)}
+          onClick={() => onWelt((w) => weltVorgangOeffnen(w, vorgang.id))}>
+          Wieder öffnen</button>
+      ) : (
+        <button style={schliessConfirm
+            ? Object.assign({}, flowKnopf(t, accent, true), { background: "#F59E0B", color: "#fff" })
+            : flowKnopf(t, accent, false)}
+          onClick={() => {
+            if (!schliessConfirm) { setSchliessConfirm(true); return; }
+            onWelt((w) => weltVorgangSchliessen(w, vorgang.id));
+            setSchliessConfirm(false);
+          }}>
+          {schliessConfirm ? "Wirklich schließen?" : "Vorgang schließen"}</button>
+      )}
+    </div>
+  ) : null;
+
+  return (
+    <div style={{ background: t.card, border: "1px solid " + accent,
+      borderRadius: RAD.lg, minWidth: 0, boxSizing: "border-box", width: "100%",
+      display: "flex", flexDirection: "column" }}>
+      {/* ── Kopf (Objekt-Vorbild): Nummer groß · Titel + Liegenschaft klein ── */}
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid " + t.border }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {onZurueck ? <HeaderZurueck onClick={onZurueck} t={t}/> : null}
+          <AmpelPunkt farbe={farbe}/>
+          <div style={{ fontSize: FS.xxl, fontWeight: FW.bold, color: t.text,
+            letterSpacing: 0.5 }}>{vorgang.nummer || "Vorgang"}</div>
+          <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.muted,
+            overflowWrap: "anywhere" }}>
+            {(vorgang.titel || "Vorgang") + (objektText ? " · " + objektText : "")}
+          </div>
+          <StatusPille t={t} farbe={accent}
+            text={VORGANG_STATUS_LABEL[vorgang.status] || vorgang.status}/>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <TabLeiste tabs={tabs} aktiv={tab} onWaehle={setTab} t={t} accent={accent}/>
+        </div>
+      </div>
+
+      <div style={{ padding: "12px 14px", display: "flex",
+        flexDirection: "column", gap: 10 }}>
+        {tab === "uebersicht" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {standKarte}
+            {datenKarte}
+            {(auftraege.length > 0 || formBaustein === "auftraege") ? (
+              <BausteinKarte titel="Aufträge" anzahl={auftraege.length} t={t} accent={accent}
+                sub={auftraege.length === 0 ? null
+                  : (auftraegeOffen > 0 ? auftraegeOffen + " offen" : "alle fertig")}
+                offen={offenerBaustein === "auftraege"}
+                onToggle={() => toggleBaustein("auftraege")}>
+                {auftraege.map((a) => (
+                  <AuftragFlowZeile key={a.id} auftrag={a}
+                    kategorieId={vorgang.kategorie} firmen={firmen}
+                    abnahmen={abnahmenAlle.filter((ab) => ab.auftrag_id === a.id)}
+                    kontakte={kontakte} t={t} accent={accent}
+                    onWelt={onWelt} DatumFeld={DatumFeld}
+                    ve={ve} onFotoHinzu={onFotoHinzu}/>
+                ))}
+                {kannFlows && formBaustein === "auftraege" ? (
+                  <AuftragNeuForm vorgangId={vorgang.id} kategorieId={vorgang.kategorie}
+                    firmen={firmen} t={t}
+                    accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
+                    onFertig={() => setFormBaustein(null)}/>
+                ) : (kannFlows ? (
+                  <button onClick={() => setFormBaustein("auftraege")}
+                    style={flowKnopf(t, accent, false)}>+ Auftrag</button>
+                ) : null)}
+              </BausteinKarte>
+            ) : null}
+            {(aufgabenOffen.length > 0 || formBaustein === "aufgaben") ? (
+              <BausteinKarte titel="Aufgaben" anzahl={aufgabenOffen.length} t={t} accent={accent}
+                offen={offenerBaustein === "aufgaben"}
+                onToggle={() => toggleBaustein("aufgaben")}>
+                {aufgabenOffen.map((a) => (
+                  <AufgabeFlowZeile key={a.id} aufgabe={a} t={t} accent={accent} onWelt={onWelt}/>
+                ))}
+                {kannFlows && formBaustein === "aufgaben" ? (
+                  <div style={flowZeileStil(t)}>
+                    <input value={aufgabeTitel}
+                      onChange={(e) => setAufgabeTitel(e.target.value)}
+                      placeholder="Was ist zu tun?"
+                      style={Object.assign({}, selectStil(t, accent, !!aufgabeTitel), { marginBottom: 0 })}/>
+                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                      <button onClick={() => setFormBaustein(null)}
+                        style={flowKnopf(t, accent, false)}>Abbrechen</button>
+                      <button onClick={legeAufgabeAn}
+                        style={flowKnopf(t, accent, true)}>Anlegen</button>
+                    </div>
+                  </div>
+                ) : (kannFlows ? (
+                  <button onClick={() => setFormBaustein("aufgaben")}
+                    style={flowKnopf(t, accent, false)}>+ Aufgabe</button>
+                ) : null)}
+              </BausteinKarte>
+            ) : null}
+            {formBaustein === "notiz" ? (
+              <BausteinKarte titel="Notiz" t={t} accent={accent}
+                offen={true} onToggle={() => { setFormBaustein(null); setOffenerBaustein(null); }}>
+                <div style={flowZeileStil(t)}>
+                  <textarea value={notizText}
+                    onChange={(e) => setNotizText(e.target.value)} rows={2}
+                    placeholder="Notiz in die Akte …"
+                    style={Object.assign({}, selectStil(t, accent, !!notizText),
+                      { resize: "vertical", minHeight: 44, marginBottom: 0 })}/>
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    <button onClick={() => { setFormBaustein(null); setNotizText(""); }}
+                      style={flowKnopf(t, accent, false)}>Abbrechen</button>
+                    <button onClick={speichereNotiz}
+                      style={flowKnopf(t, accent, true)}>Speichern</button>
+                  </div>
+                </div>
+              </BausteinKarte>
+            ) : null}
+            {kannFlows ? (
+              <NeueKarteMenu t={t} accent={accent} onAdd={bausteinAdd} optionen={katalog}/>
+            ) : null}
+            {kannFlows && ruhenFormOffen ? (
+              <div style={flowZeileStil(t)}>
+                {DatumFeld ? (
+                  <DatumFeld t={t} accent={accent} label="Ruhen bis"
+                    value={ruhenBis} onChange={setRuhenBis} iso defaultHeute={false}/>
+                ) : null}
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  <button onClick={() => { setRuhenFormOffen(false); setRuhenBis(""); }}
+                    style={flowKnopf(t, accent, false)}>Abbrechen</button>
+                  <button onClick={() => {
+                      if (!ruhenBis) return;
+                      onWelt((w) => weltVorgangRuhen(w, vorgang.id, ruhenBis));
+                      setRuhenBis(""); setRuhenFormOffen(false);
+                    }} style={flowKnopf(t, accent, true)}>Ruhen lassen</button>
+                </div>
+              </div>
+            ) : null}
+            {fussAktionen}
+          </div>
+        ) : null}
+
+        {tab === "beteiligte" ? (
+          <BeteiligtenBlock vorgang={vorgang} beteiligungen={beteiligungen}
+            kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
+            onWelt={onWelt}
+            onInformieren={(kid) => {
+              setInformierenKontakt(kid);
+              setTab("kommunikation");
+              setFormBaustein("kommunikation");
+            }}/>
+        ) : null}
+
+        {tab === "kommunikation" ? (
+          <KommunikationsBlock vorgang={vorgang} nachrichten={nachrichten}
+            kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
+            onWelt={onWelt} formAuto={formBaustein === "kommunikation"}
+            vorKontaktId={informierenKontakt}
+            vorAnlass={informierenKontakt ? "betroffenheit" : null}
+            onFormZu={(auf) => {
+              setFormBaustein(auf ? "kommunikation" : null);
+              if (!auf) setInformierenKontakt(null);
+            }}/>
+        ) : null}
+
+        {tab === "angebote" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {angebote.length > 0 ? (
+              <div style={{ fontSize: FS.xs, color: t.muted }}>
+                {keinsGewaehlt ? "Noch keins gewählt — nicht gewählte bleiben stehen (Nachweis)."
+                  : "Ein Angebot wurde beauftragt."}</div>
+            ) : null}
+            {angebote.map((a) => (
+              <AngebotFlowZeile key={a.id} angebot={a} kontakte={kontakte}
+                keinsGewaehlt={keinsGewaehlt} t={t} accent={accent} onWelt={onWelt}/>
+            ))}
+            {kannFlows && formBaustein === "angebote" ? (
+              <AngebotNeuForm vorgangId={vorgang.id} firmen={firmen} t={t}
+                accent={accent} onWelt={onWelt}
+                onFertig={() => setFormBaustein(null)}/>
+            ) : (kannFlows && keinsGewaehlt ? (
+              <button onClick={() => setFormBaustein("angebote")}
+                style={flowKnopf(t, accent, false)}>+ Angebot</button>
+            ) : null)}
+          </div>
+        ) : null}
+
+        {tab === "rechnungen" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {rechnungen.map((r) => (
+              <RechnungFlowZeile key={r.id} rechnung={r} welt={welt}
+                vorgangId={vorgang.id} t={t} accent={accent} onWelt={onWelt}/>
+            ))}
+            {kannFlows && formBaustein === "rechnungen" ? (
+              <div style={flowZeileStil(t)}>
+                <label style={feldLabelStil(t)}>Betrag (€)</label>
+                <input value={rechnungBetrag} inputMode="decimal"
+                  onChange={(e) => setRechnungBetrag(e.target.value)}
+                  placeholder="z. B. 480"
+                  style={Object.assign({}, selectStil(t, accent, !!rechnungBetrag), { marginBottom: 0 })}/>
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  <button onClick={() => setFormBaustein(null)}
+                    style={flowKnopf(t, accent, false)}>Abbrechen</button>
+                  <button onClick={erfasseRechnung}
+                    style={flowKnopf(t, accent, true)}>Erfassen</button>
+                </div>
+              </div>
+            ) : (kannFlows ? (
+              <button onClick={() => setFormBaustein("rechnungen")}
+                style={flowKnopf(t, accent, false)}>+ Rechnung</button>
+            ) : null)}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1174,6 +1239,7 @@ const leerText = (t, text) => (
 // über Objekt-Wechsel hinweg).
 function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null }) {
   const [offeneId, setOffeneId] = useState(initialOffeneId);
+  const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   // Kategorie-Tabs (Benny 09.07.): Alle | Wartung | Pflege | Instandhaltung |
   // Instandsetzung | Sanierung — Filter auf die Vorgänge des Objekts.
   const [katTab, setKatTab] = useState("alle");
@@ -1187,6 +1253,8 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
     welt.vorgaenge.filter((v) => v.objekt_id === veId), welt);
   const vorgaenge = katTab === "alle" ? alleVorgaenge
     : alleVorgaenge.filter((v) => vorgangKategorie(v.kategorie).id === katTab);
+  const offenerVorgang = offeneId
+    ? (alleVorgaenge.filter((v) => v.id === offeneId)[0] || null) : null;
   const lose = welt.auftraege.filter(
     (a) => !a.vorgang_id && a.objekt_id === veId && a.status !== "abgenommen");
   const offeneVorgaenge = alleVorgaenge.filter((v) => v.status !== "geschlossen");
@@ -1211,7 +1279,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
     }
     buendelReset();
   };
-  return (
+  const liste = (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {alleVorgaenge.length > 0 ? (
         <TabLeiste tabs={katOptionen} aktiv={katTab} onWaehle={setKatTab} t={t} accent={accent}/>
@@ -1314,6 +1382,26 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
       ) : null}
     </div>
   );
+
+  // ── Akten-Navigation (Feinschliff 11.07.): Klick auf einen Vorgang öffnet
+  // das Detail-Fenster. Desktop: Liste rückt als schmale Spalte nach links,
+  // Detail rechts (Master-Detail-Kaskade). Mobil: Detail ersetzt die Liste,
+  // Zurück-Knopf im Akten-Kopf (§74.2-Verhalten).
+  const detail = offenerVorgang ? (
+    <VorgangDetail vorgang={offenerVorgang} welt={welt} kontakte={kontakte}
+      t={t} accent={accent} onZurueck={() => setOffeneId(null)}
+      onWelt={onWelt} DatumFeld={DatumFeld} ve={ve} onFotoHinzu={onFotoHinzu}/>
+  ) : null;
+  if (offenerVorgang && !istDesktop) return detail;
+  if (offenerVorgang) {
+    return (
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0 }}>
+        <div style={{ width: 340, flexShrink: 0, minWidth: 0 }}>{liste}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>{detail}</div>
+      </div>
+    );
+  }
+  return liste;
 }
 
 // ── Detail-Inhalt Achse FIRMA ────────────────────────────────────────────────
@@ -1321,6 +1409,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
 // — die Auftragshistorie einer Firma über alle Objekte hinweg.
 function VorgangsBereichFuerFirma({ firmaId, welt, kontakte, t, accent, onWelt = null, DatumFeld = null }) {
   const [offeneId, setOffeneId] = useState(null);
+  const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
   const idsAuftrag = welt.auftraege
     .filter((a) => a.firma_kontakt_id === firmaId && a.vorgang_id)
     .map((a) => a.vorgang_id);
@@ -1336,13 +1425,15 @@ function VorgangsBereichFuerFirma({ firmaId, welt, kontakte, t, accent, onWelt =
   idsAuftrag.concat(idsAngebot).concat(idsBeteiligung).forEach((id) => { ids[id] = true; });
   const vorgaenge = sortiereVorgaenge(
     welt.vorgaenge.filter((v) => ids[v.id]), welt);
+  const offenerVorgang = offeneId
+    ? (vorgaenge.filter((v) => v.id === offeneId)[0] || null) : null;
   const lose = welt.auftraege.filter(
     (a) => !a.vorgang_id && a.firma_kontakt_id === firmaId
       && a.status !== "abgenommen");
   if (vorgaenge.length === 0 && lose.length === 0) {
     return leerText(t, "Keine Vorgänge mit dieser Firma.");
   }
-  return (
+  const liste = (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {vorgaenge.map((v) => (
         <VorgangKarte key={v.id} vorgang={v} welt={welt} kontakte={kontakte}
@@ -1356,6 +1447,26 @@ function VorgangsBereichFuerFirma({ firmaId, welt, kontakte, t, accent, onWelt =
       ))}
     </div>
   );
+
+  // ── Akten-Navigation (Feinschliff 11.07.): Klick auf einen Vorgang öffnet
+  // das Detail-Fenster. Desktop: Liste rückt als schmale Spalte nach links,
+  // Detail rechts (Master-Detail-Kaskade). Mobil: Detail ersetzt die Liste,
+  // Zurück-Knopf im Akten-Kopf (§74.2-Verhalten).
+  const detail = offenerVorgang ? (
+    <VorgangDetail vorgang={offenerVorgang} welt={welt} kontakte={kontakte}
+      t={t} accent={accent} onZurueck={() => setOffeneId(null)}
+      onWelt={onWelt} DatumFeld={DatumFeld} ve={null} onFotoHinzu={null}/>
+  ) : null;
+  if (offenerVorgang && !istDesktop) return detail;
+  if (offenerVorgang) {
+    return (
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0 }}>
+        <div style={{ width: 340, flexShrink: 0, minWidth: 0 }}>{liste}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>{detail}</div>
+      </div>
+    );
+  }
+  return liste;
 }
 
 // Anzahl „lebender" Fälle eines Objekts (nicht geschlossene Vorgänge + lose
@@ -1457,6 +1568,9 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, t, ac
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.med,
           color: t.text, overflowWrap: "anywhere" }}>
+          {auftrag.nummer ? (
+            <span style={{ color: t.muted, fontWeight: FW.bold }}>{auftrag.nummer + " · "}</span>
+          ) : null}
           {auftrag.beschreibung || "Auftrag"}
           {firmaName ? (
             <span style={{ color: t.muted }}>{" · " + firmaName}</span>
@@ -1843,6 +1957,9 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.med,
           color: t.text, overflowWrap: "anywhere" }}>
+          {angebot.nummer ? (
+            <span style={{ color: t.muted, fontWeight: FW.bold }}>{angebot.nummer + " · "}</span>
+          ) : null}
           {wer + (liegtVor ? " · " + eur(angebot.preis)
             : (angebot.abgabe_bis ? " · erwartet bis " + datumDe(angebot.abgabe_bis) : ""))}
         </div>
@@ -1905,7 +2022,8 @@ function AngebotNeuForm({ vorgangId, firmen, t, accent, onWelt, onFertig }) {
     const p = parseFloat(String(summe).replace(",", "."));
     onWelt((w) => Object.assign({}, w, {
       angebote: [...w.angebote, neuesAngebot({
-        vorgang_id: vorgangId, firma_kontakt_id: firmaId,
+        vorgang_id: vorgangId, nummer: angebotsNummerNeu(w, vorgangId),
+        firma_kontakt_id: firmaId,
         preis: isNaN(p) ? null : p, notiz: notiz.trim(),
         // §4.3: angefragt → Abgabefrist aus den Einstellungen; liegt es schon
         // vor, braucht es keine.

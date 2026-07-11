@@ -2697,6 +2697,7 @@ function vgId(praefix) {
 function neuerVorgang(init) {
   const v = Object.assign({
     id: vgId("vg"),
+    nummer: null,                // Vorgangsnummer JJMMTT+3-stellig (z. B. 260711001) — STABIL, wird kommuniziert
     objekt_id: null,             // WO (Gemeinschaftseigentum) — Pflicht im Alltag
     einheit_id: null,            // optional präziser (Sondereigentum / „WE 03")
     titel: "",
@@ -2805,6 +2806,7 @@ function neuesAngebot(init) {
   // nicht mit Leistung. Hält die Auftragsliste sauber (3 Anfragen ≠ 3 Aufträge).
   const a = Object.assign({
     id: vgId("ang"),
+    nummer: null,                // Angebotsnummer = Vorgangsnummer + "-AG01" … (je Anfrage/Thema eine)
     vorgang_id: null,
     firma_kontakt_id: null,
     preis: null,                 // Zahl (EUR) oder null solange offen
@@ -2822,6 +2824,7 @@ function neuesAngebot(init) {
 function neuerAuftrag(init) {
   const a = Object.assign({
     id: vgId("auf"),
+    nummer: null,                // Auftragsnummer = Vorgangsnummer + "-A01" … — vergeben, sobald ein Vorgang dahintersteht
     vorgang_id: null,            // NULLABLE (§5.5): erfasst-Auftrag lebt ohne Vorgang
     objekt_id: null,             //   … dann hängt er direkt am Objekt (Begehung §5.12)
     firma_kontakt_id: null,      // bei "erfasst" meist noch leer
@@ -2919,11 +2922,81 @@ function neuerBeschluss(init) {
 // Ein Container-Objekt, damit App-Rumpf/Storage EINEN Handle haben. Jede Liste
 // entspricht einer künftigen Supabase-Tabelle (Migration 1:1, kein Auseinander-
 // ziehen von Nestern).
+// ── Nummernkreise (Umbau-Feinschliff 11.07., Bennys Format) ────────────────
+// Vorgang: JJMMTT + dreistellig fortlaufend PRO TAG (z. B. 260711001).
+// Auftrag/Angebot: KEIN eigener Kreis — Zusatz zur Vorgangsnummer
+// (260711001-A01 / 260711001-AG01), fortlaufend je Vorgang. Nummern sind
+// STABILE Bezugszeichen (werden nach außen kommuniziert) → gespeichert,
+// nie neu berechnet. Lose Begehungsfunde haben noch keinen Vorgang und
+// darum noch keine Nummer — sie bekommen sie bei der Zuordnung.
+function _tagPraefix(iso) {
+  const d = String(iso || isoHeute());
+  return d.slice(2, 4) + d.slice(5, 7) + d.slice(8, 10);
+}
+function vorgangsNummerNeu(welt, angelegtAm) {
+  const praefix = _tagPraefix(angelegtAm);
+  let max = 0;
+  for (let i = 0; i < welt.vorgaenge.length; i++) {
+    const n = welt.vorgaenge[i].nummer;
+    if (n && String(n).indexOf(praefix) === 0) {
+      const lauf = parseInt(String(n).slice(6), 10);
+      if (!isNaN(lauf) && lauf > max) max = lauf;
+    }
+  }
+  return praefix + String(max + 1).padStart(3, "0");
+}
+function _zusatzNummerNeu(liste, vorgang, kuerzel) {
+  if (!vorgang || !vorgang.nummer) return null;
+  const praefix = vorgang.nummer + "-" + kuerzel;
+  let max = 0;
+  for (let i = 0; i < liste.length; i++) {
+    const n = liste[i].nummer;
+    if (n && String(n).indexOf(praefix) === 0) {
+      const lauf = parseInt(String(n).slice(praefix.length), 10);
+      if (!isNaN(lauf) && lauf > max) max = lauf;
+    }
+  }
+  return praefix + String(max + 1).padStart(2, "0");
+}
+function auftragsNummerNeu(welt, vorgangId) {
+  const v = welt.vorgaenge.filter((x) => x.id === vorgangId)[0];
+  return _zusatzNummerNeu(welt.auftraege, v, "A");
+}
+function angebotsNummerNeu(welt, vorgangId) {
+  const v = welt.vorgaenge.filter((x) => x.id === vorgangId)[0];
+  return _zusatzNummerNeu(welt.angebote, v, "AG");
+}
+// Backfill für Bestandsdaten/Seeds (App nicht produktiv → deterministisch
+// nach Anlagedatum). Läuft in normalisiereVorgangsWelt — vorhandene Nummern
+// gewinnen IMMER (Stabilität).
+function _vergebeNummern(welt) {
+  const vs = welt.vorgaenge.slice().sort((a, b) =>
+    String(a.angelegt_am + a.id).localeCompare(String(b.angelegt_am + b.id)));
+  for (let i = 0; i < vs.length; i++) {
+    if (!vs[i].nummer) vs[i].nummer = vorgangsNummerNeu(welt, vs[i].angelegt_am);
+  }
+  const aufs = welt.auftraege.slice().sort((a, b) =>
+    String(a.erfasst_am + a.id).localeCompare(String(b.erfasst_am + b.id)));
+  for (let i = 0; i < aufs.length; i++) {
+    if (!aufs[i].nummer && aufs[i].vorgang_id) {
+      aufs[i].nummer = auftragsNummerNeu(welt, aufs[i].vorgang_id);
+    }
+  }
+  const angs = welt.angebote.slice().sort((a, b) =>
+    String(a.eingeholt_am + a.id).localeCompare(String(b.eingeholt_am + b.id)));
+  for (let i = 0; i < angs.length; i++) {
+    if (!angs[i].nummer && angs[i].vorgang_id) {
+      angs[i].nummer = angebotsNummerNeu(welt, angs[i].vorgang_id);
+    }
+  }
+  return welt;
+}
+
 function normalisiereVorgangsWelt(roh) {
   const r = roh || {};
   const norm = (liste, fabrik) =>
     (Array.isArray(liste) ? liste : []).map((x) => fabrik(x || {}));
-  return {
+  return _vergebeNummern({
     vorgaenge:     norm(r.vorgaenge, neuerVorgang),
     beteiligungen: norm(r.beteiligungen, neueBeteiligung),
     nachrichten:   norm(r.nachrichten, neueNachricht),
@@ -2933,7 +3006,7 @@ function normalisiereVorgangsWelt(roh) {
     rechnungen:    norm(r.rechnungen, neueRechnung),
     aufgaben:      norm(r.aufgaben, neueAufgabe),
     beschluesse:   norm(r.beschluesse, neuerBeschluss),
-  };
+  });
 }
 function leereVorgangsWelt() { return normalisiereVorgangsWelt(null); }
 
@@ -3576,6 +3649,7 @@ function weltAngebotBeauftragen(welt, angebotId, daten) {
   const d = daten || {};
   const auftrag = neuerAuftrag({
     vorgang_id: ang.vorgang_id, objekt_id: v ? v.objekt_id : null,
+    nummer: auftragsNummerNeu(welt, ang.vorgang_id),
     firma_kontakt_id: ang.firma_kontakt_id || null,
     status: "beauftragt", beauftragt_am: isoHeute(),
     frist: d.frist || null,
@@ -3626,6 +3700,7 @@ function weltAuftraegeBuendeln(welt, auftragIds, ziel) {
   if (!vorgangId && ziel.neu) {
     const v = neuerVorgang({
       objekt_id: ziel.neu.objekt_id || null,
+      nummer: vorgangsNummerNeu(welt),
       titel: ziel.neu.titel || "Gebündelte Aufträge",
       kategorie: ziel.neu.kategorie || "pflege",
     });
@@ -3639,10 +3714,18 @@ function weltAuftraegeBuendeln(welt, auftragIds, ziel) {
   if (!vorgangId) return welt;
   const vorgang = neu.vorgaenge.filter((v) => v.id === vorgangId)[0];
   if (!vorgang) return welt;
-  return Object.assign({}, neu, {
-    auftraege: neu.auftraege.map((a) => ids.indexOf(a.id) >= 0
-      ? Object.assign({}, a, { vorgang_id: vorgangId }) : a),
-  });
+  // Lose Funde bekommen ihre Nummer bei der Zuordnung (Bennys Regel B):
+  // erst mit Vorgang gibt es das Bezugszeichen.
+  let ergebnis = neu;
+  for (let i = 0; i < ids.length; i++) {
+    ergebnis = Object.assign({}, ergebnis, {
+      auftraege: ergebnis.auftraege.map((a) => a.id === ids[i]
+        ? Object.assign({}, a, { vorgang_id: vorgangId,
+            nummer: a.nummer || auftragsNummerNeu(ergebnis, vorgangId) })
+        : a),
+    });
+  }
+  return ergebnis;
 }
 
 // Ruhen bis Datum (Grau-Unterart 1): kippt bei Erreichen von allein zu 🟡
@@ -3821,6 +3904,7 @@ export {
   neuerVorgang, neueBeteiligung, neueNachricht, neuesAngebot, neuerAuftrag,
   neueAbnahme, neueRechnung, neueAufgabe, neuerBeschluss,
   normalisiereVorgangsWelt, leereVorgangsWelt, fristenVon, isoInTagen,
+  vorgangsNummerNeu, auftragsNummerNeu, angebotsNummerNeu,
   AMPEL_RANG, AMPEL_REIHE, ampelAusRang,
   hinweiseFuerVorgang, ampelFarbe, ampelFarbeAuftrag, schreibtischEintraege,
   erzeugeVorgangsSeeds,

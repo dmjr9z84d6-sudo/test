@@ -191,7 +191,7 @@ import {
   leereVorgangsWelt,
   normalisiereVorgangsWelt,
   erzeugeVorgangsSeeds,
-  neuerVorgang,
+  neuerVorgang, vorgangsNummerNeu,
   neueBeteiligung,
   neueNachricht,
   neuerAuftrag,
@@ -3229,6 +3229,7 @@ export default function App() {
               onClose={() => setAuftragNeuOffen(false)}
               onAnlegenVorgang={(d) => {
                 const v = neuerVorgang({ objekt_id: anlegenVe.id,
+                  nummer: vorgangsNummerNeu(vorgangsWelt),
                   einheit_id: d.einheit_id, titel: d.titel, kategorie: d.kategorie,
                   ersteller_kontakt_id: d.melder_kontakt_id || null });
                 const bets = [neueBeteiligung({ vorgang_id: v.id, rolle: "fallfuehrer" })];
