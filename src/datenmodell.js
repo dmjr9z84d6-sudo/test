@@ -2719,16 +2719,42 @@ function neueBeteiligung(init) {
   }, init || {});
   return b;
 }
+// ── §96.x · Anlass-Typen der Information (Umbau-Konzept §3.1) ──────────────
+// Der Anlass wird meist vom KONTEXT gesetzt, nicht aus dem Dropdown gewählt —
+// darum darf die Liste fein sein (~10). `antwort` = Default für
+// antwort_erwartet (§3.3), im Einzelfall überschreibbar.
+const ANLASS_TYPEN = [
+  { id: "eingangsbestaetigung", label: "Eingangsbestätigung",      antwort: false },
+  { id: "rueckfrage",           label: "Rückfrage",                antwort: true },
+  { id: "betroffenheit",        label: "Betroffenheit",            antwort: false },
+  { id: "angebotsanfrage",      label: "Angebotsanfrage",          antwort: true },
+  { id: "beauftragung",         label: "Beauftragung",             antwort: false },
+  { id: "ankuendigung",         label: "Ankündigung / Termininfo", antwort: false },
+  { id: "zwischenstand",        label: "Zwischenstand",            antwort: false },
+  { id: "abschluss",            label: "Abschluss / Erledigung",   antwort: false },
+  { id: "nachfrage",            label: "Nachfrage / Zufriedenheit", antwort: false },
+  { id: "frei",                 label: "Frei",                     antwort: false },
+];
+function anlassTyp(id) {
+  for (let i = 0; i < ANLASS_TYPEN.length; i++) {
+    if (ANLASS_TYPEN[i].id === id) return ANLASS_TYPEN[i];
+  }
+  return ANLASS_TYPEN[ANLASS_TYPEN.length - 1];
+}
+
 function neueNachricht(init) {
   return Object.assign({
     id: vgId("nc"),
     vorgang_id: null,
     richtung: "eingehend",       // eingehend | ausgehend
-    kanal: "notiz",              // heute manuell; später additiv "email" (Schema C3)
+    kanal: "notiz",              // telefon|whatsapp|email|brief|persoenlich|notiz (§3.2, kanal-agnostisch, PRO Eintrag)
     von_kontakt_id: null,
     an_kontakt_id: null,
     betreff: "",
     inhalt: "",
+    anlass: "frei",              // Anlass-Typ (§3.1) — Haken für Vorlagen + KI `formulieren`
+    antwort_erwartet: false,     // Default aus Anlass, pro Fall überschreibbar (§3.3)
+    antwort_auf_id: null,        // eingehende Antwort MIT Inhalt schließt den Faden (§3.3)
     gesendet_am: isoHeute(),
     demo: false,
   }, init || {});
@@ -3671,7 +3697,7 @@ export {
   VORGANG_KATEGORIEN, VORGANG_PHASEN_KETTE, vorgangKategorie, kategorieHatPhase,
   VORGANG_STATUS, AUFTRAG_STATUS, RECHNUNG_STATUS, ABNAHME_ERGEBNISSE,
   AUFGABE_STATUS, auftragLaeuft,
-  BETEILIGUNG_ROLLEN, beteiligungRolle,
+  BETEILIGUNG_ROLLEN, beteiligungRolle, ANLASS_TYPEN, anlassTyp,
   neuerVorgang, neueBeteiligung, neueNachricht, neuesAngebot, neuerAuftrag,
   neueAbnahme, neueRechnung, neueAufgabe, neuerBeschluss,
   normalisiereVorgangsWelt, leereVorgangsWelt,

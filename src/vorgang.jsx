@@ -18,12 +18,13 @@
 import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
-import { SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
+import { KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu } from "./liegenschaft.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
-  neuerAuftrag, neuesAngebot, vorgangKategorie, kategorieHatPhase,
+  neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
+  vorgangKategorie, kategorieHatPhase,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
   weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus,
   weltAufgabeNeu, weltAufgabeErledigt, weltAngebotBeauftragen,
@@ -304,6 +305,233 @@ function baueVerlauf(vorgang, welt, kontakte) {
   return E;
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// KOMMUNIKATIONS-KARTE (Umbau-Konzept §3.2) — primär LESE-Ort („wie kann ich
+// nachvollziehen, was geschrieben wurde"). Zwei umschaltbare Sichten auf EINE
+// flache nachrichten[]-Liste (Termin-Muster, kein Doppelmodell):
+//  · Verlauf — alles gemischt, chronologisch (der Kommunikations-Film)
+//  · Chat    — 1:1-Faden pro Person/Firma, Wähler „mit wem"
+// Kanal-agnostisch, manuell eintrag- UND zuweisbar; Kanal PRO Eintrag.
+// Eingehende Antwort MIT Inhalt schließt den offenen Faden (§3.3 — Nachweis).
+// ═════════════════════════════════════════════════════════════════════════
+const KANAL_OPTIONEN = [
+  { id: "telefon", label: "Telefon", symbol: "☎" },
+  { id: "whatsapp", label: "WhatsApp", symbol: "💬" },
+  { id: "email", label: "E-Mail", symbol: "✉" },
+  { id: "brief", label: "Brief", symbol: "📄" },
+  { id: "persoenlich", label: "Persönlich", symbol: "🤝" },
+  { id: "notiz", label: "Notiz", symbol: "✎" },
+];
+function kanalSymbol(id) {
+  const k = KANAL_OPTIONEN.filter((x) => x.id === id)[0];
+  return k ? k.symbol : "✎";
+}
+// Das Gegenüber einer Nachricht (für Chat-Gruppierung): eingehend → Absender,
+// ausgehend → Empfänger. null = reine Akte-Notiz (nur im Verlauf sichtbar).
+function nachrichtGegenueber(n) {
+  return n.richtung === "eingehend" ? (n.von_kontakt_id || null) : (n.an_kontakt_id || null);
+}
+
+function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, antwortAuf = null }) {
+  // Antwort nachtragen (§3.3): Gegenüber + Richtung „eingehend" vorbelegt,
+  // antwort_auf_id schließt den Faden.
+  const [gegenueberId, setGegenueberId] = useState(
+    antwortAuf ? (nachrichtGegenueber(antwortAuf) || "") : "");
+  const [richtung, setRichtung] = useState(antwortAuf ? "eingehend" : "ausgehend");
+  const [kanal, setKanal] = useState(antwortAuf ? (antwortAuf.kanal || "notiz") : "telefon");
+  const [anlass, setAnlass] = useState("frei");
+  const [antwortErwartet, setAntwortErwartet] = useState(false);
+  const [inhalt, setInhalt] = useState("");
+  const waehleAnlass = (id) => {
+    setAnlass(id);
+    setAntwortErwartet(!!anlassTyp(id).antwort); // Default aus Anlass (§3.3)
+  };
+  const speichere = () => {
+    if (!inhalt.trim()) return;
+    const d = {
+      vorgang_id: vorgangId, richtung: richtung, kanal: kanal,
+      anlass: anlass, inhalt: inhalt.trim(),
+      antwort_erwartet: richtung === "ausgehend" ? antwortErwartet : false,
+      antwort_auf_id: antwortAuf ? antwortAuf.id : null,
+      von_kontakt_id: richtung === "eingehend" ? (gegenueberId || null) : null,
+      an_kontakt_id: richtung === "ausgehend" ? (gegenueberId || null) : null,
+    };
+    onWelt((w) => Object.assign({}, w, {
+      nachrichten: [...w.nachrichten, neueNachricht(d)],
+    }));
+    onFertig();
+  };
+  return (
+    <div style={flowZeileStil(t)}>
+      {antwortAuf ? (
+        <div style={{ fontSize: FS.xs, color: t.muted, overflowWrap: "anywhere" }}>
+          {"Antwort auf: " + (antwortAuf.inhalt || antwortAuf.betreff || "Nachricht")}</div>
+      ) : null}
+      <label style={feldLabelStil(t)}>Mit wem?</label>
+      <select value={gegenueberId} onChange={(e) => setGegenueberId(e.target.value)}
+        style={Object.assign({}, selectStil(t, accent, true), { marginBottom: 0 })}>
+        <option value="">— ohne Gegenüber (Akte-Notiz) —</option>
+        {(kontakte || []).map((k) => (
+          <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
+        ))}
+      </select>
+      <SegmentControl t={t} accent={accent} voll={true}
+        options={[{ id: "ausgehend", label: "Von mir (ausgehend)" },
+          { id: "eingehend", label: "An mich (eingehend)" }]}
+        value={richtung} onChange={setRichtung}/>
+      <label style={feldLabelStil(t)}>Kanal</label>
+      <select value={kanal} onChange={(e) => setKanal(e.target.value)}
+        style={Object.assign({}, selectStil(t, accent, true), { marginBottom: 0 })}>
+        {KANAL_OPTIONEN.map((k) => (
+          <option key={k.id} value={k.id}>{k.symbol + " " + k.label}</option>
+        ))}
+      </select>
+      {!antwortAuf ? (
+        <div>
+          <label style={feldLabelStil(t)}>Anlass</label>
+          <select value={anlass} onChange={(e) => waehleAnlass(e.target.value)}
+            style={Object.assign({}, selectStil(t, accent, true), { marginBottom: 0 })}>
+            {ANLASS_TYPEN.map((a) => (
+              <option key={a.id} value={a.id}>{a.label}</option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      {richtung === "ausgehend" && !antwortAuf ? (
+        <label style={{ display: "flex", alignItems: "center", gap: 8,
+          fontSize: FS.s, color: t.text, cursor: "pointer" }}>
+          <input type="checkbox" checked={antwortErwartet}
+            onChange={(e) => setAntwortErwartet(e.target.checked)}
+            style={{ width: 18, height: 18 }}/>
+          Antwort erwartet
+        </label>
+      ) : null}
+      <textarea value={inhalt} onChange={(e) => setInhalt(e.target.value)} rows={3}
+        placeholder={antwortAuf ? "Was wurde geantwortet? (schließt den Faden)"
+          : "Was wurde besprochen / geschrieben?"}
+        style={Object.assign({}, selectStil(t, accent, !!inhalt),
+          { resize: "vertical", minHeight: 60, marginBottom: 0 })}/>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+        <button onClick={onFertig} style={flowKnopf(t, accent, false)}>Abbrechen</button>
+        <button onClick={speichere} style={flowKnopf(t, accent, true)}>
+          {antwortAuf ? "Antwort festhalten" : "Festhalten"}</button>
+      </div>
+    </div>
+  );
+}
+
+function KommunikationsBlock({ vorgang, nachrichten, kontakte, t, accent, kannFlows, onWelt, formAuto, onFormZu }) {
+  const [sicht, setSicht] = useState("verlauf"); // "verlauf" | "chat"
+  const [chatMit, setChatMit] = useState("");
+  const [antwortAuf, setAntwortAuf] = useState(null); // Nachricht | null
+  const sortiert = nachrichten.slice().sort((a, b) =>
+    String(a.gesendet_am).localeCompare(String(b.gesendet_am)));
+  // Offene Fäden (§3.3): ausgehend + antwort_erwartet + noch keine Antwort.
+  const beantwortet = {};
+  for (let i = 0; i < sortiert.length; i++) {
+    if (sortiert[i].antwort_auf_id) beantwortet[sortiert[i].antwort_auf_id] = true;
+  }
+  const istOffen = (n) => n.richtung === "ausgehend" && n.antwort_erwartet && !beantwortet[n.id];
+  // Chat-Gegenüber: alle Kontakte, mit denen Nachrichten bestehen.
+  const gegenueberIds = [];
+  for (let i = 0; i < sortiert.length; i++) {
+    const g = nachrichtGegenueber(sortiert[i]);
+    if (g && gegenueberIds.indexOf(g) < 0) gegenueberIds.push(g);
+  }
+  const chatAktiv = chatMit || gegenueberIds[0] || "";
+  const chatNachrichten = sortiert.filter((n) => nachrichtGegenueber(n) === chatAktiv);
+  const formOffen = formAuto || antwortAuf;
+
+  const zeile = (n) => {
+    const wer = nameVon(kontakte, nachrichtGegenueber(n));
+    return (
+      <div key={n.id} style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+        <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
+          whiteSpace: "nowrap" }}>{datumDe(n.gesendet_am)}</span>
+        <span style={{ fontSize: FS.xs, flexShrink: 0 }} title={n.kanal}>
+          {kanalSymbol(n.kanal)}</span>
+        <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0 }}>
+          {n.richtung === "eingehend" ? "←" : "→"}</span>
+        <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
+          overflowWrap: "anywhere", flex: 1 }}>
+          {(wer ? wer + ": " : "") + (n.inhalt || n.betreff || "")}
+        </span>
+        {istOffen(n) ? (
+          kannFlows ? (
+            <button onClick={() => setAntwortAuf(n)}
+              style={Object.assign({}, flowKnopf(t, accent, false),
+                { borderColor: AMPEL_FARBEN.gelb + "80", color: t.text })}>
+              Antwort nachtragen</button>
+          ) : (
+            <StatusPille t={t} farbe={AMPEL_FARBEN.gelb} text="Antwort erwartet"/>
+          )
+        ) : null}
+      </div>
+    );
+  };
+  const blase = (n) => {
+    const aus = n.richtung === "ausgehend";
+    return (
+      <div key={n.id} style={{ display: "flex",
+        justifyContent: aus ? "flex-end" : "flex-start" }}>
+        <div style={{ maxWidth: "82%", padding: "7px 10px", borderRadius: RAD.md,
+          background: aus ? accent + "1C" : t.surface,
+          border: "1px solid " + (aus ? accent + "40" : t.border) }}>
+          <div style={{ fontSize: FS.s, color: t.text,
+            overflowWrap: "anywhere" }}>{n.inhalt || n.betreff || ""}</div>
+          <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 3,
+            display: "flex", gap: 6, justifyContent: aus ? "flex-end" : "flex-start" }}>
+            <span>{kanalSymbol(n.kanal)}</span>
+            <span>{datumDe(n.gesendet_am)}</span>
+            {istOffen(n) ? <span style={{ color: AMPEL_FARBEN.gelb,
+              fontWeight: FW.bold }}>Antwort erwartet</span> : null}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {sortiert.length > 0 ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <KopfPille t={t} accent={accent} aktiv={sicht} onWaehle={setSicht}
+            optionen={[{ id: "verlauf", label: "Verlauf" }, { id: "chat", label: "Chat" }]}/>
+          {sicht === "chat" && gegenueberIds.length > 0 ? (
+            <select value={chatAktiv} onChange={(e) => setChatMit(e.target.value)}
+              style={Object.assign({}, selectStil(t, accent, true),
+                { marginBottom: 0, flex: 1, minWidth: 120 })}>
+              {gegenueberIds.map((id) => (
+                <option key={id} value={id}>{nameVon(kontakte, id) || "Unbekannt"}</option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+      ) : null}
+      {sicht === "verlauf" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {sortiert.map(zeile)}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {gegenueberIds.length === 0 ? (
+            <div style={{ fontSize: FS.s, color: t.muted }}>
+              Noch keine Nachrichten mit einem Gegenüber.</div>
+          ) : chatNachrichten.map(blase)}
+        </div>
+      )}
+      {kannFlows && formOffen ? (
+        <NachrichtNeuForm vorgangId={vorgang.id} kontakte={kontakte} t={t}
+          accent={accent} onWelt={onWelt} antwortAuf={antwortAuf}
+          onFertig={() => { setAntwortAuf(null); onFormZu(); }}/>
+      ) : (kannFlows ? (
+        <button onClick={() => onFormZu(true)}
+          style={flowKnopf(t, accent, false)}>+ Nachricht</button>
+      ) : null)}
+    </div>
+  );
+}
+
 // ── VorgangKarte ─────────────────────────────────────────────────────────────
 // Karten-Klapp-Muster: der GESAMTE Kopf ist die Klick-Fläche (kein Chevron,
 // kein Pfeil). Zu: Punkt + Titel + Status-Pille + Sub (Kategorie · seit).
@@ -341,6 +569,15 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
   const rechnungen = offen ? welt.rechnungen.filter((r) => r.vorgang_id === vorgang.id) : [];
   const aufgabenOffen = offen ? welt.aufgaben.filter(
     (a) => a.vorgang_id === vorgang.id && a.status === "offen") : [];
+  const nachrichten = offen ? welt.nachrichten.filter(
+    (n) => n.vorgang_id === vorgang.id) : [];
+  // Offene Antwort-Fäden (§3.3): ausgehend + erwartet + noch unbeantwortet.
+  const beantwortetIds = {};
+  for (let i = 0; i < nachrichten.length; i++) {
+    if (nachrichten[i].antwort_auf_id) beantwortetIds[nachrichten[i].antwort_auf_id] = true;
+  }
+  const faedenOffen = nachrichten.filter((n) =>
+    n.richtung === "ausgehend" && n.antwort_erwartet && !beantwortetIds[n.id]).length;
   const firmen = (kontakte || []).filter((k) => k && k.typ === "firma");
   const brauchtAbnahme = kategorieHatPhase(vorgang.kategorie, "abnahme");
   const keinsGewaehlt = angebote.filter((a) => !!a.wurde_zu_auftrag_id).length === 0;
@@ -371,6 +608,7 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
   const katalog = [
     { id: "auftraege", icon: "🛠", label: "Auftrag", sub: "An wen · was · bis wann" },
     { id: "angebote", icon: "§", label: "Angebot", sub: "Anfragen oder erfassen (je Firma eins)" },
+    { id: "kommunikation", icon: "✉", label: "Information", sub: "Nachricht festhalten (Verlauf & Chat)" },
     { id: "aufgaben", icon: "✓", label: "Aufgabe", sub: "Delegieren + nachhalten" },
     { id: "rechnungen", icon: "€", label: "Rechnung", sub: "Betrag erfassen + prüfen" },
     { id: "notiz", icon: "✎", label: "Notiz", sub: "Freier Text in die Akte" },
@@ -596,6 +834,17 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
                 <button onClick={() => setFormBaustein("aufgaben")}
                   style={flowKnopf(t, accent, false)}>+ Aufgabe</button>
               ) : null)}
+            </BausteinKarte>
+          ) : null}
+          {(nachrichten.length > 0 || formBaustein === "kommunikation") ? (
+            <BausteinKarte titel="Kommunikation" anzahl={nachrichten.length} t={t} accent={accent}
+              sub={faedenOffen > 0 ? faedenOffen + " Antwort(en) offen" : null}
+              offen={offenerBaustein === "kommunikation"}
+              onToggle={() => toggleBaustein("kommunikation")}>
+              <KommunikationsBlock vorgang={vorgang} nachrichten={nachrichten}
+                kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
+                onWelt={onWelt} formAuto={formBaustein === "kommunikation"}
+                onFormZu={(auf) => setFormBaustein(auf ? "kommunikation" : null)}/>
             </BausteinKarte>
           ) : null}
           {formBaustein === "notiz" ? (
