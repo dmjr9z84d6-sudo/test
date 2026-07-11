@@ -1656,7 +1656,7 @@ export default function App() {
         setVorgangsWelt(normalisiereVorgangsWelt(daten.vorgangsWelt));
       } else {
         const seeds = erzeugeVorgangsSeeds(vFinal, kGeladen || kontakte);
-        if (seeds) setVorgangsWelt(seeds);
+        if (seeds) setVorgangsWelt(normalisiereVorgangsWelt(seeds));
       }
     } else {
       // Keine gespeicherten Daten → DEFAULT-Stand ebenfalls einmal synchronisieren.
@@ -3089,6 +3089,10 @@ export default function App() {
 
           const hatAuswahl = (auftragView === "objekt" && auftragViewVEId) || (auftragView === "firma" && auftragFirmaId);
           let detailKopf = null, detailSub = null, detailListe = null;
+          // In den GEMEINSAMEN Scope gehoben (Fix 11.07.): die Akten-Ebene
+          // unten braucht den Foto-Callback ebenfalls — als const im
+          // objekt-if war er dort unsichtbar (ReferenceError → Schwarz-Screen).
+          let auftragFotoHinzu = null;
           if (auftragView === "objekt" && auftragViewVEId) {
             const vo = (vesSichtbar || []).find(v => v.id === auftragViewVEId);
             detailKopf = vo ? (vo.nr || "Objekt") : "";
@@ -3097,7 +3101,7 @@ export default function App() {
             // in ve.fotos[] (exakt die §93-Struktur, Album „sonstiges", Notiz =
             // Auftragsbeschreibung → in der Foto-Ansicht auffindbar) + Referenz
             // am Auftrag. EIN setVes je Auswahl (Mehrfach-Upload gesammelt).
-            const auftragFotoHinzu = (auftrag, files) => {
+            auftragFotoHinzu = (auftrag, files) => {
               if (!vo || !files || files.length === 0) return;
               const vId = auftrag.vorgang_id
                 ? ((vorgangsWelt.vorgaenge.find(x => x.id === auftrag.vorgang_id) || {}).einheit_id || null)
