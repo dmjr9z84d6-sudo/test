@@ -719,6 +719,28 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const [loeschConfirm, setLoeschConfirm] = useState(false);
   const [ruhenFormOffen, setRuhenFormOffen] = useState(false);
   const [ruhenBis, setRuhenBis] = useState("");
+  // Versicherungsfall (A1): Formular-State — Eigenschaft, keine Kategorie.
+  const vs = vorgang.versicherung || null;
+  const [vsForm, setVsForm] = useState(false);
+  const [vsGesellschaft, setVsGesellschaft] = useState(vs ? vs.gesellschaft || "" : "");
+  const [vsSchadennr, setVsSchadennr] = useState(vs ? vs.schadennummer || "" : "");
+  const [vsSb, setVsSb] = useState(vs && vs.selbstbeteiligung != null ? String(vs.selbstbeteiligung) : "");
+  const [vsGemeldet, setVsGemeldet] = useState(vs ? vs.gemeldet_am || "" : "");
+  const [vsNotiz, setVsNotiz] = useState(vs ? vs.notiz || "" : "");
+  const speichereVersicherung = () => {
+    const sb = parseFloat(String(vsSb).replace(",", "."));
+    onWelt((w) => Object.assign({}, w, {
+      vorgaenge: w.vorgaenge.map((v) => v.id === vorgang.id
+        ? Object.assign({}, v, { versicherung: {
+            gesellschaft: vsGesellschaft.trim(),
+            schadennummer: vsSchadennr.trim(),
+            selbstbeteiligung: isNaN(sb) ? null : sb,
+            gemeldet_am: vsGemeldet || null,
+            notiz: vsNotiz.trim(),
+          } }) : v),
+    }));
+    setVsForm(false);
+  };
 
   const farbe = ampelFarbe(vorgang, welt);
   const kat = vorgangKategorie(vorgang.kategorie);
@@ -781,6 +803,9 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   if (rechnungen.length > 0 || tabZwang.rechnungen) {
     tabs.push({ id: "rechnungen", label: "Rechnungen", icon: "document" });
   }
+  if (vs || tabZwang.versicherung) {
+    tabs.push({ id: "versicherung", label: "Versicherung", icon: "shield" });
+  }
 
   // Katalog (§6.2): Kommunikation ist jetzt Tab (raus); Angebot/Rechnung
   // erzeugen ihren Tab und springen hin — Wachstum auf Tab-Ebene.
@@ -791,7 +816,16 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
     { id: "rechnungen", icon: "€", label: "Rechnung", sub: "Eigener Tab — Betrag + Prüfung" },
     { id: "notiz", icon: "✎", label: "Notiz", sub: "Freier Text in die Akte" },
   ];
+  if (!vs) {
+    katalog.splice(4, 0, { id: "versicherung", icon: "🛡", label: "Versicherungsfall",
+      sub: "Schaden über die Versicherung — eigener Strang" });
+  }
   const bausteinAdd = (id) => {
+    if (id === "versicherung") {
+      setTabZwang(Object.assign({}, tabZwang, { versicherung: true }));
+      setTab("versicherung"); setVsForm(true);
+      return;
+    }
     if (id === "angebote" || id === "rechnungen") {
       setTabZwang(Object.assign({}, tabZwang, { [id]: true }));
       setTab(id); setFormBaustein(id);
@@ -980,6 +1014,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
             overflowWrap: "anywhere" }}>
             {(vorgang.titel || "Vorgang") + (objektText ? " · " + objektText : "")}
           </div>
+          {vs ? <StatusPille t={t} farbe="#0EA5E9" text="Versicherungsfall"/> : null}
           <StatusPille t={t} farbe={accent}
             text={VORGANG_STATUS_LABEL[vorgang.status] || vorgang.status}/>
         </div>
@@ -1132,6 +1167,78 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
           </div>
         ) : null}
 
+        {tab === "versicherung" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {vs && !vsForm ? (
+              <div style={flowZeileStil(t)}>
+                <div style={{ fontSize: FS.s, color: t.text, display: "flex",
+                  flexDirection: "column", gap: 4 }}>
+                  <div>{"Gesellschaft: " + (vs.gesellschaft || "—")}</div>
+                  <div>{"Schadennummer: " + (vs.schadennummer || "—")}</div>
+                  <div>{"Selbstbeteiligung: "
+                    + (vs.selbstbeteiligung != null ? eur(vs.selbstbeteiligung) : "—")}</div>
+                  <div style={{ color: vs.gemeldet_am ? t.text : AMPEL_FARBEN.gelb,
+                    fontWeight: vs.gemeldet_am ? FW.reg : FW.bold }}>
+                    {vs.gemeldet_am
+                      ? "Schaden gemeldet am " + datumDe(vs.gemeldet_am)
+                      : "Schadenmeldung noch offen"}</div>
+                  {vs.notiz ? <div style={{ color: t.muted }}>{vs.notiz}</div> : null}
+                </div>
+                {kannFlows ? (
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end",
+                    flexWrap: "wrap" }}>
+                    {!vs.gemeldet_am ? (
+                      <button onClick={() => {
+                          onWelt((w) => Object.assign({}, w, {
+                            vorgaenge: w.vorgaenge.map((v) => v.id === vorgang.id
+                              ? Object.assign({}, v, { versicherung:
+                                  Object.assign({}, v.versicherung, { gemeldet_am: isoHeute() }) })
+                              : v),
+                          }));
+                          setVsGemeldet(isoHeute());
+                        }} style={flowKnopf(t, accent, true)}>Heute gemeldet</button>
+                    ) : null}
+                    <button onClick={() => setVsForm(true)}
+                      style={flowKnopf(t, accent, false)}>Bearbeiten</button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {kannFlows && (vsForm || !vs) ? (
+              <div style={flowZeileStil(t)}>
+                <label style={feldLabelStil(t)}>Gesellschaft</label>
+                <input value={vsGesellschaft} onChange={(e) => setVsGesellschaft(e.target.value)}
+                  placeholder="z. B. Allianz Gebäudeversicherung"
+                  style={Object.assign({}, selectStil(t, accent, !!vsGesellschaft), { marginBottom: 0 })}/>
+                <label style={feldLabelStil(t)}>Schadennummer</label>
+                <input value={vsSchadennr} onChange={(e) => setVsSchadennr(e.target.value)}
+                  placeholder="sobald vergeben"
+                  style={Object.assign({}, selectStil(t, accent, !!vsSchadennr), { marginBottom: 0 })}/>
+                <label style={feldLabelStil(t)}>Selbstbeteiligung (€)</label>
+                <input value={vsSb} inputMode="decimal"
+                  onChange={(e) => setVsSb(e.target.value)} placeholder="optional"
+                  style={Object.assign({}, selectStil(t, accent, !!vsSb), { marginBottom: 0 })}/>
+                {DatumFeld ? (
+                  <DatumFeld t={t} accent={accent} label="Schaden gemeldet am (leer = noch offen)"
+                    value={vsGemeldet} onChange={setVsGemeldet} iso defaultHeute={false}/>
+                ) : null}
+                <label style={feldLabelStil(t)}>Notiz</label>
+                <input value={vsNotiz} onChange={(e) => setVsNotiz(e.target.value)}
+                  placeholder="z. B. Gutachter angekündigt"
+                  style={Object.assign({}, selectStil(t, accent, !!vsNotiz), { marginBottom: 0 })}/>
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  {vs ? (
+                    <button onClick={() => setVsForm(false)}
+                      style={flowKnopf(t, accent, false)}>Abbrechen</button>
+                  ) : null}
+                  <button onClick={speichereVersicherung}
+                    style={flowKnopf(t, accent, true)}>Festhalten</button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {tab === "rechnungen" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {rechnungen.map((r) => (
@@ -1254,7 +1361,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const [buendelIds, setBuendelIds] = useState([]);
   const [buendelZiel, setBuendelZiel] = useState(null); // null | "neu" | "bestehend"
   const [buendelTitel, setBuendelTitel] = useState("");
-  const [buendelKategorie, setBuendelKategorie] = useState("pflege");
+  const [buendelKategorie, setBuendelKategorie] = useState("bewirtschaftung");
   const [buendelVorgangId, setBuendelVorgangId] = useState("");
   const alleVorgaenge = sortiereVorgaenge(
     welt.vorgaenge.filter((v) => v.objekt_id === veId), welt);

@@ -3303,14 +3303,13 @@ export default function App() {
                 {auftragHeader}
                 <MasterDetailRahmen
                   master={() => (
-                    <div style={{ display: "flex", flexDirection: "column",
-                      gap: 10, minWidth: 0 }}>
-                      {/* Zurück am großen Screen im Listenmenü (Benny) */}
-                      <div><HeaderZurueck onClick={() => setVorgangAkteId(null)} t={t}/></div>
-                      {/* DetailRahmen bleibt: hält die Vorgänge optisch
-                          gebündelt + trägt den Objekt-/Firmen-Bezug */}
-                      {detailInhalt}
-                    </div>
+                    /* Zurück im KOPF des Listen-Rahmens (Benny 11.07.):
+                       aktion-Slot des DetailRahmen — die Liste startet damit
+                       auf gleicher Höhe wie die Akte rechts. */
+                    <DetailRahmen t={t} accent={aAccent} titel={detailKopf} sub={detailSub}
+                      aktion={<HeaderZurueck onClick={() => setVorgangAkteId(null)} t={t}/>}>
+                      {detailListe}
+                    </DetailRahmen>
                   )}
                   detail={akteDetail}
                   istDesktop={true}

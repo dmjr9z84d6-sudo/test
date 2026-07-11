@@ -2600,13 +2600,14 @@ const VORGANG_PHASEN_KETTE = [
   "meldung", "angebot", "beschluss", "beauftragung", "ausfuehrung",
   "abnahme", "rechnung", "abschluss", "gewaehrleistung",
 ];
+// Kategorien-Leiter NEU (Benny 11.07.): laufend → erhalten → reparieren →
+// aufwerten. Wartung ist KEINE eigene Kategorie mehr (gehört zur
+// Instandhaltung), Pflege heißt Bewirtschaftung (die kleinen Aufträge an den
+// Hausmeister). Versicherungsfall ist bewusst KEINE Kategorie — er ist eine
+// EIGENSCHAFT über der Arbeitsart (vorgang.versicherung), sonst vermischt
+// man Arbeitsart mit Kostenträger.
 const VORGANG_KATEGORIEN = [
-  // Wartung (NEU v13.58): das Wiederkehrende (Wartungsverträge, Prüfungen) —
-  // keine Abnahme-Phase (das Wartungsprotokoll ist der Nachweis → Abhaken),
-  // aber Rechnung. Eigener Tab am Objekt (Benny 09.07.).
-  { id: "wartung", label: "Wartung", kurz: "Wartung", icon: "settings",
-    phasen: ["meldung", "beauftragung", "ausfuehrung", "rechnung", "abschluss"] },
-  { id: "pflege", label: "Pflege / Kleinauftrag", kurz: "Pflege", icon: "sparkles",
+  { id: "bewirtschaftung", label: "Bewirtschaftung", kurz: "Bewirtschaftung", icon: "sparkles",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "abschluss"] },
   { id: "instandhaltung", label: "Instandhaltung", kurz: "Instandhaltung", icon: "wrench",
     phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss"] },
@@ -2615,6 +2616,8 @@ const VORGANG_KATEGORIEN = [
   { id: "sanierung", label: "Sanierung / Modernisierung", kurz: "Sanierung", icon: "building",
     phasen: VORGANG_PHASEN_KETTE.slice() },
 ];
+// Alt-Kategorien-Migration (Bestand vor v13.70): alte IDs bleiben lesbar.
+const ALT_KATEGORIE = { wartung: "instandhaltung", pflege: "bewirtschaftung" };
 function vorgangKategorie(id) {
   for (let i = 0; i < VORGANG_KATEGORIEN.length; i++) {
     if (VORGANG_KATEGORIEN[i].id === id) return VORGANG_KATEGORIEN[i];
@@ -2702,6 +2705,9 @@ function neuerVorgang(init) {
     einheit_id: null,            // optional präziser (Sondereigentum / „WE 03")
     titel: "",
     kategorie: "instandhaltung", // steuert Phasen (§96.1) + macht Portfolio filterbar
+    versicherung: null,          // A1 (11.07.): Versicherungsfall = EIGENSCHAFT über der Kategorie.
+                                 // null = keiner; sonst { gesellschaft, schadennummer,
+                                 // selbstbeteiligung, gemeldet_am, notiz } — eigener Strang in der Akte.
     art: null,                   // Auslöser-Typ (meldung/anfrage/schaden) — Schema C2, optional
     status: "offen",
     eigentumsbezug: "gemeinschaft", // gemeinschaft | sonder (Schema C2)
@@ -2996,8 +3002,10 @@ function normalisiereVorgangsWelt(roh) {
   const r = roh || {};
   const norm = (liste, fabrik) =>
     (Array.isArray(liste) ? liste : []).map((x) => fabrik(x || {}));
+  const _migKat = (v) => ALT_KATEGORIE[v.kategorie]
+    ? Object.assign({}, v, { kategorie: ALT_KATEGORIE[v.kategorie] }) : v;
   return _vergebeNummern({
-    vorgaenge:     norm(r.vorgaenge, neuerVorgang),
+    vorgaenge:     norm(r.vorgaenge, neuerVorgang).map(_migKat),
     beteiligungen: norm(r.beteiligungen, neueBeteiligung),
     nachrichten:   norm(r.nachrichten, neueNachricht),
     angebote:      norm(r.angebote, neuesAngebot),
@@ -3114,6 +3122,14 @@ function hinweiseFuerVorgang(vorgang, welt, heute) {
           + (a.frist ? " (bis " + a.frist + ")" : ""),
         { typ: "auftrag", id: a.id });
     }
+  }
+
+  // 🟡 Versicherungsfall (A1): solange die Schadenmeldung nicht raus ist,
+  // mahnt die Ampel — der teuerste vergessene Handgriff.
+  if (vorgang.versicherung && !vorgang.versicherung.gemeldet_am) {
+    dazu(4, "versicherung_meldung",
+      "Schadenmeldung an Versicherung offen",
+      { typ: "vorgang", id: vorgang.id });
   }
 
   // 🟡 Angebot überfällig (§4.3): angefragt (kein Preis), Abgabefrist vorbei.
@@ -3410,7 +3426,7 @@ function erzeugeVorgangsSeeds(ves, kontakte) {
 
   // ── V4 🟢 Treppenhaus streichen (Pflege): läuft, nichts gefordert ───────────
   const v4 = neuerVorgang(Object.assign({}, D, {
-    objekt_id: o2, titel: "Treppenhaus streichen EG–2. OG", kategorie: "pflege",
+    objekt_id: o2, titel: "Treppenhaus streichen EG–2. OG", kategorie: "bewirtschaftung",
     status: "ausfuehrung", angelegt_am: tage(-6),
   }));
   welt.vorgaenge.push(v4);
@@ -3446,7 +3462,7 @@ function erzeugeVorgangsSeeds(ves, kontakte) {
 
   // ── V6 ⚪️ Wiedervorlage (ruht bis Datum): Gartenpflege-Vertrag prüfen ───────
   welt.vorgaenge.push(neuerVorgang(Object.assign({}, D, {
-    objekt_id: o3, titel: "Gartenpflege-Vertrag prüfen", kategorie: "pflege",
+    objekt_id: o3, titel: "Gartenpflege-Vertrag prüfen", kategorie: "bewirtschaftung",
     status: "offen", angelegt_am: tage(-15), ruht_bis: tage(45),
   })));
 
@@ -3702,7 +3718,7 @@ function weltAuftraegeBuendeln(welt, auftragIds, ziel) {
       objekt_id: ziel.neu.objekt_id || null,
       nummer: vorgangsNummerNeu(welt),
       titel: ziel.neu.titel || "Gebündelte Aufträge",
-      kategorie: ziel.neu.kategorie || "pflege",
+      kategorie: ziel.neu.kategorie || "bewirtschaftung",
     });
     const ff = neueBeteiligung({ vorgang_id: v.id, rolle: "fallfuehrer" });
     neu = Object.assign({}, welt, {
