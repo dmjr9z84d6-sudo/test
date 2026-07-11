@@ -19,10 +19,11 @@ import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
 import { SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
+import { NeueKarteMenu } from "./liegenschaft.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
-  vorgangKategorie, kategorieHatPhase,
+  neuerAuftrag, neuesAngebot, vorgangKategorie, kategorieHatPhase,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
   weltAuftragAbhaken, weltRechnungNeu, weltRechnungStatus,
   weltAufgabeNeu, weltAufgabeErledigt, weltAngebotBeauftragen,
@@ -48,6 +49,162 @@ const AMPEL_TITEL = {
   rot: "Überfällig", gelb: "Handlung fällig", blau: "Offener Entwurf",
   gruen: "Läuft", grau: "Ruht",
 };
+
+// ═════════════════════════════════════════════════════════════════════════
+// VORGANG-UMBAU (VORGANG_Umbau_Konzept 11.07.2026) — der führende Kopf.
+// Alles ERRECHNET, nichts gespeichert (§5): Phase, Ampel-Klartext und der
+// eine nächste Schritt lesen den Zustand der Bausteine ab. Selbstheilend.
+// ═════════════════════════════════════════════════════════════════════════
+const PHASE_LABEL = {
+  meldung: "Meldung", angebot: "Angebot", beschluss: "Beschluss",
+  beauftragung: "Beauftragung", ausfuehrung: "Ausführung", abnahme: "Abnahme",
+  rechnung: "Rechnung", abschluss: "Abschluss", gewaehrleistung: "Gewährleistung",
+};
+
+// Ist-Phase des Vorgangs — die Station, in der gerade gearbeitet wird.
+// Abgeleitet aus dem Zustand der Aufträge/Angebote/Rechnungen (nie gespeichert).
+function vorgangPhase(vorgang, welt) {
+  const kat = vorgangKategorie(vorgang.kategorie);
+  const hat = (p) => kat.phasen.indexOf(p) >= 0;
+  if (vorgang.status === "geschlossen") return "abschluss";
+  const auftraege = welt.auftraege.filter((a) => a.vorgang_id === vorgang.id);
+  const angebote = welt.angebote.filter((a) => a.vorgang_id === vorgang.id);
+  const rechnungen = welt.rechnungen.filter((r) => r.vorgang_id === vorgang.id);
+  const alleDurch = auftraege.length > 0
+    && auftraege.filter((a) => a.status !== "abgenommen").length === 0;
+  if (alleDurch) {
+    if (hat("rechnung")) {
+      const offen = rechnungen.filter((r) => r.status !== "bezahlt").length > 0;
+      if (offen || rechnungen.length === 0) return "rechnung";
+    }
+    return "abschluss";
+  }
+  const status = (s) => auftraege.filter((a) => a.status === s).length > 0;
+  if (status("fertiggemeldet") && hat("abnahme")) return "abnahme";
+  if (status("in_arbeit") || status("nachbesserung") || status("fertiggemeldet")) {
+    return "ausfuehrung";
+  }
+  if (status("beauftragt")) return "beauftragung";
+  if (status("erfasst")) return "beauftragung";
+  if (angebote.length > 0 && hat("angebot")) return "angebot";
+  return "meldung";
+}
+
+// Fortschritts-Leiste durch die Phasenkette der Kategorie (§5.2): Punkte mit
+// Verbindungslinien, Ist-Punkt gefüllt + Label darunter. Kategorie faltet
+// die Stationen (kat.phasen), Mobile-tauglich schmal.
+function PhasenLeiste({ vorgang, welt, t, accent }) {
+  const kat = vorgangKategorie(vorgang.kategorie);
+  const phasen = kat.phasen;
+  const ist = vorgangPhase(vorgang, welt);
+  const istIdx = phasen.indexOf(ist);
+  return (
+    <div style={{ margin: "8px 0 2px 0" }}>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        {phasen.map((p, i) => {
+          const erledigt = istIdx >= 0 && i < istIdx;
+          const aktiv = i === istIdx;
+          return (
+            <React.Fragment key={p}>
+              {i > 0 ? (
+                <div style={{ flex: 1, height: 2, minWidth: 6,
+                  background: erledigt || aktiv ? accent : t.border }}/>
+              ) : null}
+              <div title={PHASE_LABEL[p] || p} style={{
+                width: aktiv ? 12 : 8, height: aktiv ? 12 : 8,
+                borderRadius: RAD.pill, flexShrink: 0, boxSizing: "border-box",
+                background: erledigt || aktiv ? accent : t.card,
+                border: "2px solid " + (erledigt || aktiv ? accent : t.border) }}/>
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: accent,
+        marginTop: 4 }}>
+        {(PHASE_LABEL[ist] || ist)
+          + (istIdx >= 0 ? " · Schritt " + (istIdx + 1) + " von " + phasen.length : "")}
+      </div>
+    </div>
+  );
+}
+
+// ── BausteinKarte — aufklappbare Karte im Vorgangs-Stapel (§6) ─────────────
+// Objekt-Verwaltung-Muster: ganzer Kopf ist Klickfläche, KEIN Chevron.
+// Accordion macht der Aufrufer (offen/onToggle). Badge = Anzahl.
+function BausteinKarte({ titel, anzahl, sub, offen, onToggle, t, accent, children }) {
+  return (
+    <div style={{ background: t.surface,
+      border: "1px solid " + (offen ? accent + "60" : t.border),
+      borderRadius: RAD.md, minWidth: 0 }}>
+      <div onClick={onToggle} style={{ padding: "9px 12px", cursor: "pointer",
+        display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.bold,
+          color: t.text }}>
+          {titel}
+          {anzahl != null ? (
+            <span style={{ marginLeft: 6, fontSize: FS.xs, fontWeight: FW.bold,
+              color: accent, background: accent + "18", borderRadius: RAD.pill,
+              padding: "1px 7px" }}>{anzahl}</span>
+          ) : null}
+        </div>
+        {sub ? (
+          <div style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0 }}>{sub}</div>
+        ) : null}
+      </div>
+      {offen ? (
+        <div style={{ padding: "0 10px 10px 10px" }}>{children}</div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── AuftragNeuForm — Auftrag im Vorgang anlegen (§6b: an wen/was/bis wann) ──
+// „Womit" (zugrundeliegendes Angebot) kommt mit der Angebots-Verbreiterung.
+// Ohne Firma bleibt er „erfasst" (Entwurf); mit Firma wird direkt beauftragt.
+function AuftragNeuForm({ vorgangId, firmen, t, accent, onWelt, DatumFeld, onFertig }) {
+  const [beschreibung, setBeschreibung] = useState("");
+  const [firmaId, setFirmaId] = useState("");
+  const [frist, setFrist] = useState("");
+  const legeAn = () => {
+    if (!beschreibung.trim()) return;
+    const d = { vorgang_id: vorgangId, beschreibung: beschreibung.trim() };
+    onWelt((w) => {
+      const a = neuerAuftrag(d);
+      let neu = Object.assign({}, w, { auftraege: [...w.auftraege, a] });
+      if (firmaId) {
+        neu = weltAuftragBeauftragen(neu, a.id,
+          { firma_kontakt_id: firmaId, frist: frist || null });
+      }
+      return neu;
+    });
+    onFertig();
+  };
+  return (
+    <div style={flowZeileStil(t)}>
+      <label style={feldLabelStil(t)}>Was ist zu tun?</label>
+      <input value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)}
+        placeholder="z. B. Dach decken (abgegrenzter Leistungsteil)"
+        style={Object.assign({}, selectStil(t, accent, !!beschreibung), { marginBottom: 0 })}/>
+      <label style={feldLabelStil(t)}>An wen (Firma)</label>
+      <select value={firmaId} onChange={(e) => setFirmaId(e.target.value)}
+        style={Object.assign({}, selectStil(t, accent, !!firmaId), { marginBottom: 0 })}>
+        <option value="">— noch offen (nur erfassen) —</option>
+        {(firmen || []).map((f) => (
+          <option key={f.id} value={f.id}>{f.name || ""}</option>
+        ))}
+      </select>
+      {firmaId && DatumFeld ? (
+        <DatumFeld t={t} accent={accent} label="Bis wann (Ausführungsfrist)"
+          value={frist} onChange={setFrist} iso defaultHeute={false}/>
+      ) : null}
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+        <button onClick={onFertig} style={flowKnopf(t, accent, false)}>Abbrechen</button>
+        <button onClick={legeAn} style={flowKnopf(t, accent, true)}>
+          {firmaId ? "Beauftragen" : "Erfassen"}</button>
+      </div>
+    </div>
+  );
+}
 
 function eur(n) {
   if (n == null || isNaN(Number(n))) return "";
@@ -154,18 +311,28 @@ function baueVerlauf(vorgang, welt, kontakte) {
 function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null }) {
   const [schliessConfirm, setSchliessConfirm] = useState(false);
   const [loeschConfirm, setLoeschConfirm] = useState(false);
-  const [aufgabeFormOffen, setAufgabeFormOffen] = useState(false);
-  const [aufgabeTitel, setAufgabeTitel] = useState("");
-  const [rechnungFormOffen, setRechnungFormOffen] = useState(false);
-  const [rechnungBetrag, setRechnungBetrag] = useState("");
   const [ruhenFormOffen, setRuhenFormOffen] = useState(false);
   const [ruhenBis, setRuhenBis] = useState("");
-  const [notizFormOffen, setNotizFormOffen] = useState(false);
+  // Baustein-Stapel (§6, Umbau 11.07.): Accordion — genau EINE Karte offen.
+  // „+ Baustein" öffnet Karte samt Anlege-Form (Wachstum durch Hinzufügen,
+  // fester Katalog + eine freie Notiz — §6.2).
+  const [offenerBaustein, setOffenerBaustein] = useState(null);
+  const [formBaustein, setFormBaustein] = useState(null);
+  const [mehrOffen, setMehrOffen] = useState(false);
+  const [aufgabeTitel, setAufgabeTitel] = useState("");
+  const [rechnungBetrag, setRechnungBetrag] = useState("");
   const [notizText, setNotizText] = useState("");
+
   const farbe = ampelFarbe(vorgang, welt);
   const kat = vorgangKategorie(vorgang.kategorie);
   const hinweise = offen ? hinweiseFuerVorgang(vorgang, welt) : [];
   const verlauf = offen ? baueVerlauf(vorgang, welt, kontakte) : [];
+  const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  const einheit = vorgang.einheit_id
+    ? (einheiten.filter((e) => e.id === vorgang.einheit_id)[0] || null) : null;
+  const woText = einheit
+    ? (einheit.bezeichnung || einheit.nr || einheit.einheitLabel || "Einheit")
+    : "Ganzes Objekt / Gemeinschaft";
   const sub = [kat.label, "seit " + datumDe(vorgang.angelegt_am)]
     .filter(Boolean).join(" · ");
   const kannFlows = !!onWelt && vorgang.status !== "geschlossen";
@@ -177,11 +344,46 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
   const firmen = (kontakte || []).filter((k) => k && k.typ === "firma");
   const brauchtAbnahme = kategorieHatPhase(vorgang.kategorie, "abnahme");
   const keinsGewaehlt = angebote.filter((a) => !!a.wurde_zu_auftrag_id).length === 0;
+  const auftraegeOffen = auftraege.filter((a) => a.status !== "abgenommen").length;
+  const alleDurch = auftraege.length > 0 && auftraegeOffen === 0;
+  // Abschluss-Vorschlag (§8.0c): App schlägt vor, Mensch drückt den Knopf.
+  const abschlussReif = kannFlows && alleDurch
+    && aufgabenOffen.length === 0 && hinweise.length === 0;
 
+  // Ampel AUSGESCHRIEBEN (§5.3): Punkt + Klartext „Ball liegt bei wem".
+  const laufende = auftraege.filter(auftragLaeuft);
+  let ampelText;
+  if (vorgang.status === "geschlossen") {
+    ampelText = "Geschlossen";
+  } else if (hinweise.length > 0) {
+    ampelText = hinweise[0].text;
+  } else if (abschlussReif) {
+    ampelText = "Alles erledigt";
+  } else if (farbe === "gruen" && laufende.length > 0) {
+    const bei = nameVon(kontakte, laufende[0].firma_kontakt_id);
+    ampelText = "Läuft" + (bei ? " — Ball liegt bei " + bei : "")
+      + (laufende[0].frist ? ", bis " + datumDe(laufende[0].frist) : "");
+  } else {
+    ampelText = AMPEL_TITEL[farbe] || "";
+  }
+
+  // Fester Baustein-Katalog (§6.2) — Angebote folgen mit der Angebotsphase.
+  const katalog = [
+    { id: "auftraege", icon: "🛠", label: "Auftrag", sub: "An wen · was · bis wann" },
+    { id: "angebote", icon: "§", label: "Angebot", sub: "Anfragen oder erfassen (je Firma eins)" },
+    { id: "aufgaben", icon: "✓", label: "Aufgabe", sub: "Delegieren + nachhalten" },
+    { id: "rechnungen", icon: "€", label: "Rechnung", sub: "Betrag erfassen + prüfen" },
+    { id: "notiz", icon: "✎", label: "Notiz", sub: "Freier Text in die Akte" },
+  ];
+  const bausteinAdd = (id) => { setOffenerBaustein(id); setFormBaustein(id); };
+  const toggleBaustein = (id) => {
+    setOffenerBaustein(offenerBaustein === id ? null : id);
+    if (formBaustein && formBaustein !== id) setFormBaustein(null);
+  };
   const legeAufgabeAn = () => {
     if (!aufgabeTitel.trim()) return;
     onWelt((w) => weltAufgabeNeu(w, vorgang.id, { titel: aufgabeTitel.trim() }));
-    setAufgabeTitel(""); setAufgabeFormOffen(false);
+    setAufgabeTitel(""); setFormBaustein(null);
   };
   const erfasseRechnung = () => {
     const betrag = parseFloat(String(rechnungBetrag).replace(",", "."));
@@ -191,7 +393,12 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
       auftrag_id: abgenommene.length === 1 ? abgenommene[0].id
         : (auftraege.length === 1 ? auftraege[0].id : null),
       betrag: betrag }));
-    setRechnungBetrag(""); setRechnungFormOffen(false);
+    setRechnungBetrag(""); setFormBaustein(null);
+  };
+  const speichereNotiz = () => {
+    if (!notizText.trim()) return;
+    onWelt((w) => weltNotizNeu(w, vorgang.id, notizText.trim()));
+    setNotizText(""); setFormBaustein(null); setOffenerBaustein(null);
   };
 
   return (
@@ -211,27 +418,92 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
           overflowWrap: "anywhere" }}>{sub}</div>
       </div>
       {offen ? (
-        <div style={{ padding: "0 14px 12px 14px" }}>
-          {hinweise.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6,
-              marginBottom: 10 }}>
-              {hinweise.map((h, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <AmpelPunkt farbe={h.farbe}/>
-                  <div style={{ fontSize: FS.s, fontWeight: FW.med, color: t.text,
-                    minWidth: 0, overflowWrap: "anywhere", flex: 1 }}>{h.text}</div>
-                  {kannFlows && h.typ === "wiedervorlage" ? (
-                    <button style={flowKnopf(t, accent, true)}
-                      onClick={() => onWelt((w) => weltWiedervorlageAufheben(w, vorgang.id))}>
-                      Wieder aufnehmen</button>
-                  ) : null}
-                </div>
-              ))}
+        <div style={{ padding: "0 14px 12px 14px", display: "flex",
+          flexDirection: "column", gap: 8 }}>
+          {/* ══ Zone „Daten" (§5): führender Kopf — komplett ERRECHNET ══ */}
+          <div>
+            <div style={blockTitelStil(t)}>Daten</div>
+            <div style={{ fontSize: FS.s, color: t.muted }}>{woText}</div>
+            <PhasenLeiste vorgang={vorgang} welt={welt} t={t} accent={accent}/>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <AmpelPunkt farbe={farbe}/>
+              <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.med,
+                color: t.text, overflowWrap: "anywhere" }}>{ampelText}</div>
             </div>
-          ) : null}
-          {kannFlows && auftraege.length > 0 ? (
-            <div>
-              <div style={blockTitelStil(t)}>Aufträge</div>
+            {/* EIN nächster Schritt (§5.3) — prominent; Abschluss wirkt direkt */}
+            {abschlussReif ? (
+              <button onClick={() => onWelt((w) => weltVorgangSchliessen(w, vorgang.id))}
+                style={Object.assign({}, flowKnopf(t, accent, true), { marginTop: 8 })}>
+                Vorgang abschließen</button>
+            ) : null}
+            {!abschlussReif && hinweise.length > 0 ? (
+              <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: RAD.md,
+                background: AMPEL_FARBEN[hinweise[0].farbe] + "14",
+                border: "1px solid " + AMPEL_FARBEN[hinweise[0].farbe] + "50",
+                display: "flex", alignItems: "center", gap: 8 }}>
+                <AmpelPunkt farbe={hinweise[0].farbe}/>
+                <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.bold,
+                  color: t.text, overflowWrap: "anywhere" }}>
+                  {"Nächster Schritt: " + hinweise[0].text}</div>
+                {kannFlows && hinweise[0].typ === "wiedervorlage" ? (
+                  <button style={flowKnopf(t, accent, true)}
+                    onClick={() => onWelt((w) => weltWiedervorlageAufheben(w, vorgang.id))}>
+                    Wieder aufnehmen</button>
+                ) : null}
+              </div>
+            ) : null}
+            {hinweise.length > 1 ? (
+              <div style={{ marginTop: 6 }}>
+                <button onClick={() => setMehrOffen(!mehrOffen)}
+                  style={{ background: "none", border: "none", padding: 0,
+                    cursor: "pointer", fontSize: FS.xs, fontWeight: FW.bold,
+                    color: t.muted, fontFamily: "inherit" }}>
+                  {mehrOffen ? "Weitere ausblenden"
+                    : "+" + (hinweise.length - 1) + " weitere offene Punkte"}
+                </button>
+                {mehrOffen ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5,
+                    marginTop: 6 }}>
+                    {hinweise.slice(1).map((h, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <AmpelPunkt farbe={h.farbe}/>
+                        <div style={{ fontSize: FS.s, color: t.text, minWidth: 0,
+                          overflowWrap: "anywhere", flex: 1 }}>{h.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {kannFlows && vorgang.ruht_bis && vorgang.ruht_bis > isoHeute() ? (
+              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                <AmpelPunkt farbe="grau"/>
+                <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
+                  {"Ruht bis " + datumDe(vorgang.ruht_bis)}</div>
+                <button style={flowKnopf(t, accent, false)}
+                  onClick={() => onWelt((w) => weltWiedervorlageAufheben(w, vorgang.id))}>
+                  Aufheben</button>
+              </div>
+            ) : null}
+            {kannFlows && vorgang.wartet_auf_beschluss_id ? (
+              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                <AmpelPunkt farbe="grau"/>
+                <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
+                  Wartet auf ETV-Beschluss (Tagesordnung)</div>
+                <button style={flowKnopf(t, accent, false)}
+                  onClick={() => onWelt((w) => weltVorgangVonTagesordnung(w, vorgang.id))}>
+                  Herunternehmen</button>
+              </div>
+            ) : null}
+          </div>
+          {/* ══ Baustein-Stapel (§6): Karten erscheinen mit Inhalt, ══
+              ══ wachsen über „+ Baustein" — Kategorie zwingt nichts. ══ */}
+          {(auftraege.length > 0 || formBaustein === "auftraege") ? (
+            <BausteinKarte titel="Aufträge" anzahl={auftraege.length} t={t} accent={accent}
+              sub={auftraege.length === 0 ? null
+                : (auftraegeOffen > 0 ? auftraegeOffen + " offen" : "alle fertig")}
+              offen={offenerBaustein === "auftraege"}
+              onToggle={() => toggleBaustein("auftraege")}>
               {auftraege.map((a) => (
                 <AuftragFlowZeile key={a.id} auftrag={a}
                   brauchtAbnahme={brauchtAbnahme} firmen={firmen}
@@ -239,24 +511,48 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
                   onWelt={onWelt} DatumFeld={DatumFeld}
                   ve={ve} onFotoHinzu={onFotoHinzu}/>
               ))}
-            </div>
+              {kannFlows && formBaustein === "auftraege" ? (
+                <AuftragNeuForm vorgangId={vorgang.id} firmen={firmen} t={t}
+                  accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
+                  onFertig={() => setFormBaustein(null)}/>
+              ) : (kannFlows ? (
+                <button onClick={() => setFormBaustein("auftraege")}
+                  style={flowKnopf(t, accent, false)}>+ Auftrag</button>
+              ) : null)}
+            </BausteinKarte>
           ) : null}
-          {kannFlows && angebote.length > 0 ? (
-            <div>
-              <div style={blockTitelStil(t)}>Angebote</div>
+          {(angebote.length > 0 || formBaustein === "angebote") ? (
+            <BausteinKarte titel="Angebote" anzahl={angebote.length} t={t} accent={accent}
+              sub={angebote.length === 0 ? null
+                : (keinsGewaehlt ? "noch keins gewählt" : "gewählt")}
+              offen={offenerBaustein === "angebote"}
+              onToggle={() => toggleBaustein("angebote")}>
               {angebote.map((a) => (
                 <AngebotFlowZeile key={a.id} angebot={a} kontakte={kontakte}
                   keinsGewaehlt={keinsGewaehlt} t={t} accent={accent} onWelt={onWelt}/>
               ))}
-            </div>
+              {kannFlows && formBaustein === "angebote" ? (
+                <AngebotNeuForm vorgangId={vorgang.id} firmen={firmen} t={t}
+                  accent={accent} onWelt={onWelt}
+                  onFertig={() => setFormBaustein(null)}/>
+              ) : (kannFlows && keinsGewaehlt ? (
+                <button onClick={() => setFormBaustein("angebote")}
+                  style={flowKnopf(t, accent, false)}>+ Angebot</button>
+              ) : null)}
+            </BausteinKarte>
           ) : null}
-          {kannFlows && (rechnungen.length > 0 || kategorieHatPhase(vorgang.kategorie, "rechnung")) ? (
-            <div>
-              <div style={blockTitelStil(t)}>Rechnungen</div>
+          {(rechnungen.length > 0 || formBaustein === "rechnungen") ? (
+            <BausteinKarte titel="Rechnungen" anzahl={rechnungen.length} t={t} accent={accent}
+              sub={rechnungen.length === 0 ? null
+                : (rechnungen.filter((r) => r.status !== "bezahlt").length > 0
+                  ? rechnungen.filter((r) => r.status !== "bezahlt").length + " offen"
+                  : "alle bezahlt")}
+              offen={offenerBaustein === "rechnungen"}
+              onToggle={() => toggleBaustein("rechnungen")}>
               {rechnungen.map((r) => (
                 <RechnungFlowZeile key={r.id} rechnung={r} t={t} accent={accent} onWelt={onWelt}/>
               ))}
-              {rechnungFormOffen ? (
+              {kannFlows && formBaustein === "rechnungen" ? (
                 <div style={flowZeileStil(t)}>
                   <label style={feldLabelStil(t)}>Betrag (€)</label>
                   <input value={rechnungBetrag} inputMode="decimal"
@@ -264,70 +560,68 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
                     placeholder="z. B. 480"
                     style={Object.assign({}, selectStil(t, accent, !!rechnungBetrag), { marginBottom: 0 })}/>
                   <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <button onClick={() => setRechnungFormOffen(false)}
+                    <button onClick={() => setFormBaustein(null)}
                       style={flowKnopf(t, accent, false)}>Abbrechen</button>
                     <button onClick={erfasseRechnung}
                       style={flowKnopf(t, accent, true)}>Erfassen</button>
                   </div>
                 </div>
-              ) : (
-                <button onClick={() => setRechnungFormOffen(true)}
+              ) : (kannFlows ? (
+                <button onClick={() => setFormBaustein("rechnungen")}
                   style={flowKnopf(t, accent, false)}>+ Rechnung</button>
-              )}
-            </div>
+              ) : null)}
+            </BausteinKarte>
           ) : null}
-          {kannFlows ? (
-            <div>
-              <div style={blockTitelStil(t)}>Aufgaben</div>
+          {(aufgabenOffen.length > 0 || formBaustein === "aufgaben") ? (
+            <BausteinKarte titel="Aufgaben" anzahl={aufgabenOffen.length} t={t} accent={accent}
+              offen={offenerBaustein === "aufgaben"}
+              onToggle={() => toggleBaustein("aufgaben")}>
               {aufgabenOffen.map((a) => (
                 <AufgabeFlowZeile key={a.id} aufgabe={a} t={t} accent={accent} onWelt={onWelt}/>
               ))}
-              {aufgabeFormOffen ? (
+              {kannFlows && formBaustein === "aufgaben" ? (
                 <div style={flowZeileStil(t)}>
                   <input value={aufgabeTitel}
                     onChange={(e) => setAufgabeTitel(e.target.value)}
                     placeholder="Was ist zu tun?"
                     style={Object.assign({}, selectStil(t, accent, !!aufgabeTitel), { marginBottom: 0 })}/>
                   <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <button onClick={() => setAufgabeFormOffen(false)}
+                    <button onClick={() => setFormBaustein(null)}
                       style={flowKnopf(t, accent, false)}>Abbrechen</button>
                     <button onClick={legeAufgabeAn}
                       style={flowKnopf(t, accent, true)}>Anlegen</button>
                   </div>
                 </div>
-              ) : (
-                <button onClick={() => setAufgabeFormOffen(true)}
+              ) : (kannFlows ? (
+                <button onClick={() => setFormBaustein("aufgaben")}
                   style={flowKnopf(t, accent, false)}>+ Aufgabe</button>
-              )}
-            </div>
+              ) : null)}
+            </BausteinKarte>
+          ) : null}
+          {formBaustein === "notiz" ? (
+            <BausteinKarte titel="Notiz" t={t} accent={accent}
+              offen={true} onToggle={() => { setFormBaustein(null); setOffenerBaustein(null); }}>
+              <div style={flowZeileStil(t)}>
+                <textarea value={notizText}
+                  onChange={(e) => setNotizText(e.target.value)} rows={2}
+                  placeholder="Notiz in die Akte …"
+                  style={Object.assign({}, selectStil(t, accent, !!notizText),
+                    { resize: "vertical", minHeight: 44, marginBottom: 0 })}/>
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  <button onClick={() => { setFormBaustein(null); setNotizText(""); }}
+                    style={flowKnopf(t, accent, false)}>Abbrechen</button>
+                  <button onClick={speichereNotiz}
+                    style={flowKnopf(t, accent, true)}>Speichern</button>
+                </div>
+              </div>
+            </BausteinKarte>
           ) : null}
           {kannFlows ? (
-            <div style={{ marginTop: 8 }}>
-              {notizFormOffen ? (
-                <div style={flowZeileStil(t)}>
-                  <textarea value={notizText}
-                    onChange={(e) => setNotizText(e.target.value)} rows={2}
-                    placeholder="Notiz in die Akte …"
-                    style={Object.assign({}, selectStil(t, accent, !!notizText),
-                      { resize: "vertical", minHeight: 44, marginBottom: 0 })}/>
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <button onClick={() => { setNotizFormOffen(false); setNotizText(""); }}
-                      style={flowKnopf(t, accent, false)}>Abbrechen</button>
-                    <button onClick={() => {
-                        if (!notizText.trim()) return;
-                        onWelt((w) => weltNotizNeu(w, vorgang.id, notizText.trim()));
-                        setNotizText(""); setNotizFormOffen(false);
-                      }} style={flowKnopf(t, accent, true)}>Speichern</button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => setNotizFormOffen(true)}
-                  style={flowKnopf(t, accent, false)}>+ Notiz</button>
-              )}
-            </div>
+            <NeueKarteMenu t={t} accent={accent} onAdd={bausteinAdd} optionen={katalog}/>
           ) : null}
+          {/* Verlauf — die Zeitleiste der Akte (Vorgeschichte, §5.1) */}
           <div style={{ borderTop: "1px solid " + t.border, paddingTop: 8,
-            marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+            display: "flex", flexDirection: "column", gap: 5 }}>
             {verlauf.map((e, i) => (
               <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                 <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
@@ -337,28 +631,8 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
               </div>
             ))}
           </div>
-          {kannFlows && vorgang.ruht_bis && vorgang.ruht_bis > isoHeute() ? (
-            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-              <AmpelPunkt farbe="grau"/>
-              <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
-                {"Ruht bis " + datumDe(vorgang.ruht_bis)}</div>
-              <button style={flowKnopf(t, accent, false)}
-                onClick={() => onWelt((w) => weltWiedervorlageAufheben(w, vorgang.id))}>
-                Aufheben</button>
-            </div>
-          ) : null}
-          {kannFlows && vorgang.wartet_auf_beschluss_id ? (
-            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-              <AmpelPunkt farbe="grau"/>
-              <div style={{ flex: 1, fontSize: FS.s, color: t.muted }}>
-                Wartet auf ETV-Beschluss (Tagesordnung)</div>
-              <button style={flowKnopf(t, accent, false)}
-                onClick={() => onWelt((w) => weltVorgangVonTagesordnung(w, vorgang.id))}>
-                Herunternehmen</button>
-            </div>
-          ) : null}
           {kannFlows && ruhenFormOffen ? (
-            <div style={Object.assign({}, flowZeileStil(t), { marginTop: 8 })}>
+            <div style={flowZeileStil(t)}>
               {DatumFeld ? (
                 <DatumFeld t={t} accent={accent} label="Ruhen bis"
                   value={ruhenBis} onChange={setRuhenBis} iso defaultHeute={false}/>
@@ -375,7 +649,7 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle, onW
             </div>
           ) : null}
           {onWelt ? (
-            <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end",
+            <div style={{ display: "flex", justifyContent: "flex-end",
               gap: 6, flexWrap: "wrap" }}>
               <button style={loeschConfirm
                   ? Object.assign({}, flowKnopf(t, accent, true),
@@ -1002,16 +1276,30 @@ function AufgabeFlowZeile({ aufgabe, t, accent, onWelt }) {
 }
 function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt }) {
   const [confirm, setConfirm] = useState(false);
+  const [summeFormOffen, setSummeFormOffen] = useState(false);
+  const [summe, setSumme] = useState("");
   const wer = nameVon(kontakte, angebot.firma_kontakt_id) || "ohne Firma";
+  const liegtVor = angebot.preis != null;
+  const erfasseSumme = () => {
+    const p = parseFloat(String(summe).replace(",", "."));
+    if (isNaN(p)) return;
+    onWelt((w) => Object.assign({}, w, {
+      angebote: w.angebote.map((x) => x.id === angebot.id
+        ? Object.assign({}, x, { preis: p }) : x),
+    }));
+    setSumme(""); setSummeFormOffen(false);
+  };
   return (
     <div style={flowZeileStil(t)}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.med,
           color: t.text, overflowWrap: "anywhere" }}>
-          {wer + (angebot.preis != null ? " · " + eur(angebot.preis) : "")}
+          {wer + (liegtVor ? " · " + eur(angebot.preis) : "")}
         </div>
         {angebot.wurde_zu_auftrag_id ? (
           <StatusPille t={t} farbe={AMPEL_FARBEN.gruen} text="Beauftragt"/>
+        ) : !liegtVor ? (
+          <StatusPille t={t} farbe={AMPEL_FARBEN.blau} text="Angefragt"/>
         ) : keinsGewaehlt ? (
           <button style={flowKnopf(t, accent, confirm)}
             onClick={() => {
@@ -1020,6 +1308,81 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
               setConfirm(false);
             }}>{confirm ? "Wirklich beauftragen?" : "Beauftragen"}</button>
         ) : null}
+      </div>
+      {angebot.notiz ? (
+        <div style={{ fontSize: FS.xs, color: t.muted,
+          overflowWrap: "anywhere" }}>{angebot.notiz}</div>
+      ) : null}
+      {/* Eintrudeln (§6a Moment 2): Summe nachtragen → Angebot „liegt vor". */}
+      {onWelt && !liegtVor && !angebot.wurde_zu_auftrag_id ? (
+        summeFormOffen ? (
+          <div>
+            <label style={feldLabelStil(t)}>Summe (€)</label>
+            <input value={summe} inputMode="decimal"
+              onChange={(e) => setSumme(e.target.value)}
+              placeholder="z. B. 4200"
+              style={Object.assign({}, selectStil(t, accent, !!summe), { marginBottom: 0 })}/>
+            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end",
+              marginTop: 6 }}>
+              <button onClick={() => setSummeFormOffen(false)}
+                style={flowKnopf(t, accent, false)}>Abbrechen</button>
+              <button onClick={erfasseSumme}
+                style={flowKnopf(t, accent, true)}>Liegt vor</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => setSummeFormOffen(true)}
+              style={flowKnopf(t, accent, false)}>Summe erfassen</button>
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+// ── AngebotNeuForm — Angebot einholen/erfassen (§6a Momente 1+2) ────────────
+// Pro Firma EIN Angebot-Objekt. Ohne Summe = „angefragt" (wird überfällig,
+// §4); mit Summe = „liegt vor". Die ausgehende Angebotsanfrage-Nachricht
+// (Anlass-Typ) dockt mit der Kommunikations-Karte an.
+function AngebotNeuForm({ vorgangId, firmen, t, accent, onWelt, onFertig }) {
+  const [firmaId, setFirmaId] = useState("");
+  const [summe, setSumme] = useState("");
+  const [notiz, setNotiz] = useState("");
+  const legeAn = () => {
+    if (!firmaId) return;
+    const p = parseFloat(String(summe).replace(",", "."));
+    onWelt((w) => Object.assign({}, w, {
+      angebote: [...w.angebote, neuesAngebot({
+        vorgang_id: vorgangId, firma_kontakt_id: firmaId,
+        preis: isNaN(p) ? null : p, notiz: notiz.trim(),
+      })],
+    }));
+    onFertig();
+  };
+  return (
+    <div style={flowZeileStil(t)}>
+      <label style={feldLabelStil(t)}>Von welcher Firma?</label>
+      <select value={firmaId} onChange={(e) => setFirmaId(e.target.value)}
+        style={Object.assign({}, selectStil(t, accent, !!firmaId), { marginBottom: 0 })}>
+        <option value="">Firma wählen …</option>
+        {(firmen || []).map((f) => (
+          <option key={f.id} value={f.id}>{f.name || ""}</option>
+        ))}
+      </select>
+      <label style={feldLabelStil(t)}>Summe (€) — leer = erst angefragt</label>
+      <input value={summe} inputMode="decimal"
+        onChange={(e) => setSumme(e.target.value)}
+        placeholder="z. B. 4200"
+        style={Object.assign({}, selectStil(t, accent, !!summe), { marginBottom: 0 })}/>
+      <label style={feldLabelStil(t)}>Notiz (optional)</label>
+      <input value={notiz} onChange={(e) => setNotiz(e.target.value)}
+        placeholder="z. B. inkl. Gerüst"
+        style={Object.assign({}, selectStil(t, accent, !!notiz), { marginBottom: 0 })}/>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+        <button onClick={onFertig} style={flowKnopf(t, accent, false)}>Abbrechen</button>
+        <button onClick={legeAn} style={flowKnopf(t, accent, true)}>
+          {summe ? "Liegt vor" : "Anfragen"}</button>
       </div>
     </div>
   );
@@ -1065,11 +1428,14 @@ const feldLabelStil = (t) => ({ fontSize: FS.s, fontWeight: FW.med,
 function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   onErfasseAuftrag, Inp, kontakteAlle = [] }) {
   const [modus, setModus] = useState("vorgang"); // "vorgang" | "auftrag"
-  // Vorgang-Felder
+  // Vorgang-Felder — Reihenfolge WER / WO / WAS (Umbau-Konzept §1): Der Melder
+  // ist IMMER ein Kontakt; „Ich / die Verwaltung" ist der Verwaltungs-Wer
+  // (Beschluss-Fall & Eigenfund). Ein Melder ohne Kontakt wäre eine
+  // kommunikative Sackgasse.
+  const [melderId, setMelderId] = useState(""); // "" = ich / die Verwaltung
+  const [einheitId, setEinheitId] = useState("");
   const [titel, setTitel] = useState("");
   const [kategorie, setKategorie] = useState("instandhaltung");
-  const [einheitId, setEinheitId] = useState("");
-  const [melderId, setMelderId] = useState(""); // "" = ich / die Verwaltung
   const [notiz, setNotiz] = useState("");
   // Auftrag-Felder + Begehungszähler
   const [beschreibung, setBeschreibung] = useState("");
@@ -1113,7 +1479,34 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
           </div>
           {modus === "vorgang" ? (
             <div>
-              <Inp t={t} accent={accent} label="Titel" required
+              {/* WER meldet — immer ein Kontakt (harte Regel §1). */}
+              <label style={feldLabelStil(t)}>Wer meldet?</label>
+              <select value={melderId}
+                onChange={(e) => setMelderId(e.target.value)}
+                style={selectStil(t, accent, true)}>
+                <option value="">Ich / die Verwaltung</option>
+                {(kontakteAlle || []).map((k) => (
+                  <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
+                ))}
+              </select>
+              {/* WO — „ganzes Objekt" ist gleichwertige Antwort. */}
+              {einheiten.length > 0 ? (
+                <div>
+                  <label style={feldLabelStil(t)}>Wo?</label>
+                  <select value={einheitId}
+                    onChange={(e) => setEinheitId(e.target.value)}
+                    style={selectStil(t, accent, true)}>
+                    <option value="">Ganzes Objekt / Gemeinschaft</option>
+                    {einheiten.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.bezeichnung || e.nr || e.einheitLabel || String(e.id)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {/* WAS — Sache + Kategorie (Kategorie = sanfter Vorschlag §6.2). */}
+              <Inp t={t} accent={accent} label="Was ist Sache?" required
                 value={titel} onChange={setTitel}
                 invalid={fehler && !titel.trim()}
                 placeholder="z. B. Wasserschaden Tiefgarage"/>
@@ -1125,33 +1518,9 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                   <option key={k.id} value={k.id}>{k.label}</option>
                 ))}
               </select>
-              {einheiten.length > 0 ? (
-                <div>
-                  <label style={feldLabelStil(t)}>Einheit (optional)</label>
-                  <select value={einheitId}
-                    onChange={(e) => setEinheitId(e.target.value)}
-                    style={selectStil(t, accent, !!einheitId)}>
-                    <option value="">Gemeinschaft / keine</option>
-                    {einheiten.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.bezeichnung || e.nr || e.einheitLabel || String(e.id)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-              <label style={feldLabelStil(t)}>Gemeldet von</label>
-              <select value={melderId}
-                onChange={(e) => setMelderId(e.target.value)}
-                style={selectStil(t, accent, !!melderId)}>
-                <option value="">Ich / die Verwaltung</option>
-                {(kontakteAlle || []).map((k) => (
-                  <option key={k.id} value={k.id}>{kontaktAnzeigename(k)}</option>
-                ))}
-              </select>
-              <label style={feldLabelStil(t)}>Erste Notiz (optional)</label>
+              <label style={feldLabelStil(t)}>Was wurde gemeldet? (optional)</label>
               <textarea value={notiz} onChange={(e) => setNotiz(e.target.value)}
-                rows={3} placeholder="Was wurde gemeldet?"
+                rows={3} placeholder="Erste Notiz in die Akte"
                 style={Object.assign({}, selectStil(t, accent, !!notiz),
                   { resize: "vertical", minHeight: 60 })}/>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end",

@@ -8502,6 +8502,7 @@ export {
   ANDERE_OPTION,
   DateiViewerModal,
   DokumenteAnsicht,
+  NeueKarteMenu,
   TechnikUebersichtAnsicht,
   EinheitZeile,
   HeaderFilterDropdown,

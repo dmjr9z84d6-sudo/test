@@ -2741,6 +2741,7 @@ function neuesAngebot(init) {
     vorgang_id: null,
     firma_kontakt_id: null,
     preis: null,                 // Zahl (EUR) oder null solange offen
+    notiz: "",                   // kurze Notiz zum Angebot (§6a: Summe + PDF + Notiz)
     gueltig_bis: null,           // treibt „Angebot veraltet"-Frist am Schreibtisch
     eingeholt_am: isoHeute(),
     wurde_zu_auftrag_id: null,   // die Verwandlung: gewähltes Angebot → Auftrag (nachvollziehbar)
