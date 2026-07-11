@@ -1429,4 +1429,4 @@ function VEKontakteTab({ ve, setVes, t, accent, kontakte, setKontakte, onKontakt
 
 
 
-export { VEKontakteTab, objektBezugInfo };
+export { VEKontakteTab, objektBezugInfo, KontaktZeile, KontaktDetailKarte };

@@ -1374,6 +1374,31 @@ function VerwendungenBadges({ ve, size = 20 }) {
 }
 
 // ── KontaktPicker (aus bausteine.jsx, ?. entfernt) ──────────────────────────
+// ── KontaktPickerMitAllen (§76-Kanonisierung des Kalender-Musters):
+// Standard = nur Kontakte MIT Objektbezug, Checkbox „Alle Kontakte
+// durchsuchen" schaltet auf den Gesamtbestand. Der Aufrufer liefert beide
+// Listen (Filter-Wissen bleibt beim Aufrufer — z. B. objektBezugInfo).
+function KontaktPickerMitAllen({ kontakteObjekt, kontakteAlle, t, accent, ...rest }) {
+  const [alleZeigen, setAlleZeigen] = useState(false);
+  const hatFilter = Array.isArray(kontakteObjekt)
+    && kontakteObjekt.length !== (kontakteAlle || []).length;
+  return (
+    <div>
+      <KontaktPicker t={t} accent={accent} {...rest}
+        kontakte={alleZeigen || !Array.isArray(kontakteObjekt) ? (kontakteAlle || []) : kontakteObjekt}/>
+      {hatFilter ? (
+        <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2,
+          fontSize: FS.s, color: t.sub, cursor: "pointer", userSelect: "none" }}>
+          <input type="checkbox" checked={alleZeigen}
+            onChange={e => setAlleZeigen(e.target.checked)}
+            style={{ accentColor: accent }}/>
+          Alle Kontakte durchsuchen (nicht nur die des Objekts)
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
 function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = true, nurFirmen = false, kontakte = [], setKontakte, onCreate }) {
   const [offen, setOffen] = useState(false);
   const [suche, setSuche] = useState("");
@@ -3761,7 +3786,7 @@ export {
   VerwendungBadge,
   aggregiereObjektVerwendungen,
   VerwendungenBadges,
-  KontaktPicker,
+  KontaktPicker, KontaktPickerMitAllen,
   EckPille,
   EigentumBlock,
   EigentumswechselVorgang,

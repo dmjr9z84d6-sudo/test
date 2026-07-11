@@ -18,15 +18,16 @@
 import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
-import { HeaderZurueck, KontaktPicker, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
+import { Avatar, HeaderZurueck, KontaktPicker, KontaktPickerMitAllen, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu } from "./liegenschaft.jsx";
-import { DESKTOP_MIN_WIDTH, useFristen, useVorlagen, useWindowWidth } from "./utils-icons.jsx";
+import { KontaktDetailKarte, KontaktZeile, objektBezugInfo } from "./kontakte.jsx";
+import { DESKTOP_MIN_WIDTH, useFristen, useVorlagen, useWindowWidth, useRollen, useFirmenRollen, useKontaktFarbe } from "./utils-icons.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
-  vorlageFuerSchritt, fuelleVorlage,
+  vorlageFuerSchritt, fuelleVorlage, fotoStandorte, fotoFindeRaum,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
   auftragsNummerNeu, angebotsNummerNeu,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
@@ -168,7 +169,7 @@ function BausteinKarte({ titel, anzahl, sub, offen, onToggle, t, accent, childre
 // ── AuftragNeuForm — Auftrag im Vorgang anlegen (§6b: an wen/was/bis wann) ──
 // „Womit" (zugrundeliegendes Angebot) kommt mit der Angebots-Verbreiterung.
 // Ohne Firma bleibt er „erfasst" (Entwurf); mit Firma wird direkt beauftragt.
-function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWelt, DatumFeld, onFertig }) {
+function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt = null, t, accent, onWelt, DatumFeld, onFertig }) {
   const [beschreibung, setBeschreibung] = useState("");
   const [firmaId, setFirmaId] = useState("");
   // §4.3: Ausführungsfrist-Default aus den Einstellungen — der am häufigsten
@@ -206,10 +207,11 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
       <input value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)}
         placeholder="z. B. Dach decken (abgegrenzter Leistungsteil)"
         style={Object.assign({}, selectStil(t, accent, !!beschreibung), { marginBottom: 0 })}/>
-      <KontaktPicker value={firmaId || null}
+      <KontaktPickerMitAllen value={firmaId || null}
         onChange={(id) => setFirmaId(id || "")}
         label="An wen (Firma) — leer = nur erfassen" t={t} accent={accent} nurFirmen
-        kontakte={pickerListe(firmen)}/>
+        kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
+        kontakteAlle={pickerListe(firmen)}/>
       {firmaId && DatumFeld ? (
         <DatumFeld t={t} accent={accent} label="Bis wann (Ausführungsfrist)"
           value={frist} onChange={setFrist} iso defaultHeute={false}/>
@@ -228,6 +230,53 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, t, accent, onWe
       </div>
     </div>
   );
+}
+
+// Objekt-Kontakte (Benny 11.07.): Auswahl zeigt ERST die Kontakte mit Bezug
+// zum Objekt (objektBezugInfo — dieselbe Logik wie der Objekt-Kontakte-Tab),
+// „Alle durchsuchen" schaltet um (KontaktPickerMitAllen-Baustein).
+function useObjektKontakte(kontakte, ve) {
+  const personenRollen = useRollen();
+  const firmenRollen = useFirmenRollen();
+  const farben = useKontaktFarbe();
+  if (!ve) return null; // kein Objekt-Kontext (z. B. Firmen-Sicht) → kein Filter
+  return (kontakte || []).filter((k) =>
+    k && objektBezugInfo(k, ve, personenRollen, firmenRollen, farben).hatBezug);
+}
+
+// Räume je Wo (Benny 11.07.): Objekt → Einheit → RAUM. Einheit gewählt →
+// Räume ihrer Teile; Gemeinschaft → Räume der Standorte (Häuser).
+function raeumeFuerWo(ve, einheitId) {
+  if (!ve) return [];
+  const raus = [];
+  if (einheitId) {
+    const e = (ve.einheiten || []).find((x) => x && String(x.id) === String(einheitId));
+    ((e && e.teile) || []).forEach((teil) => {
+      (teil.raeume || []).forEach((r) => { if (r) raus.push(r); });
+    });
+  } else {
+    (fotoStandorte(ve) || []).forEach((st) => {
+      (st.raeume || []).forEach((r) => { if (r) raus.push(r); });
+    });
+  }
+  return raus;
+}
+
+// Raum finden — über BEIDE Welten (Benny 11.07.): fotoFindeRaum kennt nur
+// die Gebäude-Karten (§93); Einheiten-Räume leben in ve.einheiten[].teile.
+function findeRaum(ve, raumId) {
+  if (!ve || !raumId) return null;
+  const ausKarten = fotoFindeRaum(ve, raumId);
+  if (ausKarten) return ausKarten;
+  const einheiten = Array.isArray(ve.einheiten) ? ve.einheiten : [];
+  for (let i = 0; i < einheiten.length; i++) {
+    const teile = (einheiten[i] && einheiten[i].teile) || [];
+    for (let j = 0; j < teile.length; j++) {
+      const r = (teile[j].raeume || []).find((x) => x && String(x.id) === String(raumId));
+      if (r) return r;
+    }
+  }
+  return null;
 }
 
 // KontaktPicker-Adapter (§76): der kanonische Baustein erwartet ein
@@ -380,11 +429,17 @@ function baueVerlauf(vorgang, welt, kontakte) {
 // STILL (löst nie eine Nachricht aus, macht nur erreichbar) — die Oberfläche
 // bietet danach DEZENT „auch informieren?" an: zwei bewusste Handgriffe.
 // ═════════════════════════════════════════════════════════════════════════
-function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, t, accent, kannFlows, onWelt, onInformieren }) {
+// Rollen-Gruppen-Optik (Icons analog KONTAKT_KATEGORIEN im Objekt-Kontakte-Tab)
+const BETEILIGTE_GRUPPEN_ICON = {
+  fallfuehrer: "🧭", melder: "📣", betroffener: "🏠", mitinformiert: "👥",
+  extern: "🌐", ausfuehrender: "🛠", pruefer: "✓",
+};
+function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, kontakteObjekt = null, ve = null, t, accent, kannFlows, onWelt, onInformieren }) {
   const [formOffen, setFormOffen] = useState(false);
   const [kontaktId, setKontaktId] = useState("");
   const [rolle, setRolle] = useState("betroffener");
-  const [frisch, setFrisch] = useState(null); // kontakt_id des eben Hinzugefügten → „auch informieren?"
+  const [frisch, setFrisch] = useState(null);
+  const [offenerKontakt, setOffenerKontakt] = useState(null); // "beteiligungId" → aufgeklappte Karte
   const aktive = beteiligungen.filter((b) => b.status !== "beendet");
   const beendete = beteiligungen.filter((b) => b.status === "beendet");
   const fuegeHinzu = () => {
@@ -402,30 +457,87 @@ function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, t, accent, kannFlo
         ? Object.assign({}, x, { status: "beendet", bis: isoHeute() }) : x),
     }));
   };
+  // Beteiligungs-Zeile im Objekt-Kontakte-Muster: kleine KontaktZeile,
+  // Klick klappt die echte KontaktDetailKarte auf (derselbe Baustein wie im
+  // Objekt-Kontakte-Tab — direkter Griff zu Telefon & Co.).
   const zeile = (b, beendet) => {
-    const name = b.kontakt_id ? nameVon(kontakte, b.kontakt_id) : "die Verwaltung";
-    return (
-      <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0, fontSize: FS.s,
-          color: beendet ? t.muted : t.text, overflowWrap: "anywhere" }}>
-          {name || "Unbekannt"}
-          <span style={{ color: t.muted }}>
-            {" · " + beteiligungRolle(b.rolle).label
-              + (beendet && b.bis ? " · bis " + datumDe(b.bis)
-                : (b.von ? " · seit " + datumDe(b.von) : ""))}</span>
-        </div>
+    const k = b.kontakt_id ? (kontakte || []).filter((x) => x && x.id === b.kontakt_id)[0] : null;
+    const seitBis = beendet && b.bis ? "bis " + datumDe(b.bis)
+      : (b.von ? "seit " + datumDe(b.von) : "");
+    const rechts = (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <span style={{ fontSize: FS.xs, color: t.muted, whiteSpace: "nowrap" }}>{seitBis}</span>
         {kannFlows && !beendet && b.rolle !== "fallfuehrer" ? (
-          <button onClick={() => beende(b)}
+          <button onClick={(e) => { e.stopPropagation(); beende(b); }}
             style={flowKnopf(t, accent, false)}>Beenden</button>
         ) : null}
       </div>
     );
+    if (!k) {
+      // die Verwaltung (kein Kontakt-Datensatz) — schlichte Zeile
+      return (
+        <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10,
+          padding: "6px 2px", opacity: beendet ? 0.6 : 1 }}>
+          <Avatar name="die Verwaltung" size={30} accent={accent}/>
+          <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text }}>
+            die Verwaltung</div>
+          {rechts}
+        </div>
+      );
+    }
+    const offen = offenerKontakt === b.id;
+    return (
+      <div key={b.id} style={{ opacity: beendet ? 0.6 : 1 }}>
+        {offen ? (
+          <div style={{ margin: "6px 0 10px" }}>
+            <KontaktDetailKarte k={k} t={t} accent={accent}
+              kategorieFarbe={accent} ves={ve ? [ve] : []} kontakte={kontakte}
+              setKontakte={null} embedded
+              onKopfClick={() => setOffenerKontakt(null)}/>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+              {rechts}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <KontaktZeile k={k} ve={ve} t={t} accent={accent}
+                highlightAccent={accent} isActive={false}
+                onClick={() => setOffenerKontakt(b.id)}/>
+            </div>
+            {rechts}
+          </div>
+        )}
+      </div>
+    );
   };
+  // Rollen-Gruppen wie im Objekt-Kontakte-Tab: Kopf mit Icon · Label · Zähler,
+  // beendete Beteiligungen grau in ihrer Gruppe (Akte vergisst nichts).
+  const gruppen = BETEILIGUNG_ROLLEN.map((r) => ({
+    rolle: r,
+    aktive: aktive.filter((b) => b.rolle === r.id),
+    beendete: beendete.filter((b) => b.rolle === r.id),
+  })).filter((g) => g.aktive.length + g.beendete.length > 0);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {aktive.map((b) => zeile(b, false))}
-      {beendete.map((b) => zeile(b, true))}
-      {/* Nach dem stillen Hinzufügen: DEZENT anbieten — Beteiligung ≠ Information. */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {gruppen.map((g) => (
+        <div key={g.rolle.id} style={{ background: t.card,
+          border: "1px solid " + t.border, borderRadius: RAD.lg,
+          padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 16 }}>{BETEILIGTE_GRUPPEN_ICON[g.rolle.id] || "👤"}</span>
+            <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
+              {g.rolle.label}
+              <span style={{ color: t.muted, fontWeight: FW.med }}>
+                {"  (" + (g.aktive.length + g.beendete.length) + ")"}</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {g.aktive.map((b) => zeile(b, false))}
+            {g.beendete.map((b) => zeile(b, true))}
+          </div>
+        </div>
+      ))}
       {frisch ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8,
           padding: "6px 10px", borderRadius: RAD.md,
@@ -440,10 +552,11 @@ function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, t, accent, kannFlo
       ) : null}
       {kannFlows && formOffen ? (
         <div style={flowZeileStil(t)}>
-          <KontaktPicker value={kontaktId || null}
+          <KontaktPickerMitAllen value={kontaktId || null}
             onChange={(id) => setKontaktId(id || "")}
             label="Wer?" t={t} accent={accent}
-            kontakte={pickerListe(kontakte)}/>
+            kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
+            kontakteAlle={pickerListe(kontakte)}/>
           <label style={feldLabelStil(t)}>Rolle am Vorgang</label>
           <select value={rolle} onChange={(e) => setRolle(e.target.value)}
             style={Object.assign({}, selectStil(t, accent, true), { marginBottom: 0 })}>
@@ -493,7 +606,7 @@ function nachrichtGegenueber(n) {
   return n.richtung === "eingehend" ? (n.von_kontakt_id || null) : (n.an_kontakt_id || null);
 }
 
-function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, antwortAuf = null, vorKontaktId = null, vorAnlass = null }) {
+function NachrichtNeuForm({ vorgangId, kontakte, kontakteObjekt = null, t, accent, onWelt, onFertig, antwortAuf = null, vorKontaktId = null, vorAnlass = null }) {
   // Antwort nachtragen (§3.3): Gegenüber + Richtung „eingehend" vorbelegt,
   // antwort_auf_id schließt den Faden. §2/§3.1: Kontext setzt den Anlass —
   // „informieren" nach Hinzufügen eines Betroffenen bringt „Betroffenheit" mit.
@@ -534,10 +647,11 @@ function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, an
         <div style={{ fontSize: FS.xs, color: t.muted, overflowWrap: "anywhere" }}>
           {"Antwort auf: " + (antwortAuf.inhalt || antwortAuf.betreff || "Nachricht")}</div>
       ) : null}
-      <KontaktPicker value={gegenueberId || null}
+      <KontaktPickerMitAllen value={gegenueberId || null}
         onChange={(id) => setGegenueberId(id || "")}
         label="Mit wem? (leer = Akte-Notiz)" t={t} accent={accent}
-        kontakte={pickerListe(kontakte)}/>
+        kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
+        kontakteAlle={pickerListe(kontakte)}/>
       <SegmentControl t={t} accent={accent} voll={true}
         options={[{ id: "ausgehend", label: "Von mir (ausgehend)" },
           { id: "eingehend", label: "An mich (eingehend)" }]}
@@ -583,7 +697,7 @@ function NachrichtNeuForm({ vorgangId, kontakte, t, accent, onWelt, onFertig, an
   );
 }
 
-function KommunikationsBlock({ vorgang, nachrichten, kontakte, t, accent, kannFlows, onWelt, formAuto, onFormZu, vorKontaktId = null, vorAnlass = null }) {
+function KommunikationsBlock({ vorgang, nachrichten, kontakte, kontakteObjekt = null, t, accent, kannFlows, onWelt, formAuto, onFormZu, vorKontaktId = null, vorAnlass = null }) {
   const [sicht, setSicht] = useState("verlauf"); // "verlauf" | "chat"
   const [chatMit, setChatMit] = useState("");
   const [antwortAuf, setAntwortAuf] = useState(null); // Nachricht | null
@@ -684,7 +798,8 @@ function KommunikationsBlock({ vorgang, nachrichten, kontakte, t, accent, kannFl
         </div>
       )}
       {kannFlows && formOffen ? (
-        <NachrichtNeuForm vorgangId={vorgang.id} kontakte={kontakte} t={t}
+        <NachrichtNeuForm vorgangId={vorgang.id} kontakte={kontakte}
+          kontakteObjekt={kontakteObjekt} t={t}
           accent={accent} onWelt={onWelt} antwortAuf={antwortAuf}
           vorKontaktId={vorKontaktId} vorAnlass={vorAnlass}
           onFertig={() => { setAntwortAuf(null); onFormZu(); }}/>
@@ -737,6 +852,7 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle }) {
 // ═════════════════════════════════════════════════════════════════════════
 function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, zurueckKnopf = true }) {
   const [tab, setTab] = useState("uebersicht");
+  const kontakteObjekt = useObjektKontakte(kontakte, ve);
   const [tabZwang, setTabZwang] = useState({}); // Katalog erzwingt Tab vor erstem Inhalt
   const [offenerBaustein, setOffenerBaustein] = useState(null);
   const [formBaustein, setFormBaustein] = useState(null);
@@ -779,9 +895,11 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
   const einheit = vorgang.einheit_id
     ? (einheiten.filter((e) => e.id === vorgang.einheit_id)[0] || null) : null;
-  const woText = einheit
+  const raum = ve && vorgang.raum_id ? findeRaum(ve, vorgang.raum_id) : null;
+  const woText = (einheit
     ? (einheit.bezeichnung || einheit.nr || einheit.einheitLabel || "Einheit")
-    : "Ganzes Objekt / Gemeinschaft";
+    : "Ganzes Objekt / Gemeinschaft")
+    + (raum ? " · " + (raum.name || raum.bezeichnung || "Raum") : "");
   const objektText = ve ? ((ve.nr || ve.name || "") +
     (ve.adresse && ve.adresse.strasse ? " · " + ve.adresse.strasse : "")) : "";
   const kannFlows = !!onWelt && vorgang.status !== "geschlossen";
@@ -1068,6 +1186,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                 {auftraege.map((a) => (
                   <AuftragFlowZeile key={a.id} auftrag={a}
                     kategorieId={vorgang.kategorie} firmen={firmen}
+                    kontakteObjekt={kontakteObjekt}
                     abnahmen={abnahmenAlle.filter((ab) => ab.auftrag_id === a.id)}
                     kontakte={kontakte} t={t} accent={accent}
                     onWelt={onWelt} DatumFeld={DatumFeld}
@@ -1075,7 +1194,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                 ))}
                 {kannFlows && formBaustein === "auftraege" ? (
                   <AuftragNeuForm vorgangId={vorgang.id} kategorieId={vorgang.kategorie}
-                    firmen={firmen} t={t}
+                    firmen={firmen} kontakteObjekt={kontakteObjekt} t={t}
                     accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
                     onFertig={() => setFormBaustein(null)}/>
                 ) : (kannFlows ? (
@@ -1154,7 +1273,8 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 
         {tab === "beteiligte" ? (
           <BeteiligtenBlock vorgang={vorgang} beteiligungen={beteiligungen}
-            kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
+            kontakte={kontakte} kontakteObjekt={kontakteObjekt} ve={ve}
+            t={t} accent={accent} kannFlows={kannFlows}
             onWelt={onWelt}
             onInformieren={(kid) => {
               setInformierenKontakt(kid);
@@ -1165,7 +1285,8 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 
         {tab === "kommunikation" ? (
           <KommunikationsBlock vorgang={vorgang} nachrichten={nachrichten}
-            kontakte={kontakte} t={t} accent={accent} kannFlows={kannFlows}
+            kontakte={kontakte} kontakteObjekt={kontakteObjekt}
+            t={t} accent={accent} kannFlows={kannFlows}
             onWelt={onWelt} formAuto={formBaustein === "kommunikation"}
             vorKontaktId={informierenKontakt}
             vorAnlass={informierenKontakt ? "betroffenheit" : null}
@@ -1187,7 +1308,8 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                 keinsGewaehlt={keinsGewaehlt} t={t} accent={accent} onWelt={onWelt}/>
             ))}
             {kannFlows && formBaustein === "angebote" ? (
-              <AngebotNeuForm vorgangId={vorgang.id} firmen={firmen} t={t}
+              <AngebotNeuForm vorgangId={vorgang.id} firmen={firmen}
+                kontakteObjekt={kontakteObjekt} t={t}
                 accent={accent} onWelt={onWelt}
                 onFertig={() => setFormBaustein(null)}/>
             ) : (kannFlows && keinsGewaehlt ? (
@@ -1696,8 +1818,13 @@ const flowZeileStil = (t) => ({ display: "flex", flexDirection: "column",
 // Ein Auftrag mit seinem nächsten Schritt: erfasst→Beauftragen (Form),
 // beauftragt→In Arbeit, in_arbeit/nachbesserung→Fertig gemeldet,
 // fertiggemeldet→Abnehmen (Form) bzw. Abhaken (ohne Abnahme-Phase).
-function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null, abnahmen = [] }) {
+function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, kontakteObjekt = null, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null, abnahmen = [] }) {
   const firmaName = nameVon(kontakte, auftrag.firma_kontakt_id);
+  // Firma als KONTAKT-Zeile (Benny 11.07., Objekt-Kontakte-Muster): Klick
+  // klappt die echte KontaktDetailKarte auf — Telefon & Co. direkt greifbar.
+  const [firmaOffen, setFirmaOffen] = useState(false);
+  const firmaKontakt = auftrag.firma_kontakt_id
+    ? (kontakte || []).filter((k) => k && k.id === auftrag.firma_kontakt_id)[0] : null;
   const statusFarbe = AMPEL_FARBEN[ampelFarbeAuftrag(auftrag)];
   // §6b (Umbau): Abnahme PRO AUFTRAG — Schalter am Auftrag, Kategorie nur Default.
   const brauchtAbnahme = auftragBrauchtAbnahme(auftrag, kategorieId);
@@ -1728,6 +1855,20 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, t, ac
             <span style={{ color: t.muted }}>{" · bis " + datumDe(auftrag.frist)}</span>
           ) : null}
         </div>
+      {firmaKontakt ? (
+        firmaOffen ? (
+          <div style={{ margin: "2px 0 6px" }}>
+            <KontaktDetailKarte k={firmaKontakt} t={t} accent={accent}
+              kategorieFarbe={accent} ves={ve ? [ve] : []} kontakte={kontakte}
+              setKontakte={null} embedded
+              onKopfClick={() => setFirmaOffen(false)}/>
+          </div>
+        ) : (
+          <KontaktZeile k={firmaKontakt} ve={ve} t={t} accent={accent}
+            highlightAccent={accent} isActive={false}
+            onClick={() => setFirmaOffen(true)}/>
+        )
+      ) : null}
         <StatusPille t={t} farbe={statusFarbe}
           text={AUFTRAG_STATUS_LABEL[auftrag.status] || auftrag.status}/>
       </div>
@@ -1759,7 +1900,8 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, t, ac
         onFotoHinzu={onFotoHinzu}/>
       <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={brauchtAbnahme}
         rechnungErwartet={kategorieHatPhase(kategorieId, "rechnung")}
-        firmen={firmen} kontakte={kontakte} t={t} accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}/>
+        firmen={firmen} kontakte={kontakte} kontakteObjekt={kontakteObjekt}
+        t={t} accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}/>
     </div>
   );
 }
@@ -1832,7 +1974,7 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu }) {
 
 // Nur die Aktionen (Buttons + Mini-Formulare) — genutzt von AuftragFlowZeile
 // (Vorgangs-Detail) UND LoseAuftragKarte (Begehungsfund), ein Bau (§76).
-function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false, firmen, kontakte = [], t, accent, onWelt, DatumFeld }) {
+function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false, firmen, kontakte = [], kontakteObjekt = null, t, accent, onWelt, DatumFeld }) {
   const [formOffen, setFormOffen] = useState(null); // "beauftragen" | "abnehmen" | null
   const [firmaId, setFirmaId] = useState(auftrag.firma_kontakt_id || "");
   const fristen = useFristen();
@@ -1900,10 +2042,11 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false
       ) : null}
       {formOffen === "beauftragen" ? (
         <div>
-          <KontaktPicker value={firmaId || null}
+          <KontaktPickerMitAllen value={firmaId || null}
             onChange={(id) => setFirmaId(id || "")}
             label="Firma" t={t} accent={accent} nurFirmen
-            kontakte={pickerListe(firmen)}/>
+            kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
+            kontakteAlle={pickerListe(firmen)}/>
           {DatumFeld ? (
             <DatumFeld t={t} accent={accent} label="Zieldatum (optional)"
               value={frist} onChange={setFrist} iso defaultHeute={false}/>
@@ -1923,10 +2066,11 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false
                   ergebnis === o.id ? {} : { color: t.text })}>{o.label}</button>
             ))}
           </div>
-          <KontaktPicker value={prueferId || null}
+          <KontaktPickerMitAllen value={prueferId || null}
             onChange={(id) => setPrueferId(id || "")}
             label="Prüfer (leer = ich / die Verwaltung)" t={t} accent={accent}
-            kontakte={pickerListe(kontakte)}/>
+            kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
+            kontakteAlle={pickerListe(kontakte)}/>
           <label style={feldLabelStil(t)}>
             {ergebnis === "angenommen" ? "Notiz (optional)" : "Was ist Sache? (Notiz)"}</label>
           <textarea value={abnahmeNotiz}
@@ -2182,7 +2326,7 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
 // Pro Firma EIN Angebot-Objekt. Ohne Summe = „angefragt" (wird überfällig,
 // §4); mit Summe = „liegt vor". Die ausgehende Angebotsanfrage-Nachricht
 // (Anlass-Typ) dockt mit der Kommunikations-Karte an.
-function AngebotNeuForm({ vorgangId, firmen, t, accent, onWelt, onFertig }) {
+function AngebotNeuForm({ vorgangId, firmen, kontakteObjekt = null, t, accent, onWelt, onFertig }) {
   const [firmaId, setFirmaId] = useState("");
   const [summe, setSumme] = useState("");
   const [notiz, setNotiz] = useState("");
@@ -2204,10 +2348,11 @@ function AngebotNeuForm({ vorgangId, firmen, t, accent, onWelt, onFertig }) {
   };
   return (
     <div style={flowZeileStil(t)}>
-      <KontaktPicker value={firmaId || null}
+      <KontaktPickerMitAllen value={firmaId || null}
         onChange={(id) => setFirmaId(id || "")}
         label="Von welcher Firma?" t={t} accent={accent} nurFirmen
-        kontakte={pickerListe(firmen)}/>
+        kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
+        kontakteAlle={pickerListe(firmen)}/>
       <label style={feldLabelStil(t)}>Summe (€) — leer = erst angefragt</label>
       <input value={summe} inputMode="decimal"
         onChange={(e) => setSumme(e.target.value)}
@@ -2265,6 +2410,8 @@ const feldLabelStil = (t) => ({ fontSize: FS.s, fontWeight: FW.med,
 
 function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   onErfasseAuftrag, Inp, kontakteAlle = [] }) {
+  const kontakteObjektOv = useObjektKontakte(kontakteAlle, ve);
+  const [raumId, setRaumId] = useState("");
   const [modus, setModus] = useState("vorgang"); // "vorgang" | "auftrag"
   // Vorgang-Felder — Reihenfolge WER / WO / WAS (Umbau-Konzept §1): Der Melder
   // ist IMMER ein Kontakt; „Ich / die Verwaltung" ist der Verwaltungs-Wer
@@ -2286,7 +2433,8 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
     if (!titel.trim()) { setFehler(true); return; }
     onAnlegenVorgang({
       titel: titel.trim(), kategorie: kategorie,
-      einheit_id: einheitId || null, notiz: notiz.trim(),
+      einheit_id: einheitId || null, raum_id: raumId || null,
+      notiz: notiz.trim(),
       melder_kontakt_id: melderId || null,
     });
     onClose();
@@ -2318,16 +2466,17 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
           {modus === "vorgang" ? (
             <div>
               {/* WER meldet — immer ein Kontakt (harte Regel §1). */}
-              <KontaktPicker value={melderId || null}
+              <KontaktPickerMitAllen value={melderId || null}
                 onChange={(id) => setMelderId(id || "")}
                 label="Wer meldet? (leer = ich / die Verwaltung)" t={t} accent={accent}
-                kontakte={pickerListe(kontakteAlle)}/>
+                kontakteObjekt={kontakteObjektOv ? pickerListe(kontakteObjektOv) : null}
+                kontakteAlle={pickerListe(kontakteAlle)}/>
               {/* WO — „ganzes Objekt" ist gleichwertige Antwort. */}
               {einheiten.length > 0 ? (
                 <div>
                   <label style={feldLabelStil(t)}>Wo?</label>
                   <select value={einheitId}
-                    onChange={(e) => setEinheitId(e.target.value)}
+                    onChange={(e) => { setEinheitId(e.target.value); setRaumId(""); }}
                     style={selectStil(t, accent, true)}>
                     <option value="">Ganzes Objekt / Gemeinschaft</option>
                     {einheiten.map((e) => (
@@ -2338,6 +2487,28 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                   </select>
                 </div>
               ) : null}
+              {/* RAUM — die Verfeinerung nach Objekt/Einheit (Benny 11.07.):
+                  Räume der gewählten Einheit bzw. der Standorte (Gemeinschaft).
+                  Nur sichtbar, wenn es welche gibt — kein leeres Pflichtfeld. */}
+              {(() => {
+                const raeume = raeumeFuerWo(ve, einheitId);
+                if (raeume.length === 0) return null;
+                return (
+                  <div>
+                    <label style={feldLabelStil(t)}>Raum (optional)</label>
+                    <select value={raumId}
+                      onChange={(e) => setRaumId(e.target.value)}
+                      style={selectStil(t, accent, !!raumId)}>
+                      <option value="">— kein bestimmter Raum —</option>
+                      {raeume.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name || r.bezeichnung || "Raum"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })()}
               {/* WAS — Sache + Kategorie (Kategorie = sanfter Vorschlag §6.2). */}
               <Inp t={t} accent={accent} label="Was ist Sache?" required
                 value={titel} onChange={setTitel}

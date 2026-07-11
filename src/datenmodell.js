@@ -2481,7 +2481,7 @@ export function fotoAlbumLabel(album) {
 // des Objekts nach Einheit / Raum / Technik-Gerät. Reines Daten-Traversieren —
 // bewusst hier (und nicht in components), damit der Dateiname-Generator ohne
 // UI-Import auskommt.
-function fotoStandorte(ve) {
+export function fotoStandorte(ve) {
   const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
   return karten.filter(k => k && (k.kategorie === "gebaeude" || k.kategorie === "tiefgarage"));
 }
@@ -2713,6 +2713,7 @@ function neuerVorgang(init) {
     nummer: null,                // Vorgangsnummer JJMMTT+3-stellig (z. B. 260711001) — STABIL, wird kommuniziert
     objekt_id: null,             // WO (Gemeinschaftseigentum) — Pflicht im Alltag
     einheit_id: null,            // optional präziser (Sondereigentum / „WE 03")
+    raum_id: null,               // Verfeinerung (Benny 11.07.): Objekt → Einheit → RAUM
     titel: "",
     kategorie: "instandhaltung", // steuert Phasen (§96.1) + macht Portfolio filterbar
     versicherung: null,          // A1 (11.07.): Versicherungsfall = EIGENSCHAFT über der Kategorie.

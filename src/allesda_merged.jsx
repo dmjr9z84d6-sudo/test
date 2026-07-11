@@ -3240,7 +3240,8 @@ export default function App() {
               onAnlegenVorgang={(d) => {
                 const v = neuerVorgang({ objekt_id: anlegenVe.id,
                   nummer: vorgangsNummerNeu(vorgangsWelt),
-                  einheit_id: d.einheit_id, titel: d.titel, kategorie: d.kategorie,
+                  einheit_id: d.einheit_id, raum_id: d.raum_id || null,
+                  titel: d.titel, kategorie: d.kategorie,
                   ersteller_kontakt_id: d.melder_kontakt_id || null });
                 const bets = [neueBeteiligung({ vorgang_id: v.id, rolle: "fallfuehrer" })];
                 // Melder (Benny 09.07.): „Gemeldet von" — als Melder-Beteiligung
