@@ -204,6 +204,8 @@ import {
   TimelineBereich, DemoHinweis
 } from "./vorgang.jsx";
 
+import { EtvBereichFuerObjekt } from "./etv.jsx";
+
 
 import {
   AvatarIconsContext,
@@ -370,7 +372,7 @@ import {
 // Einstellungen-Modul (S8) — ausgelagert nach einstellungen.jsx. Kein Rück-
 // import aus dieser Datei nötig (EinstellungenZentrale bleibt im App-Rumpf).
 import {
-  SEKTIONEN, SektionSchnellzugriff, SektionDaten, SektionDokumente, SektionErscheinungsbild, SektionFilterOpt, SektionVorgaenge,
+  SEKTIONEN, SektionSchnellzugriff, SektionDaten, SektionDokumente, SektionErscheinungsbild, SektionEtv, SektionFilterOpt, SektionVorgaenge,
   SektionHV, SektionKalenderPanel, SektionKontakte, SektionObjekte, SektionProfil,
   SektionStatusleiste, SektionSuche, SektionTastatur, TASTATUR_AKTIONEN,
   dateiZuFotoDataUrl, tastaturBelegungVon, useStorageStatus
@@ -535,6 +537,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
         {s.id === "kontakte"    && <SektionKontakte settings={settings} setSettings={setSettings} t={t} accent={s.farbe} kontakte={kontakte}/>}
         {s.id === "statusleiste" && <SektionStatusleiste settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "vorgaenge"   && <SektionVorgaenge settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
+        {s.id === "etv"         && <SektionEtv settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "filter"      && <SektionFilterOpt settings={settings} setSettings={setSettings} t={t} accent={s.farbe} ves={ves} kontakte={kontakte}/>}
         {s.id === "kalender"    && <SektionKalenderPanel settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "dokumente"   && <SektionDokumente settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
@@ -1762,6 +1765,7 @@ export default function App() {
   // Aufgeklapptes Objekt in den Gerüst-Screens ETV bzw. Aufträge (gleiches
   // Master-Detail-Muster wie Kalender: Liste = Objekte, Detail = Override).
   const [etvViewVEId, setEtvViewVEId] = useState(null);
+  const [etvAkteId, setEtvAkteId] = useState(null); // offene ETV-Akte (§2b)
   const [auftragViewVEId, setAuftragViewVEId] = useState(null);
   // Sprung vom Schreibtisch (§96.8): dieser Vorgang wird beim Öffnen des
   // Objekt-Details direkt aufgeklappt (initialOffeneId + key-Remount).
@@ -1851,6 +1855,7 @@ export default function App() {
     else if (screenId === "technik") setTechnikViewVEId(null);
     else if (screenId === "legionellen") { setLegionellenViewVEId(null); setLegionellenEditMode(false); setLegionellenTimelineKey(null); }
     else if (screenId === "te") setTeViewVEId(null);
+    else if (screenId === "etv") { setEtvViewVEId(null); setEtvAkteId(null); }
     else if (screenId === "historie") setHistorieViewVEId(null);
     else if (screenId === "kommunikation") setKommunikationViewVEId(null);
     else if (screenId === "finanzen") { if (typeof setFinanzenViewVEId === "function") setFinanzenViewVEId(null); }
@@ -3036,7 +3041,8 @@ export default function App() {
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
             detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
-            viewVEId={etvViewVEId} setViewVEId={setEtvViewVEId}
+            viewVEId={etvViewVEId}
+            setViewVEId={(id) => { setEtvAkteId(null); setEtvViewVEId(id); }}
             istDesktop={istDesktop}
             titel="ETV" anzahl={(vesSichtbar || []).length}
             legendeAn={legendeSichtbar(effectiveSettings)}
@@ -3055,30 +3061,14 @@ export default function App() {
             }}
             emptyText="Keine Versammlungen für dieses Objekt."
             renderDetail={(veObj) => {
-              // Fake-Demo-Daten nur zum Layout-Testen (echte Quelle folgt).
+              // ETV-Welt (Konzept _03, Bau 12.07.): Versammlungsliste + Akte.
               const etvAccent = (effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#10B981";
-              const demo = [
-                { titel: "Ordentliche Eigentümerversammlung 2026", datum: "12.03.2026", status: "geplant" },
-                { titel: "Beschluss Fassadensanierung", datum: "04.11.2025", status: "erledigt" },
-                { titel: "Wirtschaftsplan-Genehmigung", datum: "21.06.2026", status: "offen" },
-              ];
               return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {demo.map((d, i) => (
-                    <div key={i} style={{ background: t.card, border: `1px solid ${t.border}`,
-                      borderRadius: RAD.lg, padding: "12px 14px", minWidth: 0,
-                      boxSizing: "border-box", width: "100%" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
-                          color: t.text, overflowWrap: "anywhere" }}>{d.titel}</div>
-                        <div style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
-                          color: getContrastColor(etvAccent), background: etvAccent,
-                          borderRadius: RAD.sm, padding: "2px 8px" }}>{d.status}</div>
-                      </div>
-                      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4 }}>{d.datum}</div>
-                    </div>
-                  ))}
-                </div>
+                <EtvBereichFuerObjekt ve={veObj} welt={vorgangsWelt}
+                  onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
+                  kontakte={kontakteSichtbar} settings={effectiveSettings}
+                  t={t} accent={etvAccent}
+                  akteId={etvAkteId} setAkteId={setEtvAkteId}/>
               );
             }}/>
         )}

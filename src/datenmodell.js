@@ -254,6 +254,18 @@ const DEFAULT_SETTINGS = {
     nachfass_vorlauf_tage: 7,    // übergreifend · INNEN (meine Uhr — Firma sieht ihn nie)
     rechnung_erwartet_tage: 14,  // übergreifend · innen (nach fertig, bis Mahnung)
   },
+  // ETV: Standard-TOP-Katalog (Konzept _03 §8.3) — KEIN fester Pflichtblock.
+  // Pflegbar in Einstellungen → ETV; wird per "TOP hinzufügen" in die
+  // Tagesordnung geholt (ordentlich/außerordentlich/Umlauf stellen sich
+  // ihr Programm selbst zusammen).
+  etvStandardTops: [
+    { id: "st1", titel: "Begrüßung und Feststellung der Beschlussfähigkeit", beschluss_noetig: false },
+    { id: "st2", titel: "Genehmigung der Jahresabrechnung", beschluss_noetig: true },
+    { id: "st3", titel: "Entlastung des Verwalters", beschluss_noetig: true },
+    { id: "st4", titel: "Genehmigung des Wirtschaftsplans", beschluss_noetig: true },
+    { id: "st5", titel: "Wahl des Verwaltungsbeirats", beschluss_noetig: true },
+    { id: "st6", titel: "Verschiedenes", beschluss_noetig: false },
+  ],
   hvLogoUrl: "",
   hvLogo: "",                  // hochgeladenes Logo (DataURL) — Vorrang vor hvLogoUrl im Listendruck
   tastaturAn: true,            // globale Tastaturkürzel aktiv
@@ -2939,18 +2951,327 @@ function neueAufgabe(init) {
   }, init || {});
 }
 function neuerBeschluss(init) {
-  // Platzhalter-Baustein (§5.9/§9, Schema-Lücke 2): minimales Interface, damit
-  // wartet_auf_beschluss_id / entstanden_aus_beschluss_id referenzieren können.
-  // Die volle ETV-Welt (Einladung, Tagesordnung, MEA-Stimmzählung, §24 WEG)
-  // wächst SPÄTER hinter dieser Referenz.
+  // ETV-Ausbau 12.07. (ETV_Konzept _03 §2.3): aus dem Platzhalter wird der
+  // volle Beschluss. Er trägt Wortlaut + Abstimmungsergebnis — der TOP
+  // referenziert ihn nur (beschluss_id). Die Beschluss-SAMMLUNG als eigene
+  // Kachel kommt später; das Objekt hier ist schon richtig geschnitten.
   return Object.assign({
     id: vgId("bes"),
     objekt_id: null,
-    status: "gefasst",           // gefasst | angefochten | bestandskraeftig
-    datum: null,
-    betreff: "",
+    versammlung_id: null,        // in welcher Versammlung gefasst
+    top_id: null,                // aus welchem TOP entstanden
+    vorgang_id: null,            // welcher Vorgang wurde beschlossen (Nahtstelle §9)
+    status: "gefasst",           // gefasst | abgelehnt | angefochten | bestandskraeftig
+    datum: null,                 // (Alt-Feld, bleibt für Bestand)
+    betreff: "",                 // (Alt-Feld, bleibt für Bestand)
+    titel: "",
+    wortlaut: "",
+    abstimmung: null,            // { ja, nein, enthaltung } — gewichtet nach Stimmprinzip
+    ergebnis: null,              // "angenommen" | "abgelehnt"
+    gefasst_am: null,
+    anfechtungsfrist_bis: null,  // gefasst_am + 1 Monat (§45 WEG)
+    jahr: null,
+    ist_besonders: false,        // Verwalter-Merker → ETV-Tab "Beschlüsse" (§2b)
     demo: false,
   }, init || {});
+}
+
+// ═══ ETV-Welt (ETV_Konzept_AllesDa_11_07_2026_03, Entscheidungs-Session) ════
+// Drei neue flache Listen an der EINEN Welt: versammlungen · tops ·
+// anwesenheiten. Jede Liste = künftige Supabase-Tabelle. Die ETV ist der
+// Knotenpunkt zwischen Vorgängen (naechste_etv-Filter) und Beschlüssen.
+
+// Zwei getrennte Achsen (§2.1): das WAS (versammlung_art) und das WIE (art).
+// Umlaufbeschluss = dieselbe Mechanik, nur schriftlich abgestimmt (Benny 12.07.).
+const ETV_ARTEN = [
+  { id: "ordentlich",       label: "Ordentliche ETV" },
+  { id: "ausserordentlich", label: "Außerordentliche ETV" },
+  { id: "umlauf",           label: "Umlaufbeschluss" },
+];
+const ETV_DURCHFUEHRUNG = [
+  { id: "praesenz", label: "Präsenz" },
+  { id: "hybrid",   label: "Hybrid" },
+  { id: "online",   label: "Online" },
+];
+// Phasen-Kette (§2b Tab 1) — Fortschritt der Versammlung, wie die
+// Vorgang-PhasenLeiste. Umlauf nutzt dieselbe Kette (eingeladen = versandt).
+const ETV_STATUS_KETTE = ["geplant", "eingeladen", "laeuft", "protokolliert", "abgeschlossen"];
+const ETV_STATUS_LABEL = {
+  geplant: "Geplant", eingeladen: "Eingeladen", laeuft: "Läuft",
+  protokolliert: "Protokolliert", abgeschlossen: "Abgeschlossen",
+};
+
+function neueVersammlung(init) {
+  return Object.assign({
+    id: vgId("etv"),
+    objekt_id: null,
+    versammlung_art: "ordentlich",  // ordentlich | ausserordentlich | umlauf (das WAS)
+    art: "praesenz",                // praesenz | hybrid | online (das WIE)
+    datum: null,                    // ISO
+    uhrzeit: "",
+    ort: "",
+    ladung_versendet_am: null,      // Fristnachweis (3-Wochen-Ladungsfrist)
+    status: "geplant",
+    archiviert: false,              // abgeschlossene ETVs → Archiv (§8.10)
+    stimmprinzip: "MEA",            // aus ve.etvStamm.abstimmung gespiegelt bei Anlage
+    wirtschaftsjahr: "",            // aus ve.etvStamm gespiegelt bei Anlage
+    leiter_kontakt_id: null,
+    protokollfuehrer_kontakt_id: null,
+    demo: false,
+  }, init || {});
+}
+
+// TOP (§2.2 + §2b Tab 2): wächst per Baustein-Katalog wie ein Vorgang.
+// bausteine[] steuert, welche Blöcke sichtbar sind (wortlaut | anlage |
+// abstimmung | aufgabe | notiz) — Inhalt liegt in den Feldern daneben.
+// Aufgaben sind hier eine schlanke TOP-Checkliste (KEINE Vorgangs-Aufgaben:
+// die hängen eisern an beteiligung_id — ETV hat keine Beteiligten-Struktur).
+function neuerTop(init) {
+  return Object.assign({
+    id: vgId("top"),
+    versammlung_id: null,
+    nummer: 0,                      // Anzeige-Nummer, folgt reihenfolge
+    titel: "",
+    text: "",
+    beschluss_noetig: false,
+    beschluss_id: null,             // FK → beschluss (null bis gefasst)
+    vorgang_id: null,               // Quelle 2: aus Vorgang (naechste_etv) entstanden
+    quelle: "frei",                 // standard | vorgang | frei
+    reihenfolge: 0,
+    bausteine: [],                  // sichtbare Blöcke (Katalog-IDs)
+    wortlaut: "",                   // Baustein Beschlussvorlage/Wortlaut
+    anlagen: [],                    // Baustein Anlage: [{id,titel}] — Datei-Anbindung folgt (§85)
+    aufgaben: [],                   // Baustein Aufgabe: [{id,text,erledigt}]
+    notiz: "",                      // Baustein Notiz (EINE freie Notiz, Vorgang-Muster)
+    demo: false,
+  }, init || {});
+}
+
+// Anwesenheit (§2.4): pro Versammlung, pro Eigentümer-Zeile. Zeilen werden
+// aus der Eigentümer-Struktur des Objekts ERZEUGT (MEA quotengewichtet wie
+// die Listengenerator-Anwesenheitsliste §62.5) und beim Erfassen gespeichert.
+function neueAnwesenheit(init) {
+  return Object.assign({
+    id: vgId("anw"),
+    versammlung_id: null,
+    kontakt_id: null,
+    einheit_id: null,
+    name: "",                       // Anzeige-Name (stabil, auch ohne kontakt_id)
+    einheit_nr: "",
+    mea: 0,                         // gewichtetes MEA dieser Zeile (§62.5)
+    anwesend: false,
+    vertreten_durch: "",            // Vollmacht/Vertretung (Freitext oder Name)
+    zugang: "praesenz",             // praesenz | link | login | schriftlich (Umlauf)
+    demo: false,
+  }, init || {});
+}
+
+// ── ETV-Baustein-Katalog (§2b Tab 2, Entscheidung 3b: die fünf) ────────────
+const TOP_BAUSTEINE = [
+  { id: "wortlaut",   label: "Beschlussvorlage / Wortlaut" },
+  { id: "anlage",     label: "Anlage" },
+  { id: "abstimmung", label: "Abstimmung" },
+  { id: "aufgabe",    label: "Aufgabe" },
+  { id: "notiz",      label: "Notiz" },
+];
+
+// ── ETV-Helfer (alles ERRECHNET, nichts doppelt gespeichert) ────────────────
+// Ladungsfrist-Ampel (§2b Tab 1): mind. 3 Wochen zwischen Ladung und Termin
+// (§24 IV WEG). gruen = gewahrt · gelb = noch nicht versendet, aber noch
+// möglich · rot = verletzt/nicht mehr möglich · null = kein Termin.
+function ladungsfristInfo(versammlung, heute) {
+  const jetzt = heute || isoHeute();
+  if (!versammlung || !versammlung.datum) return { status: null, text: "" };
+  const termin = new Date(versammlung.datum + "T00:00:00");
+  const MIN_TAGE = 21;
+  if (versammlung.ladung_versendet_am) {
+    const versandt = new Date(versammlung.ladung_versendet_am + "T00:00:00");
+    const abstand = Math.round((termin - versandt) / 86400000);
+    return abstand >= MIN_TAGE
+      ? { status: "gruen", text: "Ladungsfrist gewahrt (" + abstand + " Tage)" }
+      : { status: "rot", text: "Ladungsfrist verletzt (nur " + abstand + " Tage)" };
+  }
+  const rest = Math.round((termin - new Date(jetzt + "T00:00:00")) / 86400000);
+  if (rest >= MIN_TAGE) return { status: "gelb",
+    text: "Einladung offen — spätestens in " + (rest - MIN_TAGE) + " Tagen versenden" };
+  if (rest >= 0) return { status: "rot",
+    text: "Einladung offen — 3-Wochen-Frist nicht mehr einhaltbar" };
+  return { status: null, text: "" };
+}
+
+// Anfechtungsfrist: 1 Monat ab Beschlussfassung (§45 WEG).
+function anfechtungsfristBis(gefasstAmIso) {
+  if (!gefasstAmIso) return null;
+  const d = new Date(gefasstAmIso + "T00:00:00");
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function versammlungenFuerObjekt(welt, objektId) {
+  return (welt.versammlungen || []).filter((v) => v.objekt_id === objektId);
+}
+function topsFuerVersammlung(welt, versammlungId) {
+  return (welt.tops || []).filter((tp) => tp.versammlung_id === versammlungId)
+    .sort((a, b) => (a.reihenfolge || 0) - (b.reihenfolge || 0));
+}
+function anwesenheitenFuer(welt, versammlungId) {
+  return (welt.anwesenheiten || []).filter((a) => a.versammlung_id === versammlungId);
+}
+// Beschlussfähigkeit (§2b Tab 1): Summe anwesender/vertretener MEA.
+// Seit WEMoG ist jede Versammlung beschlussfähig — die Zahl bleibt trotzdem
+// die zentrale Orientierung im Raum ("anwesend 612/1000 MEA").
+function beschlussfaehigkeitInfo(anwesenheiten, gesamtanteile) {
+  const da = anwesenheiten.filter((a) => a.anwesend || a.vertreten_durch);
+  const summe = Math.round(da.reduce((s, a) => s + (Number(a.mea) || 0), 0) * 1000) / 1000;
+  const gesamt = Number(String(gesamtanteile || "1000").replace(",", ".")) || 1000;
+  return { summe, gesamt, zeilen: da.length,
+    text: "anwesend/vertreten " + String(summe).replace(".", ",") + " / "
+      + String(gesamt).replace(".", ",") + " MEA (" + da.length + " Stimmrechte)" };
+}
+
+// EIN prominenter nächster Schritt je Phase (Vorgang-Kopf-Muster §5).
+function etvNaechsterSchritt(versammlung, tops, anwesenheiten) {
+  const s = versammlung.status;
+  const schritte = [];
+  if (s === "geplant") {
+    if (!versammlung.datum) schritte.push("Termin festlegen");
+    if (tops.length === 0) schritte.push("Tagesordnung zusammenstellen");
+    schritte.push(versammlung.versammlung_art === "umlauf"
+      ? "Umlauf-Unterlagen versenden" : "Einladung versenden");
+  } else if (s === "eingeladen") {
+    schritte.push(versammlung.versammlung_art === "umlauf"
+      ? "Rückläufe erfassen" : "Anwesenheit erfassen");
+  } else if (s === "laeuft") {
+    const offen = tops.filter((tp) => tp.beschluss_noetig && !tp.beschluss_id).length;
+    if (offen > 0) schritte.push(offen + " Abstimmung" + (offen > 1 ? "en" : "") + " offen");
+    schritte.push("Versammlung abschließen (Protokoll)");
+  } else if (s === "protokolliert") {
+    schritte.push("Protokoll versenden");
+    schritte.push("Versammlung abschließen");
+  } else if (s === "abgeschlossen" && !versammlung.archiviert) {
+    schritte.push("Ins Archiv legen");
+  }
+  return schritte;
+}
+
+// ── Welt-Mutationen (rein, wie die welt*-Familie der Vorgänge) ──────────────
+function weltVersammlungNeu(welt, init) {
+  const v = neueVersammlung(init);
+  return [Object.assign({}, welt, { versammlungen: [...(welt.versammlungen || []), v] }), v];
+}
+function _ersetzeEtvIn(liste, id, patch) {
+  return (liste || []).map((x) => x.id === id ? Object.assign({}, x, patch) : x);
+}
+function weltVersammlungPatch(welt, id, patch) {
+  return Object.assign({}, welt, { versammlungen: _ersetzeEtvIn(welt.versammlungen, id, patch) });
+}
+function weltVersammlungLoeschen(welt, id) {
+  const topIds = (welt.tops || []).filter((tp) => tp.versammlung_id === id).map((tp) => tp.id);
+  return Object.assign({}, welt, {
+    versammlungen: (welt.versammlungen || []).filter((v) => v.id !== id),
+    tops: (welt.tops || []).filter((tp) => tp.versammlung_id !== id),
+    anwesenheiten: (welt.anwesenheiten || []).filter((a) => a.versammlung_id !== id),
+    // Gefasste Beschlüsse BLEIBEN (Dokumentation) — nur nicht-gefasste TOP-Reste weg.
+    beschluesse: (welt.beschluesse || []).filter((b) =>
+      !(b.top_id && topIds.indexOf(b.top_id) >= 0 && b.status !== "gefasst"
+        && b.status !== "bestandskraeftig" && b.status !== "angefochten")),
+  });
+}
+function weltTopNeu(welt, init) {
+  const vorhandene = topsFuerVersammlung(welt, init && init.versammlung_id);
+  const tp = neuerTop(Object.assign({}, init, {
+    reihenfolge: vorhandene.length,
+    nummer: vorhandene.length + 1,
+  }));
+  return Object.assign({}, welt, { tops: [...(welt.tops || []), tp] });
+}
+function weltTopPatch(welt, id, patch) {
+  return Object.assign({}, welt, { tops: _ersetzeEtvIn(welt.tops, id, patch) });
+}
+function weltTopLoeschen(welt, id) {
+  const tp = (welt.tops || []).find((x) => x.id === id);
+  let neu = Object.assign({}, welt, {
+    tops: (welt.tops || []).filter((x) => x.id !== id) });
+  // Kam der TOP aus einem Vorgang, geht der Vorgang zurück auf die Tagesordnung-
+  // Warteliste (naechste_etv) — er wurde ja noch nicht beschlossen.
+  if (tp && tp.vorgang_id && !tp.beschluss_id) {
+    neu = weltVorgangAufTagesordnung(neu, tp.vorgang_id);
+  }
+  // Nummern nachziehen (Anzeige folgt Reihenfolge).
+  return weltTopsNummerieren(neu, tp ? tp.versammlung_id : null);
+}
+function weltTopsNummerieren(welt, versammlungId) {
+  if (!versammlungId) return welt;
+  const geordnet = topsFuerVersammlung(welt, versammlungId);
+  const map = {};
+  geordnet.forEach((tp, i) => { map[tp.id] = { reihenfolge: i, nummer: i + 1 }; });
+  return Object.assign({}, welt, {
+    tops: (welt.tops || []).map((tp) => map[tp.id] ? Object.assign({}, tp, map[tp.id]) : tp),
+  });
+}
+function weltTopVerschieben(welt, id, richtung) {
+  const tp = (welt.tops || []).find((x) => x.id === id);
+  if (!tp) return welt;
+  const geordnet = topsFuerVersammlung(welt, tp.versammlung_id);
+  const idx = geordnet.findIndex((x) => x.id === id);
+  const ziel = idx + richtung;
+  if (ziel < 0 || ziel >= geordnet.length) return welt;
+  const neuOrd = geordnet.slice();
+  const tmp = neuOrd[idx]; neuOrd[idx] = neuOrd[ziel]; neuOrd[ziel] = tmp;
+  const map = {};
+  neuOrd.forEach((x, i) => { map[x.id] = { reihenfolge: i, nummer: i + 1 }; });
+  return Object.assign({}, welt, {
+    tops: (welt.tops || []).map((x) => map[x.id] ? Object.assign({}, x, map[x.id]) : x),
+  });
+}
+// Abstimmung auszählen → Beschluss fassen (Kern der Präsenz-Erfassung §4.1).
+// Erzeugt/aktualisiert das beschluss-Objekt, verknüpft den TOP und — Nahtstelle
+// §9 — löst einen wartenden Vorgang aus (Entscheidung ist gefallen, egal wie).
+function weltTopAbstimmen(welt, topId, stimmen) {
+  const tp = (welt.tops || []).find((x) => x.id === topId);
+  if (!tp) return welt;
+  const versammlung = (welt.versammlungen || []).find((v) => v.id === tp.versammlung_id) || {};
+  const ja = Number(stimmen.ja) || 0, nein = Number(stimmen.nein) || 0,
+    enth = Number(stimmen.enthaltung) || 0;
+  const angenommen = ja > nein; // einfache Mehrheit; Enthaltungen zählen nicht mit (§25 WEG)
+  const gefasstAm = versammlung.datum || isoHeute();
+  const patch = {
+    objekt_id: versammlung.objekt_id || null,
+    versammlung_id: tp.versammlung_id, top_id: tp.id,
+    vorgang_id: tp.vorgang_id || null,
+    titel: tp.titel, wortlaut: tp.wortlaut || tp.text || "",
+    abstimmung: { ja: ja, nein: nein, enthaltung: enth },
+    ergebnis: angenommen ? "angenommen" : "abgelehnt",
+    status: angenommen ? "gefasst" : "abgelehnt",
+    gefasst_am: gefasstAm,
+    anfechtungsfrist_bis: anfechtungsfristBis(gefasstAm),
+    jahr: Number(String(gefasstAm).slice(0, 4)) || null,
+  };
+  let neu;
+  if (tp.beschluss_id) {
+    neu = Object.assign({}, welt, {
+      beschluesse: _ersetzeEtvIn(welt.beschluesse, tp.beschluss_id, patch) });
+  } else {
+    const b = neuerBeschluss(patch);
+    neu = Object.assign({}, welt, {
+      beschluesse: [...(welt.beschluesse || []), b],
+      tops: _ersetzeEtvIn(welt.tops, tp.id, { beschluss_id: b.id }),
+    });
+  }
+  // Nahtstelle: der wartende Vorgang wacht auf — durch das EREIGNIS Beschluss.
+  if (tp.vorgang_id) neu = weltVorgangVonTagesordnung(neu, tp.vorgang_id);
+  return neu;
+}
+function weltBeschlussPatch(welt, id, patch) {
+  return Object.assign({}, welt, { beschluesse: _ersetzeEtvIn(welt.beschluesse, id, patch) });
+}
+function weltAnwesenheitenSetzen(welt, versammlungId, zeilen) {
+  return Object.assign({}, welt, {
+    anwesenheiten: [
+      ...(welt.anwesenheiten || []).filter((a) => a.versammlung_id !== versammlungId),
+      ...zeilen,
+    ],
+  });
 }
 
 // ── §96.6 · Die Welt als Ganzes: neun flache Listen ─────────────────────────
@@ -3043,6 +3364,10 @@ function normalisiereVorgangsWelt(roh) {
     rechnungen:    norm(r.rechnungen, neueRechnung),
     aufgaben:      norm(r.aufgaben, neueAufgabe),
     beschluesse:   norm(r.beschluesse, neuerBeschluss),
+    // ETV-Welt (Konzept _03): drei weitere flache Listen an derselben Welt.
+    versammlungen: norm(r.versammlungen, neueVersammlung),
+    tops:          norm(r.tops, neuerTop),
+    anwesenheiten: norm(r.anwesenheiten, neueAnwesenheit),
   });
 }
 function leereVorgangsWelt() { return normalisiereVorgangsWelt(null); }
@@ -3964,4 +4289,13 @@ export {
   weltVorgangLoeschen, weltAuftragLoeschen, weltDemoEntfernen, zaehleDemoDaten,
   vorgangLetzteAktivitaet, timelineEintraege, weltAuftragFotoRefs,
   _kontaktAnzeigename as kontaktAnzeigename,
+  // ETV-Welt (Konzept _03, Bau 12.07.)
+  ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL, TOP_BAUSTEINE,
+  neueVersammlung, neuerTop, neueAnwesenheit,
+  ladungsfristInfo, anfechtungsfristBis, versammlungenFuerObjekt,
+  topsFuerVersammlung, anwesenheitenFuer, beschlussfaehigkeitInfo,
+  etvNaechsterSchritt,
+  weltVersammlungNeu, weltVersammlungPatch, weltVersammlungLoeschen,
+  weltTopNeu, weltTopPatch, weltTopLoeschen, weltTopVerschieben,
+  weltTopAbstimmen, weltBeschlussPatch, weltAnwesenheitenSetzen,
 };

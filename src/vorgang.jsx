@@ -2714,7 +2714,7 @@ function DemoHinweis({ welt, t, accent, onWelt }) {
 }
 
 export {
-  AmpelPunkt, StatusPille, VorgangKarte, VorgangDetail, LoseAuftragKarte,
+  AmpelPunkt, StatusPille, BausteinKarte, VorgangKarte, VorgangDetail, LoseAuftragKarte,
   VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma,
   vorgangAnzahlFuerObjekt,
   SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay, AuftragFlowAktionen,

@@ -3774,6 +3774,64 @@ function SektionVorgaenge({ settings, setSettings, t, accent }) {
   );
 }
 
+// ── Sektion: ETV (Konzept _03 §8.3) — Standard-TOP-Katalog ──────────────────
+// KEIN fester Pflichtblock: die hier gepflegten TOPs werden in der Tages-
+// ordnung per „TOP hinzufügen" geholt (ordentlich/außerordentlich/Umlauf
+// stellen sich ihr Programm selbst zusammen).
+function SektionEtv({ settings, setSettings, t, accent }) {
+  const [neuTitel, setNeuTitel] = useState("");
+  const katalog = Array.isArray(settings.etvStandardTops) ? settings.etvStandardTops : [];
+  const setKatalog = (liste) => setSettings(st => ({ ...st, etvStandardTops: liste }));
+  return (
+    <EinstellKarte title="Standard-Tagesordnungspunkte" t={t} accent={accent}>
+      <div style={{ fontSize: FS.s, color: t.muted, marginBottom: 10 }}>
+        Dieser Katalog erscheint in jeder Versammlung unter „TOP hinzufügen".
+        Nichts wird automatisch gesetzt — jede Versammlung stellt ihr Programm
+        selbst zusammen.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {katalog.map((st) => (
+          <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input value={st.titel}
+              onChange={(ev) => setKatalog(katalog.map((x) =>
+                x.id === st.id ? { ...x, titel: ev.target.value } : x))}
+              style={{ flex: 1, minWidth: 0, fontSize: 16, padding: "6px 9px",
+                borderRadius: RAD.sm, border: `1px solid ${t.border}`,
+                background: t.card, color: t.text, boxSizing: "border-box",
+                fontFamily: "inherit" }}/>
+            <div style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0 }}>Beschluss</div>
+            <Toggle value={!!st.beschluss_noetig} color={accent}
+              onChange={(v) => setKatalog(katalog.map((x) =>
+                x.id === st.id ? { ...x, beschluss_noetig: v } : x))}/>
+            <button onClick={() => setKatalog(katalog.filter((x) => x.id !== st.id))}
+              title="Entfernen"
+              style={{ width: 28, height: 28, borderRadius: RAD.pill, flexShrink: 0,
+                border: `1px solid ${t.border}`, background: t.card, color: t.muted,
+                cursor: "pointer", lineHeight: 1 }}>×</button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <input value={neuTitel} onChange={(ev) => setNeuTitel(ev.target.value)}
+            placeholder="Neuen Standard-TOP hinzufügen…"
+            style={{ flex: 1, minWidth: 0, fontSize: 16, padding: "6px 9px",
+              borderRadius: RAD.sm, border: `1px solid ${t.border}`,
+              background: t.card, color: t.text, boxSizing: "border-box",
+              fontFamily: "inherit" }}/>
+          <button onClick={() => {
+              if (!neuTitel.trim()) return;
+              setKatalog([...katalog, { id: "st_" + Date.now().toString(36),
+                titel: neuTitel.trim(), beschluss_noetig: false }]);
+              setNeuTitel("");
+            }}
+            style={{ width: 30, height: 30, borderRadius: RAD.pill, flexShrink: 0,
+              border: "none", background: accent, color: getContrastColor(accent),
+              cursor: "pointer", fontSize: FS.l, lineHeight: 1 }}>+</button>
+        </div>
+      </div>
+    </EinstellKarte>
+  );
+}
+
 // ── Karte: Vorlagen (Textbausteine) je Arbeitsschritt ───────────────────────
 const VORLAGEN_SCHRITTE = [
   { id: "angebotsanfrage", label: "Angebotsanfrage" },
@@ -3945,6 +4003,7 @@ const SEKTIONEN = [
   { id: "kontakte",      icon: "users",    farbe: "#A855F7", title: "Kontakte",          sub: "Anzeige, Filter-Pillen, Gruppen" },
   { id: "statusleiste",  icon: "bell",     farbe: "#F97316", title: "Statusleiste",      sub: "Objekt- & Kontakt-Hinweise, Jahrestage" },
   { id: "vorgaenge",     icon: "clipboard", farbe: "#EF4444", title: "Vorgänge",          sub: "Fristen-Standards, Vorlagen (Textbausteine)" },
+  { id: "etv",           icon: "badge",    farbe: "#10B981", title: "ETV",               sub: "Standard-Tagesordnungspunkte" },
   { id: "filter",        icon: "search",   farbe: "#F59E0B", title: "Filter-Optionen",   sub: "Großer Filter im Header" },
   { id: "kalender",      icon: "calendar", farbe: "#F59E0B", title: "Kalender",          sub: "Wochenstart, KW, Termin-Bezeichnungen" },
   { id: "dokumente",     icon: "document", farbe: "#0E7490", title: "Dokumente",         sub: "Dokument-Karten, Anzeige" },
@@ -4016,6 +4075,7 @@ export {
   SektionProfil,
   SektionStatusleiste,
   SektionVorgaenge,
+  SektionEtv,
   SektionSuche,
   SektionTastatur,
   TASTATUR_AKTIONEN,
