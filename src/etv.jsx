@@ -22,7 +22,7 @@ import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggl
 import { AktionsButton } from "./kontakte-modul.jsx";
 import { BausteinKarte, StatusPille } from "./vorgang.jsx";
 import { TERegisterAnsicht, alleEinheitenVonVe } from "./objektansicht.jsx";
-import { gemeinschaftName, istEigentuemergemeinschaft, quoteAnteil, quoteLabel } from "./liegenschaft.jsx";
+import { gemeinschaftName, istEigentuemergemeinschaft } from "./liegenschaft.jsx";
 import { druckeHtml } from "./listen-tools.jsx";
 import {
   ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL,
@@ -48,29 +48,31 @@ const zahl = (v) => Number(String(v == null ? "" : v).replace(",", ".")) || 0;
 const meaStr = (v) => String(Math.round(zahl(v) * 1000) / 1000).replace(".", ",");
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// Anwesenheits-Zeilen aus der Eigentümer-Struktur ERZEUGEN (Listengenerator-
-// Logik §62.5: MEA quotengewichtet, Gemeinschaft = EIN Subjekt).
-function etvAnwesenheitZeilen(ve, versammlungId) {
+// Anwesenheits-Zeilen aus der Eigentümer-Struktur ERZEUGEN — Ausbau-Konzept §1
+// (12.07.): EINE Zeile pro EINHEIT = ein Stimmrecht. Alle Eigentümer stehen
+// namentlich drauf (Ehepaar/Erbengemeinschaft); es reicht, dass einer erscheint.
+// Die Quoten-Aufteilung (§62.5) wirkt hier NICHT — sie bleibt Grundbuch-Doku.
+// stimmgewicht nach Prinzip: MEA = einheit.mea · Objekt/Kopf = 1.
+function etvAnwesenheitZeilen(ve, versammlungId, stimmprinzip) {
   const rows = [];
+  const nachMea = (stimmprinzip || "MEA") === "MEA";
   alleEinheitenVonVe(ve).forEach((e) => {
     if (!e) return;
-    const meaRoh = zahl(e.mea);
-    if (istEigentuemergemeinschaft(e)) {
-      rows.push(neueAnwesenheit({ versammlung_id: versammlungId,
-        einheit_id: e.id != null ? e.id : null, einheit_nr: e.nr || "",
-        name: gemeinschaftName(e), mea: meaRoh }));
-      return;
-    }
+    let namen = "";
+    let ids = [];
     const aktive = (e.eigentuemer || []).filter((p) => p && eigStatus(p) === "aktiv");
-    aktive.forEach((p) => {
-      const anteil = quoteAnteil(p, e.eigentuemer);
-      const mea = meaRoh > 0 ? Math.round(meaRoh * anteil * 1000) / 1000 : 0;
-      const zusatz = aktive.length > 1 ? " (" + quoteLabel(p, e.eigentuemer) + ")" : "";
-      rows.push(neueAnwesenheit({ versammlung_id: versammlungId,
-        kontakt_id: p.kontaktId != null ? p.kontaktId : null,
-        einheit_id: e.id != null ? e.id : null, einheit_nr: e.nr || "",
-        name: (p.name || "") + zusatz, mea: mea }));
-    });
+    if (istEigentuemergemeinschaft(e)) {
+      namen = gemeinschaftName(e);
+      ids = aktive.filter((p) => p.kontaktId != null).map((p) => p.kontaktId);
+    } else {
+      namen = aktive.map((p) => p.name || "").filter(Boolean).join(" · ");
+      ids = aktive.filter((p) => p.kontaktId != null).map((p) => p.kontaktId);
+    }
+    if (!namen) return; // Einheit ohne aktive Eigentümer: kein Stimmrecht, keine Zeile
+    rows.push(neueAnwesenheit({ versammlung_id: versammlungId,
+      einheit_id: e.id != null ? e.id : null, einheit_nr: e.nr || "",
+      eigentuemer_namen: namen, eigentuemer_kontakt_ids: ids,
+      stimmgewicht: nachMea ? zahl(e.mea) : 1 }));
   });
   return rows;
 }
@@ -121,14 +123,22 @@ function AmpelZeile({ status, text, t }) {
 }
 
 // ── VersammlungNeuForm — Anlegen (Art · Termin · Ort · Durchführung) ────────
-function VersammlungNeuForm({ ve, kontakte, t, accent, onAnlegen, onAbbrechen }) {
+function VersammlungNeuForm({ ve, welt, kontakte, t, accent, onAnlegen, onAbbrechen }) {
+  // Vorbelegung aus der JUENGSTEN Versammlung des Objekts (Ausbau-Konzept §2.2):
+  // Ort, Leiter, Protokollfuehrer und Beirat wiederholen sich meist — einmal
+  // gepflegt, in die naechste ETV uebernommen (statt etvStamm-Doppelpflege).
+  const letzte = versammlungenFuerObjekt(welt || {}, ve.id)
+    .filter((v) => v.datum)
+    .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")))[0] || {};
   const [vArt, setVArt] = useState("ordentlich");
   const [datum, setDatum] = useState("");
-  const [uhrzeit, setUhrzeit] = useState("");
-  const [ort, setOrt] = useState("");
+  const [uhrzeit, setUhrzeit] = useState(letzte.uhrzeit || "");
+  const [ort, setOrt] = useState(letzte.ort || "");
   const [durch, setDurch] = useState("praesenz");
-  const [leiterId, setLeiterId] = useState("");
-  const [protokollId, setProtokollId] = useState("");
+  const [leiterId, setLeiterId] = useState(letzte.leiter_kontakt_id || "");
+  const [protokollId, setProtokollId] = useState(letzte.protokollfuehrer_kontakt_id || "");
+  const beiratVorsitzId = letzte.beirat_vorsitz_kontakt_id || null;
+  const beiratIds = letzte.beirat_mitglied_kontakt_ids || [];
   const istUmlauf = vArt === "umlauf";
   const stamm = (ve && ve.etvStamm) || {};
   const legeAn = () => {
@@ -141,6 +151,8 @@ function VersammlungNeuForm({ ve, kontakte, t, accent, onAnlegen, onAbbrechen })
       wirtschaftsjahr: stamm.wirtschaftsjahr || "",
       leiter_kontakt_id: leiterId || null,
       protokollfuehrer_kontakt_id: protokollId || null,
+      beirat_vorsitz_kontakt_id: beiratVorsitzId,
+      beirat_mitglied_kontakt_ids: beiratIds,
     });
   };
   return (
@@ -225,7 +237,7 @@ function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }
   const anw = anwesenheitenFuer(welt, versammlung.id);
   const frist = ladungsfristInfo(versammlung);
   const stamm = (ve && ve.etvStamm) || {};
-  const bf = beschlussfaehigkeitInfo(anw, stamm.gesamtanteile);
+  const bf = beschlussfaehigkeitInfo(anw, stamm.gesamtanteile, versammlung.stimmprinzip);
   const schritte = etvNaechsterSchritt(versammlung, tops, anw);
   const abgestimmt = tops.filter((tp) => tp.beschluss_noetig && tp.beschluss_id).length;
   const abstNoetig = tops.filter((tp) => tp.beschluss_noetig).length;
@@ -237,7 +249,7 @@ function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }
   // Anwesenheit erzeugen/aktualisieren.
   const anwErzeugen = () => {
     onWelt((w) => weltAnwesenheitenSetzen(w, versammlung.id,
-      etvAnwesenheitZeilen(ve, versammlung.id)));
+      etvAnwesenheitZeilen(ve, versammlung.id, versammlung.stimmprinzip)));
   };
   const anwPatch = (id, p) => {
     onWelt((w) => Object.assign({}, w, {
@@ -326,6 +338,12 @@ function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }
                 ? kontaktAnzeigename(kontakte, versammlung.leiter_kontakt_id) : "—"],
               ["Protokollführer", versammlung.protokollfuehrer_kontakt_id
                 ? kontaktAnzeigename(kontakte, versammlung.protokollfuehrer_kontakt_id) : "—"],
+              ["Beirat (Vorsitz)", versammlung.beirat_vorsitz_kontakt_id
+                ? kontaktAnzeigename(kontakte, versammlung.beirat_vorsitz_kontakt_id) : "—"],
+              ["Beirat (Mitglieder)", (versammlung.beirat_mitglied_kontakt_ids || []).length > 0
+                ? (versammlung.beirat_mitglied_kontakt_ids || [])
+                    .map((id) => kontaktAnzeigename(kontakte, id)).join(", ")
+                : "—"],
             ].map((z, i) => (
               <div key={i} style={{ display: "flex", gap: 8, fontSize: FS.s }}>
                 <div style={{ width: 150, flexShrink: 0, color: t.muted }}>{z[0]}</div>
@@ -348,14 +366,15 @@ function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }
       {/* Anwesenheit-Karte (Präsenz-Erfassung §4.1 / Umlauf-Rücklauf) */}
       <BausteinKarte t={t} accent={accent}
         titel={istUmlauf ? "Rücklauf (schriftlich)" : "Anwesenheit"}
-        anzahl={anw.length > 0 ? anw.filter((a) => a.anwesend || a.vertreten_durch).length + "/" + anw.length : null}
+        anzahl={anw.length > 0 ? anw.filter((a) => a.status === "anwesend" || a.status === "vertreten").length + "/" + anw.length : null}
         offen={offen === "anw"} onToggle={() => toggle("anw")}
         sub={anw.length > 0 ? bf.text : "noch nicht erfasst"}>
         {anw.length === 0 ? (
           <div>
             <div style={{ fontSize: FS.s, color: t.muted, marginBottom: 8 }}>
-              Erzeugt die Zeilen aus den Eigentümern des Objekts — MEA
-              quotengewichtet, Gemeinschaften als ein Stimmrecht (§62.5).
+              Erzeugt EINE Zeile je Einheit — ein Stimmrecht pro Einheit
+              (alle Eigentümer stehen drauf, einer genügt). Gewicht nach
+              Stimmprinzip ({versammlung.stimmprinzip || "MEA"}).
             </div>
             <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
               onClick={anwErzeugen} text={istUmlauf ? "Rücklauf-Liste erzeugen" : "Anwesenheitsliste erzeugen"}/>
@@ -363,24 +382,71 @@ function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {anw.map((a) => (
-              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8,
-                padding: "5px 0", borderBottom: "1px solid " + t.border }}>
-                <Toggle value={!!a.anwesend} color={accent}
-                  onChange={(v) => anwPatch(a.id, { anwesend: v,
-                    zugang: istUmlauf ? "schriftlich" : "praesenz" })}/>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text,
-                    overflowWrap: "anywhere" }}>{a.name || "—"}</div>
-                  <div style={{ fontSize: FS.xs, color: t.muted }}>
-                    {(a.einheit_nr ? "Einheit " + a.einheit_nr + " · " : "") + meaStr(a.mea) + " MEA"}
+              <div key={a.id} style={{ padding: "6px 0", borderBottom: "1px solid " + t.border }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text,
+                      overflowWrap: "anywhere" }}>{a.eigentuemer_namen || "—"}</div>
+                    <div style={{ fontSize: FS.xs, color: t.muted }}>
+                      {(a.einheit_nr ? "Einheit " + a.einheit_nr + " · " : "")
+                        + ((versammlung.stimmprinzip || "MEA") === "MEA"
+                          ? meaStr(a.stimmgewicht) + " MEA" : "1 Stimme")}
+                    </div>
                   </div>
+                  <SegmentControl t={t} accent={accent} voll={false}
+                    value={a.status || "abwesend"}
+                    onChange={(v) => anwPatch(a.id, { status: v,
+                      zugang: istUmlauf ? "schriftlich" : "praesenz" })}
+                    options={[{ id: "abwesend", label: "—" },
+                      { id: "anwesend", label: "da" },
+                      { id: "vertreten", label: "vertr." }]}/>
                 </div>
-                <input value={a.vertreten_durch || ""}
-                  onChange={(ev) => anwPatch(a.id, { vertreten_durch: ev.target.value })}
-                  placeholder="vertreten durch…"
-                  style={{ width: 130, flexShrink: 0, fontSize: 16, padding: "5px 8px",
-                    borderRadius: RAD.sm, border: "1px solid " + t.border,
-                    background: t.card, color: t.text, boxSizing: "border-box" }}/>
+                {a.status === "vertreten" ? (
+                  <div style={{ marginTop: 6, marginLeft: 10, paddingLeft: 10,
+                    borderLeft: "2px solid " + accent + "60",
+                    display: "flex", flexDirection: "column", gap: 6 }}>
+                    <input value={a.vertreten_durch || ""}
+                      onChange={(ev) => anwPatch(a.id, { vertreten_durch: ev.target.value })}
+                      placeholder="vertreten durch…"
+                      style={{ fontSize: 16, padding: "5px 8px", borderRadius: RAD.sm,
+                        border: "1px solid " + t.border, background: t.card,
+                        color: t.text, boxSizing: "border-box", width: "100%" }}/>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Toggle value={!!a.ist_verwaltervollmacht} color={accent}
+                        onChange={(v) => anwPatch(a.id, { ist_verwaltervollmacht: v })}/>
+                      <div style={{ fontSize: FS.xs, color: t.muted }}>
+                        Verwalter-Vollmacht (§25 WEG)</div>
+                    </div>
+                    {tops.filter((tp) => tp.beschluss_noetig).length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                          textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 3 }}>
+                          Weisungen (je TOP, fürs Protokoll)</div>
+                        {tops.filter((tp) => tp.beschluss_noetig).map((tp) => {
+                          const w = (a.weisungen || {})[tp.id] || "";
+                          const setW = (v) => {
+                            const neu = Object.assign({}, a.weisungen || {});
+                            if (v && v !== w) neu[tp.id] = v; else delete neu[tp.id];
+                            anwPatch(a.id, { weisungen: neu });
+                          };
+                          return (
+                            <div key={tp.id} style={{ display: "flex", alignItems: "center",
+                              gap: 8, padding: "3px 0" }}>
+                              <div style={{ flex: 1, minWidth: 0, fontSize: FS.xs,
+                                color: t.text, overflowWrap: "anywhere" }}>
+                                TOP {tp.nummer} · {tp.titel}</div>
+                              <SegmentControl t={t} accent={accent} voll={false}
+                                value={w} onChange={setW}
+                                options={[{ id: "ja", label: "Ja" },
+                                  { id: "nein", label: "Nein" },
+                                  { id: "enthaltung", label: "Enth." }]}/>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ))}
             <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: accent, marginTop: 6 }}>
@@ -429,6 +495,8 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
   const [ladung, setLadung] = useState(versammlung.ladung_versendet_am || "");
   const [leiterId, setLeiterId] = useState(versammlung.leiter_kontakt_id || "");
   const [protokollId, setProtokollId] = useState(versammlung.protokollfuehrer_kontakt_id || "");
+  const [beiratVorsitzId, setBeiratVorsitzId] = useState(versammlung.beirat_vorsitz_kontakt_id || "");
+  const [beiratIds, setBeiratIds] = useState(versammlung.beirat_mitglied_kontakt_ids || []);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <SegmentControl t={t} accent={accent} value={vArt} onChange={setVArt}
@@ -453,6 +521,34 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
         kontakteObjekt={null} kontakteAlle={kontakte}
         label="Protokollführer" value={protokollId || null}
         onChange={(id) => setProtokollId(id || "")}/>
+      <KontaktPickerMitAllen t={t} accent={accent}
+        kontakteObjekt={null} kontakteAlle={kontakte}
+        label="Verwaltungsbeirat (Vorsitz)" value={beiratVorsitzId || null}
+        onChange={(id) => setBeiratVorsitzId(id || "")}/>
+      <div>
+        <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+          textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
+          Beirat — weitere Mitglieder</div>
+        {beiratIds.map((id) => (
+          <div key={id} style={{ display: "flex", alignItems: "center", gap: 8,
+            padding: "3px 0" }}>
+            <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text,
+              overflowWrap: "anywhere" }}>{kontaktAnzeigename(kontakte, id)}</div>
+            <button onClick={() => setBeiratIds(beiratIds.filter((x) => x !== id))}
+              style={{ width: 26, height: 26, borderRadius: RAD.pill, flexShrink: 0,
+                border: "1px solid " + t.border, background: t.card, color: t.muted,
+                cursor: "pointer", lineHeight: 1 }}>×</button>
+          </div>
+        ))}
+        <KontaktPickerMitAllen t={t} accent={accent}
+          kontakteObjekt={null} kontakteAlle={kontakte}
+          label="Mitglied hinzufügen" value={null}
+          onChange={(id) => {
+            if (id && beiratIds.indexOf(id) === -1 && id !== beiratVorsitzId) {
+              setBeiratIds([...beiratIds, id]);
+            }
+          }}/>
+      </div>
       <div style={{ display: "flex", gap: 8 }}>
         <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
           onClick={() => onSave({ versammlung_art: vArt, datum: datum || null,
@@ -460,7 +556,9 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
             art: vArt === "umlauf" ? "online" : durch,
             ladung_versendet_am: ladung || null,
             leiter_kontakt_id: leiterId || null,
-            protokollfuehrer_kontakt_id: protokollId || null })}
+            protokollfuehrer_kontakt_id: protokollId || null,
+            beirat_vorsitz_kontakt_id: beiratVorsitzId || null,
+            beirat_mitglied_kontakt_ids: beiratIds })}
           text="Speichern"/>
         <AktionsButton rolle="abbrechen" variante="breit" t={t}
           onClick={onAbbruch} text="Abbrechen"/>
@@ -964,7 +1062,7 @@ function druckeEtvProtokoll(versammlung, ve, welt, kontakte) {
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const anw = anwesenheitenFuer(welt, versammlung.id);
   const stamm = (ve && ve.etvStamm) || {};
-  const bf = beschlussfaehigkeitInfo(anw, stamm.gesamtanteile);
+  const bf = beschlussfaehigkeitInfo(anw, stamm.gesamtanteile, versammlung.stimmprinzip);
   const topHtml = tops.map((tp) => {
     const b = tp.beschluss_id
       ? (welt.beschluesse || []).find((x) => x.id === tp.beschluss_id) || null : null;
@@ -989,14 +1087,30 @@ function druckeEtvProtokoll(versammlung, ve, welt, kontakte) {
     if (tp.notiz) inner += "<p><i>" + esc(tp.notiz) + "</i></p>";
     return "<h3>TOP " + tp.nummer + " · " + esc(tp.titel) + "</h3>" + (inner || "<p>—</p>");
   }).join("");
+  const nachMea = (versammlung.stimmprinzip || "MEA") === "MEA";
+  const mitWeisung = anw.filter((a) => a.status === "vertreten"
+    && a.weisungen && Object.keys(a.weisungen).length > 0);
+  const wLabel = { ja: "Ja", nein: "Nein", enthaltung: "Enthaltung" };
+  const weisungsHtml = mitWeisung.length === 0 ? ""
+    : "<h3>Vollmachten mit Weisung (§25 WEG)</h3>" + mitWeisung.map((a) => {
+        const teile = Object.keys(a.weisungen).map((topId) => {
+          const tp = tops.find((x) => x.id === topId);
+          return "TOP " + (tp ? tp.nummer : "?") + " " + (wLabel[a.weisungen[topId]] || "");
+        }).join(" · ");
+        return "<p>Einheit " + esc(a.einheit_nr) + " (" + esc(a.eigentuemer_namen)
+          + ") — vertreten durch " + esc(a.vertreten_durch || "—")
+          + (a.ist_verwaltervollmacht ? " [Verwalter-Vollmacht]" : "")
+          + ": " + esc(teile) + "</p>";
+      }).join("");
   const anwHtml = anw.length > 0
     ? "<h3>Anwesenheitsliste</h3><table><tr><th>Einheit</th><th>Eigentümer</th>"
-      + "<th>MEA</th><th>Anwesend</th><th>Vertreten durch</th></tr>"
-      + anw.map((a) => "<tr><td>" + esc(a.einheit_nr) + "</td><td>" + esc(a.name)
-        + "</td><td>" + meaStr(a.mea) + "</td><td>"
-        + (a.anwesend ? "ja" : (a.vertreten_durch ? "vertreten" : "nein"))
-        + "</td><td>" + esc(a.vertreten_durch) + "</td></tr>").join("")
-      + "</table><p><b>" + esc(bf.text) + "</b></p>"
+      + "<th>" + (nachMea ? "MEA" : "Stimme") + "</th><th>Status</th><th>Vertreten durch</th></tr>"
+      + anw.map((a) => "<tr><td>" + esc(a.einheit_nr) + "</td><td>" + esc(a.eigentuemer_namen)
+        + "</td><td>" + (nachMea ? meaStr(a.stimmgewicht) : "1") + "</td><td>"
+        + (a.status === "anwesend" ? "anwesend" : (a.status === "vertreten" ? "vertreten" : "—"))
+        + "</td><td>" + esc(a.vertreten_durch)
+        + (a.ist_verwaltervollmacht ? " (Verwalter-Vollmacht)" : "") + "</td></tr>").join("")
+      + "</table><p><b>" + esc(bf.text) + "</b></p>" + weisungsHtml
     : "";
   const kopf = "<p>"
     + "<b>Objekt:</b> " + esc((ve && (ve.nr || ve.name)) || "") + " · " + esc((ve && ve.adresse) || "") + "<br/>"
@@ -1012,6 +1126,14 @@ function druckeEtvProtokoll(versammlung, ve, welt, kontakte) {
       ? "<br/><b>Versammlungsleiter:</b> " + esc(kontaktAnzeigename(kontakte, versammlung.leiter_kontakt_id)) : "")
     + (versammlung.protokollfuehrer_kontakt_id
       ? "<br/><b>Protokollführer:</b> " + esc(kontaktAnzeigename(kontakte, versammlung.protokollfuehrer_kontakt_id)) : "")
+    + (versammlung.beirat_vorsitz_kontakt_id
+      ? "<br/><b>Verwaltungsbeirat (Vorsitz):</b> "
+        + esc(kontaktAnzeigename(kontakte, versammlung.beirat_vorsitz_kontakt_id))
+        + ((versammlung.beirat_mitglied_kontakt_ids || []).length > 0
+          ? " · Mitglieder: " + (versammlung.beirat_mitglied_kontakt_ids || [])
+              .map((id) => esc(kontaktAnzeigename(kontakte, id))).join(", ")
+          : "")
+      : "")
     + "</p>";
   const css = "h3{margin:14px 0 4px 0;font-size:13px} p{margin:4px 0;font-size:11px}"
     + " table{border-collapse:collapse;width:100%;font-size:10px}"
@@ -1110,7 +1232,7 @@ function EtvBereichFuerObjekt({ ve, welt, onWelt, kontakte, settings, t, accent,
         <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
           onClick={() => setNeuOffen(true)} text="Neue Versammlung"/>
       ) : (
-        <VersammlungNeuForm ve={ve} kontakte={kontakte} t={t} accent={accent}
+        <VersammlungNeuForm ve={ve} welt={welt} kontakte={kontakte} t={t} accent={accent}
           onAbbrechen={() => setNeuOffen(false)}
           onAnlegen={(init) => {
             const v = neueVersammlung(init);

@@ -3017,6 +3017,8 @@ function neueVersammlung(init) {
     wirtschaftsjahr: "",            // aus ve.etvStamm gespiegelt bei Anlage
     leiter_kontakt_id: null,
     protokollfuehrer_kontakt_id: null,
+    beirat_vorsitz_kontakt_id: null,   // Verwaltungsbeirat (Ausbau-Konzept §2.2, 12.07.)
+    beirat_mitglied_kontakt_ids: [],   // weitere Beiratsmitglieder
     demo: false,
   }, init || {});
 }
@@ -3047,23 +3049,45 @@ function neuerTop(init) {
   }, init || {});
 }
 
-// Anwesenheit (§2.4): pro Versammlung, pro Eigentümer-Zeile. Zeilen werden
-// aus der Eigentümer-Struktur des Objekts ERZEUGT (MEA quotengewichtet wie
-// die Listengenerator-Anwesenheitsliste §62.5) und beim Erfassen gespeichert.
+// Anwesenheit (§2.4, umgeschnitten 12.07. — Ausbau-Konzept §1): EINE Zeile pro
+// EINHEIT (ein Stimmrecht pro Einheit, egal wie viele Eigentümer — Ehepaar wie
+// Erbengemeinschaft). Die Quoten-Aufteilung (§62.5) wirkt hier NICHT mehr; sie
+// bleibt Grundbuch-Doku am Objekt. stimmgewicht folgt dem Stimmprinzip der
+// Versammlung (Objekt=1 | MEA=einheit.mea | Kopf=1). Vertretung strukturiert
+// (WER + optional Verwalter-Vollmacht + Weisungen je TOP, §25 III WEG —
+// Weisungen sind DOKU fürs Protokoll, KEINE Auto-Auszählung: Weg A).
 function neueAnwesenheit(init) {
-  return Object.assign({
+  const i = init || {};
+  // Alt-Format-Hebung (vor 13.75: eine Zeile pro Person, anwesend:bool,
+  // name, mea quotengewichtet). Grundsatz "keine Altlasten": in der Fabrik
+  // heben, Alt-Felder danach streichen.
+  const heb = {};
+  if (i.status === undefined && (i.anwesend !== undefined || i.vertreten_durch)) {
+    heb.status = i.anwesend ? "anwesend" : (i.vertreten_durch ? "vertreten" : "abwesend");
+  }
+  if (i.eigentuemer_namen === undefined && i.name !== undefined) heb.eigentuemer_namen = i.name;
+  if (i.stimmgewicht === undefined && i.mea !== undefined) heb.stimmgewicht = i.mea;
+  if (i.eigentuemer_kontakt_ids === undefined && i.kontakt_id != null) {
+    heb.eigentuemer_kontakt_ids = [i.kontakt_id];
+  }
+  const out = Object.assign({
     id: vgId("anw"),
     versammlung_id: null,
-    kontakt_id: null,
     einheit_id: null,
-    name: "",                       // Anzeige-Name (stabil, auch ohne kontakt_id)
     einheit_nr: "",
-    mea: 0,                         // gewichtetes MEA dieser Zeile (§62.5)
-    anwesend: false,
-    vertreten_durch: "",            // Vollmacht/Vertretung (Freitext oder Name)
+    eigentuemer_namen: "",          // ALLE Eigentümer der Einheit (Anzeige, ein String)
+    eigentuemer_kontakt_ids: [],    // Referenzen (für Kontaktkarten, Block 2)
+    stimmgewicht: 0,                // nach Prinzip: Objekt=1 | MEA=einheit.mea | Kopf=1
+    status: "abwesend",             // abwesend | anwesend | vertreten (ersetzt bool)
+    vertreten_durch: "",            // Anzeige-Name des Vertreters (Freitext)
+    vertreten_durch_kontakt_id: null, // strukturierte Vertretung (optional)
+    ist_verwaltervollmacht: false,  // Kennzeichen (rechtlich relevant, §25 III WEG)
+    weisungen: {},                  // { [topId]: "ja"|"nein"|"enthaltung" } — Doku (Weg A)
     zugang: "praesenz",             // praesenz | link | login | schriftlich (Umlauf)
     demo: false,
-  }, init || {});
+  }, i, heb);
+  delete out.anwesend; delete out.name; delete out.mea; delete out.kontakt_id;
+  return out;
 }
 
 // ── ETV-Baustein-Katalog (§2b Tab 2, Entscheidung 3b: die fünf) ────────────
@@ -3120,13 +3144,20 @@ function anwesenheitenFuer(welt, versammlungId) {
 // Beschlussfähigkeit (§2b Tab 1): Summe anwesender/vertretener MEA.
 // Seit WEMoG ist jede Versammlung beschlussfähig — die Zahl bleibt trotzdem
 // die zentrale Orientierung im Raum ("anwesend 612/1000 MEA").
-function beschlussfaehigkeitInfo(anwesenheiten, gesamtanteile) {
-  const da = anwesenheiten.filter((a) => a.anwesend || a.vertreten_durch);
-  const summe = Math.round(da.reduce((s, a) => s + (Number(a.mea) || 0), 0) * 1000) / 1000;
-  const gesamt = Number(String(gesamtanteile || "1000").replace(",", ".")) || 1000;
+function beschlussfaehigkeitInfo(anwesenheiten, gesamtanteile, stimmprinzip) {
+  const da = anwesenheiten.filter((a) => a.status === "anwesend" || a.status === "vertreten");
+  const summe = Math.round(da.reduce((s, a) => s + (Number(a.stimmgewicht) || 0), 0) * 1000) / 1000;
+  const prinzip = stimmprinzip || "MEA";
+  if (prinzip === "MEA") {
+    const gesamt = Number(String(gesamtanteile || "1000").replace(",", ".")) || 1000;
+    return { summe, gesamt, zeilen: da.length,
+      text: "anwesend/vertreten " + String(summe).replace(".", ",") + " / "
+        + String(gesamt).replace(".", ",") + " MEA (" + da.length + " Einheiten)" };
+  }
+  // Objekt-/Kopfprinzip: 1 Stimme je Einheit → Zählung über die Zeilen.
+  const gesamt = anwesenheiten.length;
   return { summe, gesamt, zeilen: da.length,
-    text: "anwesend/vertreten " + String(summe).replace(".", ",") + " / "
-      + String(gesamt).replace(".", ",") + " MEA (" + da.length + " Stimmrechte)" };
+    text: "anwesend/vertreten " + da.length + " / " + gesamt + " Einheiten (je 1 Stimme)" };
 }
 
 // EIN prominenter nächster Schritt je Phase (Vorgang-Kopf-Muster §5).
