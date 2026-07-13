@@ -6486,6 +6486,8 @@ const DOKUMENT_KATALOG = [
               { name: "Heimfall-Regelung", type: "text" } ] },
   { id: "baubeschreibung",     label: "Baubeschreibung",            icon: "🏗",
     felder: [ { name: "Baujahr", type: "number" } ] },
+  { id: "versammlungen",       label: "Versammlungen (ETV)",        icon: "🗳",
+    felder: [] },
 ];
 
 // Gemeinsame Basisfelder für jedes Dokument (vor den typspezifischen Feldern).
@@ -8500,9 +8502,11 @@ function HeaderFilterDropdown({ sektionen, value, onChange, t, anzahlGesamt = 0,
 
 export {
   ANDERE_OPTION,
+  DOKUMENT_KATALOG,
   DateiViewerModal,
   DokumenteAnsicht,
   NeueKarteMenu,
+  neueDokumentKarte,
   TechnikUebersichtAnsicht,
   EinheitZeile,
   HeaderFilterDropdown,

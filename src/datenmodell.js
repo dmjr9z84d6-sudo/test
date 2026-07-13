@@ -3042,6 +3042,9 @@ function neueVersammlung(init) {
     unterschrift_leiter_am: null,      // optionale digitale Erfassung (wer steht fest: Leiter)
     unterschrift_eigentuemer_am: null,
     unterschrift_beirat_am: null,      // Beiratsvorsitz (nur relevant wenn Beirat besteht)
+    // Versammlungs-Anlagen (Ausbau-Konzept §4.6, 13.07.): Anhänge fürs Protokoll,
+    // gleiche Referenz-Struktur wie TOP-Anlagen — {id, titel, quelle, refId, dateiRef}.
+    anlagen: [],
     demo: false,
   }, init || {});
 }
@@ -3065,7 +3068,7 @@ function neuerTop(init) {
     reihenfolge: 0,
     bausteine: [],                  // sichtbare Blöcke (Katalog-IDs)
     wortlaut: "",                   // Baustein Beschlussvorlage/Wortlaut
-    anlagen: [],                    // Baustein Anlage: [{id,titel}] — Datei-Anbindung folgt (§85)
+    anlagen: [],                    // Baustein Anlage (§4, 13.07.): [{id,titel,quelle:"dokument"|"foto",refId,dateiRef}] — jede Anlage braucht eine Datei
     aufgaben: [],                   // Baustein Aufgabe: [{id,text,erledigt}]
     notiz: "",                      // Baustein Notiz (EINE freie Notiz, Vorgang-Muster)
     demo: false,

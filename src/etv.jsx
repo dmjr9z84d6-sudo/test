@@ -22,11 +22,13 @@ import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggl
 import { AktionsButton } from "./kontakte-modul.jsx";
 import { BausteinKarte, StatusPille } from "./vorgang.jsx";
 import { TERegisterAnsicht, alleEinheitenVonVe } from "./objektansicht.jsx";
-import { gemeinschaftName, istEigentuemergemeinschaft } from "./liegenschaft.jsx";
+import { DateiViewerModal, gemeinschaftName, istEigentuemergemeinschaft, neueDokumentKarte } from "./liegenschaft.jsx";
+import { I } from "./utils-icons.jsx";
+import { dateiLaden, dateiLoeschen, dateiSpeichern } from "./utils-basis.js";
 import { druckeHtml } from "./listen-tools.jsx";
 import {
   ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL,
-  TOP_BAUSTEINE, eigStatus, kontaktNameVonId,
+  TOP_BAUSTEINE, eigStatus, kontaktNameVonId, fotoDateiname,
   ladungsfristInfo, einladungsStichtag, etvStammVomObjekt, etvSichtklasse,
   offeneOrdentlicheEtv, garantiereOffeneEtv,
   versammlungenFuerObjekt, topsFuerVersammlung,
@@ -318,10 +320,11 @@ function VersammlungZeile({ versammlung, welt, t, accent, onOeffnen }) {
 }
 
 // ── Tab 1 · ÜBERSICHT — errechneter Kopf + Stammdaten + Anwesenheit ─────────
-function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }) {
+function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, t, accent }) {
   const [offen, setOffen] = useState("stand");
   const [editStamm, setEditStamm] = useState(false);
   const [loeschStufe, setLoeschStufe] = useState(false);
+  const [bilderEinbetten, setBilderEinbetten] = useState(false);   // Druck-Haken §4.7
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const anw = anwesenheitenFuer(welt, versammlung.id);
   const frist = ladungsfristInfo(versammlung);
@@ -598,13 +601,30 @@ function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }
               value={versammlung.unterschrift_beirat_am || ""}
               onChange={(v) => patch({ unterschrift_beirat_am: v || null })} defaultHeute={false}/>
           ) : null}
+          <div>
+            <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+              textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
+              Anlagen zum Protokoll</div>
+            <AnlagenBlock t={t} accent={accent} ve={ve} onVePatch={onVePatch} welt={welt}
+              anlagen={versammlung.anlagen} gesperrt={false}
+              kontextTitel={"ETV " + (versammlung.datum ? versammlung.datum.slice(0, 4) : "")}
+              onAnlagen={(neu) => patch({ anlagen: neu })}/>
+          </div>
         </div>
       </BausteinKarte>
 
-      {/* Fuß-Aktionen: Protokoll · Archiv · Löschen */}
+      {/* Fuß-Aktionen: Protokoll (mit Bilder-Haken §4.7) · Archiv · Löschen */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+        <Toggle value={bilderEinbetten} color={accent} onChange={setBilderEinbetten}/>
+        <div style={{ fontSize: FS.s, color: t.text }}>
+          Bilder eingebettet drucken
+          <div style={{ fontSize: FS.xs, color: t.muted }}>
+            Bild-Anlagen als Abbildungen ins Protokoll; PDFs bleiben Verzeichnis-Einträge</div>
+        </div>
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
         <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-          onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte)}
+          onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten })}
           text="Protokoll drucken"/>
         {versammlung.status === "abgeschlossen" ? (
           <AktionsButton rolle={versammlung.archiviert ? "abbrechen" : "bestaetigen"}
@@ -709,8 +729,371 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
   );
 }
 
+// ── Anlage-Picker (Ausbau-Konzept §4, 13.07.) ────────────────────────────────
+// Zweistufiges Kachel-Modal (kanonisches Modal-Muster §76.4/§85.2):
+//   Stufe 1 · zwei Quellen-Kacheln (Vom Gerät / Aus Dokumenten und Fotos)
+//   Stufe 2a · Upload: Datei + Titelfeld (vorbelegt mit Auto-Namen). Datei landet
+//              als Zeile an der Katalog-Karte „Versammlungen (ETV)" — eine Wahrheit.
+//   Stufe 2b · Auswahl: Liste aller Objekt-Dokumente + Objekt-Fotos, antippen = wählen.
+// Kamera: KEIN eigener Button — der native iOS-Datei-Dialog bietet „Foto
+// aufnehmen" ohnehin an (§4.1, deckt sich mit §93.8).
+// Anlage-Referenz: {id, titel, quelle:"dokument"|"foto", refId, dateiRef}.
+const DOK_ACCEPT = ".pdf,image/*,.doc,.docx,.xls,.xlsx,.txt";
+
+function anlId() { return "anl_" + Date.now().toString(36) + Math.floor(Math.random() * 999); }
+
+// Alle Anlage-Referenzen der ETV-Welt eines Objekts (Mehrfach-Referenz-Prüfung §4.5).
+function alleEtvAnlagen(welt, objektId) {
+  const res = [];
+  (welt.versammlungen || []).forEach((v) => {
+    if (!v || v.objekt_id !== objektId) return;
+    (v.anlagen || []).forEach((a) => res.push(a));
+  });
+  (welt.tops || []).forEach((tp) => {
+    if (!tp) return;
+    (tp.anlagen || []).forEach((a) => res.push(a));
+  });
+  return res;
+}
+
+function AnlagePickerModal({ t, accent, ve, onVePatch, kontextTitel, onWahl, onClose }) {
+  const [stufe, setStufe] = useState("quellen");   // quellen | upload | auswahl
+  const [datei, setDatei] = useState(null);
+  const [titel, setTitel] = useState("");
+  const [fehler, setFehler] = useState("");
+  const [ladend, setLadend] = useState(false);
+
+  const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
+    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
+  const inputStyle = { width: "100%", padding: "8px 10px",
+    background: t.surface, color: t.text, border: "1px solid " + t.border,
+    borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
+
+  const dateiWaehlen = () => {
+    setFehler("");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = DOK_ACCEPT;
+    input.style.display = "none";
+    input.onchange = (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      try { document.body.removeChild(input); } catch (err) {}
+      if (!f) return;
+      const nm = (f.name || "").toLowerCase();
+      if (nm.endsWith(".heic") || nm.endsWith(".heif") || (f.type || "").indexOf("heic") >= 0) {
+        setFehler("HEIC-Fotos kann der Browser nicht anzeigen. Bitte am iPhone unter Einstellungen → Kamera → Formate „Maximale Kompatibilität\" wählen oder das Foto als JPEG teilen.");
+        return;
+      }
+      setDatei(f);
+      setTitel((kontextTitel ? kontextTitel + " · " : "") + (f.name || "Datei"));
+    };
+    document.body.appendChild(input);
+    input.click();
+  };
+
+  // Upload-Weg (§4.3): Blob speichern, Meta (name = Titel) an die Karte
+  // „Versammlungen (ETV)" hängen (Karte anlegen falls fehlend), Referenz melden.
+  const uploadSpeichern = () => {
+    if (!datei || !titel.trim() || ladend) return;
+    setLadend(true);
+    dateiSpeichern(datei).then((meta) => {
+      const m = Object.assign({}, meta, { name: titel.trim() });
+      let karte = (ve.dokumenteKarten || []).find((k) => k && k.dokumentId === "versammlungen");
+      let karteId;
+      if (karte) {
+        karteId = karte.id;
+        onVePatch((v) => Object.assign({}, v, {
+          dokumenteKarten: (v.dokumenteKarten || []).map((k) =>
+            (k && k.dokumentId === "versammlungen")
+              ? Object.assign({}, k, { dateien: [...(Array.isArray(k.dateien) ? k.dateien : []), m] })
+              : k),
+        }));
+      } else {
+        const neu = neueDokumentKarte("versammlungen");
+        neu.dateien = [m];
+        karteId = neu.id;
+        onVePatch((v) => Object.assign({}, v, {
+          dokumenteKarten: [...(v.dokumenteKarten || []), neu],
+        }));
+      }
+      onWahl({ id: anlId(), titel: titel.trim(), quelle: "dokument", refId: karteId, dateiRef: m.id });
+      onClose();
+    }).catch((err) => {
+      setLadend(false);
+      setFehler("Datei konnte nicht gespeichert werden: " + ((err && err.message) || "unbekannt"));
+    });
+  };
+
+  // Auswahl-Weg (§4.3): bestehende Dokumente + Fotos, per Referenz (keine Kopie).
+  const dokZeilen = [];
+  (ve.dokumenteKarten || []).forEach((k) => {
+    if (!k || !Array.isArray(k.dateien)) return;
+    k.dateien.forEach((m) => {
+      if (!m || !m.id) return;
+      dokZeilen.push({ label: (k.name || "Dokument") + " — " + (m.name || "Datei"),
+        quelle: "dokument", refId: k.id, dateiRef: m.id, titel: m.name || k.name || "Datei" });
+    });
+  });
+  const fotos = Array.isArray(ve.fotos) ? ve.fotos : [];
+  const fotoZeilen = fotos.map((f) => {
+    const nm = fotoDateiname(ve, f, fotos);
+    return { label: nm, quelle: "foto", refId: f.id, dateiRef: f.dateiRef, titel: nm };
+  });
+
+  const zeileStyle = { display: "flex", alignItems: "center", gap: 8, width: "100%",
+    padding: "9px 10px", border: "1px solid " + t.border, borderRadius: RAD.sm,
+    background: t.surface, color: t.text, cursor: "pointer", fontFamily: "inherit",
+    fontSize: FS.s, textAlign: "left", boxSizing: "border-box" };
+
+  const kachel = (label, beschr, iconName, onClick) => (
+    <button onClick={onClick} style={{
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+      padding: "18px 12px", minWidth: 0, boxSizing: "border-box",
+      background: t.surface, border: "2px solid " + t.border,
+      borderRadius: RAD.ml, cursor: "pointer", fontFamily: "inherit",
+      transition: "all 0.15s", textAlign: "center" }}>
+      <I name={iconName} size={22} color={t.sub}/>
+      <span style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{label}</span>
+      <span style={{ fontSize: FS.xs, color: t.sub, lineHeight: 1.3 }}>{beschr}</span>
+    </button>
+  );
+
+  return (
+    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.7)",
+      zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: t.card, border: "1px solid " + t.border,
+        borderRadius: RAD.xl, width: "100%", maxWidth: 480,
+        maxHeight: "90dvh", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid " + t.border,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          position: "sticky", top: 0, background: t.card, zIndex: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {stufe !== "quellen" ? (
+              <button onClick={() => { setStufe("quellen"); setFehler(""); setDatei(null); }}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                title="Zurück" aria-label="Zurück">
+                <I name="chevL" size={16} color={t.sub}/>
+              </button>
+            ) : <I name="plus" size={14} color={accent}/>}
+            <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>Anlage hinzufügen</span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}
+            title="Schließen" aria-label="Schließen">
+            <I name="x" size={16} color={t.sub}/>
+          </button>
+        </div>
+
+        <div style={{ padding: 16 }}>
+          {stufe === "quellen" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {kachel("Vom Gerät hochladen", "Datei, Foto oder Kamera", "document",
+                () => { setStufe("upload"); })}
+              {kachel("Aus Dokumenten und Fotos", "Vorhandenes des Objekts wählen", "eye",
+                () => { setStufe("auswahl"); })}
+            </div>
+          ) : null}
+
+          {stufe === "upload" ? (
+            <div>
+              <div style={{ marginBottom: 14 }}>
+                <div style={labelStyle}>Datei</div>
+                <button onClick={dateiWaehlen} style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 10,
+                  background: t.surface, border: "1px solid " + t.border,
+                  borderRadius: RAD.ms, padding: "10px 12px", cursor: "pointer",
+                  fontFamily: "inherit", boxSizing: "border-box", textAlign: "left" }}>
+                  <I name="document" size={16} color={datei ? accent : t.sub}/>
+                  <span style={{ fontSize: FS.s, color: datei ? t.text : t.sub,
+                    overflowWrap: "anywhere" }}>
+                    {datei ? datei.name : "Datei wählen (auch Kamera/Fotomediathek)"}</span>
+                </button>
+              </div>
+              {datei ? (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={labelStyle}>Titel der Anlage</div>
+                  <input value={titel} onChange={(ev) => setTitel(ev.target.value)} style={inputStyle}/>
+                </div>
+              ) : null}
+              {fehler ? (
+                <div style={{ fontSize: FS.s, color: "#EF4444", padding: "2px 0 6px" }}>{fehler}</div>
+              ) : null}
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <AktionsButton rolle="abbrechen" variante="breit" t={t} accent={accent}
+                    onClick={onClose} text="Abbrechen"/>
+                </div>
+                <div style={{ flex: 2 }}>
+                  <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                    disabled={!datei || !titel.trim() || ladend}
+                    onClick={uploadSpeichern} text={ladend ? "Speichert …" : "Hinzufügen"}/>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {stufe === "auswahl" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {fehler ? (
+                <div style={{ fontSize: FS.s, color: "#EF4444" }}>{fehler}</div>
+              ) : null}
+              {dokZeilen.length > 0 ? (
+                <div style={labelStyle}>Dokumente</div>
+              ) : null}
+              {dokZeilen.map((z, i) => (
+                <button key={"d" + i} style={zeileStyle}
+                  onClick={() => { onWahl({ id: anlId(), titel: z.titel, quelle: z.quelle,
+                    refId: z.refId, dateiRef: z.dateiRef }); onClose(); }}>
+                  <I name="document" size={15} color={t.sub}/>
+                  <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{z.label}</span>
+                </button>
+              ))}
+              {fotoZeilen.length > 0 ? (
+                <div style={Object.assign({}, labelStyle, { marginTop: dokZeilen.length > 0 ? 8 : 0 })}>Fotos</div>
+              ) : null}
+              {fotoZeilen.map((z, i) => (
+                <button key={"f" + i} style={zeileStyle}
+                  onClick={() => { onWahl({ id: anlId(), titel: z.titel, quelle: z.quelle,
+                    refId: z.refId, dateiRef: z.dateiRef }); onClose(); }}>
+                  <I name="eye" size={15} color={t.sub}/>
+                  <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{z.label}</span>
+                </button>
+              ))}
+              {dokZeilen.length === 0 && fotoZeilen.length === 0 ? (
+                <div style={{ fontSize: FS.s, color: t.muted, padding: "6px 0" }}>
+                  Dieses Objekt hat noch keine Dokumente oder Fotos.</div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AnlagenBlock — Anzeige + Verwaltung einer Anlagen-Liste (§4.6) ───────────
+// EIN Baustein für TOP-Anlagen UND Versammlungs-Anlagen (Protokoll-Anhänge).
+// Entfernen: Referenz geht IMMER weg; Nachfrage „auch löschen?" (§4.5) — bei
+// Mehrfach-Referenz oder Foto-/Fremd-Dokument-Herkunft wird defensiv gewarnt
+// bzw. echtes Löschen greift auf Quelle (Dokumente-Karte oder Fotos) durch.
+function AnlagenBlock({ anlagen, onAnlagen, ve, onVePatch, welt, kontextTitel, t, accent, gesperrt }) {
+  const [pickerOffen, setPickerOffen] = useState(false);
+  const [entfernenFrage, setEntfernenFrage] = useState(null);   // Anlage-Objekt
+  const [viewerAnlage, setViewerAnlage] = useState(null);
+
+  const liste = Array.isArray(anlagen) ? anlagen : [];
+
+  const nurVerknuepfungWeg = (a) => {
+    onAnlagen(liste.filter((x) => x.id !== a.id));
+    setEntfernenFrage(null);
+  };
+
+  const auchLoeschen = (a) => {
+    // Mehrfach-Referenz-Prüfung (§4.5): hängt dieselbe Datei noch woanders?
+    const andere = alleEtvAnlagen(welt, ve.id).filter((x) => x && x.id !== a.id && x.dateiRef === a.dateiRef);
+    onAnlagen(liste.filter((x) => x.id !== a.id));
+    if (andere.length > 0) { setEntfernenFrage(null); return; }   // Datei bleibt — noch referenziert
+    if (a.quelle === "foto") {
+      onVePatch((v) => Object.assign({}, v, {
+        fotos: (Array.isArray(v.fotos) ? v.fotos : []).filter((f) => !f || f.id !== a.refId),
+      }));
+    } else {
+      onVePatch((v) => Object.assign({}, v, {
+        dokumenteKarten: (v.dokumenteKarten || []).map((k) => {
+          if (!k || k.id !== a.refId) return k;
+          return Object.assign({}, k, {
+            dateien: (Array.isArray(k.dateien) ? k.dateien : []).filter((m) => !m || m.id !== a.dateiRef),
+          });
+        }).filter((k) => {
+          // eigene (frei benannte) Karten ohne letzte Datei verschwinden (§85.3);
+          // Katalog-Karten (dokumentId) bleiben bestehen.
+          if (!k) return false;
+          if (k.dokumentId) return true;
+          if (k.id !== a.refId) return true;
+          return (Array.isArray(k.dateien) ? k.dateien : []).length > 0
+            || (Array.isArray(k.stamm) && k.stamm.some((f) => (f.value && String(f.value).trim()) || f.kontaktId));
+        }),
+      }));
+    }
+    dateiLoeschen(a.dateiRef);
+    if (viewerAnlage && viewerAnlage.id === a.dateiRef) setViewerAnlage(null);
+    setEntfernenFrage(null);
+  };
+
+  return (
+    <div>
+      {liste.map((a) => (
+        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8,
+          fontSize: FS.s, color: t.text, padding: "3px 0" }}>
+          <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>📎 {a.titel}</div>
+          {a.dateiRef ? (
+            <button onClick={() => setViewerAnlage({ id: a.dateiRef, name: a.titel })}
+              title="Ansehen" aria-label="Ansehen"
+              style={{ width: 30, height: 30, borderRadius: RAD.sm, flexShrink: 0,
+                border: "1px solid " + t.border, background: t.card,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <I name="eye" size={15} color={t.sub}/>
+            </button>
+          ) : null}
+          {!gesperrt ? (
+            <button onClick={() => setEntfernenFrage(a)}
+              title="Entfernen" aria-label="Entfernen"
+              style={{ width: 30, height: 30, borderRadius: RAD.sm, flexShrink: 0,
+                border: "1px solid " + t.border, background: t.card,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <I name="trash" size={15} color={t.sub}/>
+            </button>
+          ) : null}
+        </div>
+      ))}
+      {!gesperrt ? (
+        <div style={{ marginTop: 4 }}>
+          <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+            onClick={() => setPickerOffen(true)} text="+ Anlage"/>
+        </div>
+      ) : null}
+
+      {pickerOffen ? (
+        <AnlagePickerModal t={t} accent={accent} ve={ve} onVePatch={onVePatch}
+          kontextTitel={kontextTitel}
+          onWahl={(a) => onAnlagen([...liste, a])}
+          onClose={() => setPickerOffen(false)}/>
+      ) : null}
+
+      {entfernenFrage ? (
+        <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
+          background: "rgba(0,0,0,0.7)", zIndex: 210, display: "flex",
+          alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: t.card, border: "1px solid " + t.border,
+            borderRadius: RAD.xl, width: "100%", maxWidth: 400, padding: 16 }}>
+            <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text, marginBottom: 6 }}>
+              Anlage entfernen</div>
+            <div style={{ fontSize: FS.s, color: t.sub, marginBottom: 12 }}>
+              „{entfernenFrage.titel}" wird von hier entfernt. Soll die Datei zusätzlich aus
+              {entfernenFrage.quelle === "foto" ? " den Fotos" : " den Dokumenten"} des Objekts gelöscht werden?</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                onClick={() => nurVerknuepfungWeg(entfernenFrage)} text="Nur Verknüpfung entfernen"/>
+              <AktionsButton rolle="loeschen" variante="breit" t={t} accent={accent}
+                onClick={() => auchLoeschen(entfernenFrage)}
+                text={entfernenFrage.quelle === "foto" ? "Auch aus Fotos löschen" : "Auch aus Dokumenten löschen"}/>
+              <AktionsButton rolle="abbrechen" variante="breit" t={t} accent={accent}
+                onClick={() => setEntfernenFrage(null)} text="Abbrechen"/>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {viewerAnlage ? (
+        <DateiViewerModal t={t} accent={accent} datei={viewerAnlage}
+          onClose={() => setViewerAnlage(null)}/>
+      ) : null}
+    </div>
+  );
+}
+
 // ── Tab 2 · TAGESORDNUNG — TOP-Karten, wachsen per Baustein-Katalog ─────────
-function EtvTagesordnungTab({ versammlung, ve, welt, onWelt, settings, t, accent }) {
+function EtvTagesordnungTab({ versammlung, ve, onVePatch, welt, onWelt, settings, t, accent }) {
   const [offenId, setOffenId] = useState(null);
   const [addOffen, setAddOffen] = useState(false);
   const tops = topsFuerVersammlung(welt, versammlung.id);
@@ -723,7 +1106,7 @@ function EtvTagesordnungTab({ versammlung, ve, welt, onWelt, settings, t, accent
           aus Vorgängen, oder frei).
         </div>
       ) : tops.map((tp) => (
-        <TopKarte key={tp.id} top={tp} versammlung={versammlung} welt={welt}
+        <TopKarte key={tp.id} top={tp} versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
           onWelt={onWelt} t={t} accent={accent} gesperrt={gesperrt}
           offen={offenId === tp.id}
           onToggle={() => setOffenId(offenId === tp.id ? null : tp.id)}/>
@@ -856,12 +1239,11 @@ function TopHinzufuegen({ versammlung, ve, welt, onWelt, settings, t, accent, on
 }
 
 // Die TOP-Karte: BausteinKarte-Accordion, wächst per Baustein-Katalog (§2b).
-function TopKarte({ top, versammlung, welt, onWelt, t, accent, offen, onToggle, gesperrt }) {
+function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, offen, onToggle, gesperrt }) {
   const [loeschStufe, setLoeschStufe] = useState(false);
   const [ja, setJa] = useState("");
   const [nein, setNein] = useState("");
   const [enth, setEnth] = useState("");
-  const [anlageTitel, setAnlageTitel] = useState("");
   const [aufgabeText, setAufgabeText] = useState("");
   const beschluss = top.beschluss_id
     ? (welt.beschluesse || []).find((b) => b.id === top.beschluss_id) || null : null;
@@ -937,42 +1319,16 @@ function TopKarte({ top, versammlung, welt, onWelt, t, accent, offen, onToggle, 
           </div>
         ) : null}
 
-        {/* Baustein: Anlagen */}
+        {/* Baustein: Anlagen (§4, 13.07.: Picker statt Titel-Eingabe — jede Anlage hat eine Datei) */}
         {hatB("anlage") ? (
           <div>
             <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
               textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
               Anlagen</div>
-            {(top.anlagen || []).map((a) => (
-              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8,
-                fontSize: FS.s, color: t.text, padding: "3px 0" }}>
-                <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>📎 {a.titel}</div>
-                {!gesperrt ? (
-                  <button onClick={() => patch({ anlagen: (top.anlagen || []).filter((x) => x.id !== a.id) })}
-                    style={{ width: 26, height: 26, borderRadius: RAD.pill, flexShrink: 0,
-                      border: "1px solid " + t.border, background: t.card, color: t.muted,
-                      cursor: "pointer", lineHeight: 1 }}>×</button>
-                ) : null}
-              </div>
-            ))}
-            {!gesperrt ? (
-              <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                <input value={anlageTitel} onChange={(ev) => setAnlageTitel(ev.target.value)}
-                  placeholder="z. B. Angebot Dachdecker Meyer"
-                  style={{ flex: 1, minWidth: 0, fontSize: 16, padding: "6px 9px",
-                    borderRadius: RAD.sm, border: "1px solid " + t.border,
-                    background: t.card, color: t.text, boxSizing: "border-box" }}/>
-                <button onClick={() => {
-                    if (!anlageTitel.trim()) return;
-                    patch({ anlagen: [...(top.anlagen || []),
-                      { id: "anl_" + Date.now().toString(36), titel: anlageTitel.trim() }] });
-                    setAnlageTitel("");
-                  }}
-                  style={{ width: 30, height: 30, borderRadius: RAD.pill, flexShrink: 0,
-                    border: "none", background: accent, color: getContrastColor(accent),
-                    cursor: "pointer", fontSize: FS.l, lineHeight: 1 }}>+</button>
-              </div>
-            ) : null}
+            <AnlagenBlock t={t} accent={accent} ve={ve} onVePatch={onVePatch} welt={welt}
+              anlagen={top.anlagen} gesperrt={gesperrt}
+              kontextTitel={"TOP " + (top.nummer || "") }
+              onAnlagen={(neu) => patch({ anlagen: neu })}/>
           </div>
         ) : null}
 
@@ -1311,24 +1667,60 @@ function baueEtvProtokollHtml(versammlung, ve, welt, kontakte) {
       ? uZeile(uName(versammlung.beirat_vorsitz_kontakt_id, ""),
           "Vorsitzender des Verwaltungsbeirats", versammlung.unterschrift_beirat_am)
       : "");
+  // Anlagenverzeichnis (§4.7, 13.07.): nummerierte Liste am Protokoll-Ende —
+  // erst Versammlungs-Anlagen, dann TOP-Anlagen mit Zuordnungs-Vermerk.
+  const verzeichnis = [];
+  (versammlung.anlagen || []).forEach((a) => verzeichnis.push({ a: a, zu: "" }));
+  tops.forEach((tp) => (tp.anlagen || []).forEach((a) =>
+    verzeichnis.push({ a: a, zu: " (zu TOP " + tp.nummer + ")" })));
+  const anlagenHtml = verzeichnis.length > 0
+    ? "<h3>Anlagenverzeichnis</h3>" + verzeichnis.map((e, i) =>
+        "<p>Anlage " + (i + 1) + ": " + esc(e.a.titel) + esc(e.zu) + "</p>").join("")
+    : "";
   const css = "h3{margin:14px 0 4px 0;font-size:13px} p{margin:4px 0;font-size:11px}"
     + " table{border-collapse:collapse;width:100%;font-size:10px}"
-    + " th,td{border:1px solid #999;padding:3px 6px;text-align:left}";
+    + " th,td{border:1px solid #999;padding:3px 6px;text-align:left}"
+    + " img.anlage-bild{max-width:100%;max-height:800px;display:block;margin:6px 0}";
   return {
     titel: "Protokoll · " + artLabel(versammlung.versammlung_art)
       + (versammlung.datum ? " · " + datumDe(versammlung.datum) : ""),
-    html: kopf + topHtml + anwHtml + unterschriftenHtml,
+    html: kopf + topHtml + anwHtml + anlagenHtml + unterschriftenHtml,
     css: css,
+    verzeichnis: verzeichnis,
   };
 }
 
-function druckeEtvProtokoll(versammlung, ve, welt, kontakte) {
+// Druck (§4.7): optional Bild-Anlagen als Abbildungen einbetten. Dafür werden
+// die Blobs asynchron aus IndexedDB geladen und als dataURL angehängt — nur
+// echte Bilder (blob.type image/*), PDFs/Office bleiben Verzeichnis-Einträge.
+function druckeEtvProtokoll(versammlung, ve, welt, kontakte, optionen) {
   const p = baueEtvProtokollHtml(versammlung, ve, welt, kontakte);
-  druckeHtml(p.titel, p.html, false, p.css);
+  const einbetten = !!(optionen && optionen.bilderEinbetten);
+  if (!einbetten || p.verzeichnis.length === 0) {
+    druckeHtml(p.titel, p.html, false, p.css);
+    return;
+  }
+  const jobs = p.verzeichnis.map((e, i) => {
+    if (!e.a.dateiRef) return Promise.resolve("");
+    return dateiLaden(e.a.dateiRef).then((blob) => new Promise((resolve) => {
+      if (!blob || !(blob.type || "").startsWith("image/")) { resolve(""); return; }
+      const r = new FileReader();
+      r.onload = () => resolve(
+        "<p><b>Anlage " + (i + 1) + ": " + esc(e.a.titel) + "</b></p>"
+        + "<img class='anlage-bild' src='" + r.result + "'/>");
+      r.onerror = () => resolve("");
+      r.readAsDataURL(blob);
+    })).catch(() => "");
+  });
+  Promise.all(jobs).then((teile) => {
+    const bilder = teile.filter(Boolean).join("");
+    const html = p.html + (bilder ? "<h3>Abbildungen</h3>" + bilder : "");
+    druckeHtml(p.titel, html, false, p.css);
+  });
 }
 
 // ── Die ETV-AKTE: Kopf + TabLeiste (§97) + vier Tabs (§2b) ──────────────────
-function EtvDetail({ versammlung, ve, welt, onWelt, kontakte, settings, t, accent, onZurueck }) {
+function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, onZurueck }) {
   const [tab, setTab] = useState("uebersicht");
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const tabs = [
@@ -1364,11 +1756,11 @@ function EtvDetail({ versammlung, ve, welt, onWelt, kontakte, settings, t, accen
       </div>
       <TabLeiste t={t} accent={accent} tabs={tabs} aktiv={tab} onWaehle={setTab}/>
       {tab === "uebersicht" ? (
-        <EtvUebersichtTab versammlung={versammlung} ve={ve} welt={welt}
+        <EtvUebersichtTab versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
           onWelt={onWelt} kontakte={kontakte} t={t} accent={accent}/>
       ) : null}
       {tab === "tagesordnung" ? (
-        <EtvTagesordnungTab versammlung={versammlung} ve={ve} welt={welt}
+        <EtvTagesordnungTab versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
           onWelt={onWelt} settings={settings} t={t} accent={accent}/>
       ) : null}
       {tab === "te" ? (
@@ -1385,7 +1777,7 @@ function EtvDetail({ versammlung, ve, welt, onWelt, kontakte, settings, t, accen
 // ── EtvBereichFuerObjekt — der renderDetail-Inhalt der ETV-Kachel ───────────
 // Ohne offene Akte: Versammlungsliste (aktiv) + Archiv (KlappBereich) +
 // Neu-Anlegen. Mit offener Akte: EtvDetail (die vier Tabs).
-function EtvBereichFuerObjekt({ ve, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId }) {
+function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId }) {
   const [neuOffen, setNeuOffen] = useState(false);
   const [archivOffen, setArchivOffen] = useState(false);
 
@@ -1413,7 +1805,7 @@ function EtvBereichFuerObjekt({ ve, welt, onWelt, kontakte, settings, t, accent,
 
   if (akte) {
     return (
-      <EtvDetail versammlung={akte} ve={ve} welt={welt} onWelt={onWelt}
+      <EtvDetail versammlung={akte} ve={ve} onVePatch={onVePatch} welt={welt} onWelt={onWelt}
         kontakte={kontakte} settings={settings} t={t} accent={accent}
         onZurueck={() => setAkteId(null)}/>
     );

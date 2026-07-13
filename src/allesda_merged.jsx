@@ -3066,6 +3066,7 @@ export default function App() {
               return (
                 <EtvBereichFuerObjekt ve={veObj} welt={vorgangsWelt}
                   onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
+                  onVePatch={(fn) => setVes(prev => prev.map(v => (v && v.id === veObj.id) ? fn(v) : v))}
                   kontakte={kontakteSichtbar} settings={effectiveSettings}
                   t={t} accent={etvAccent}
                   akteId={etvAkteId} setAkteId={setEtvAkteId}/>
