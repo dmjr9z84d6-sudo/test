@@ -2049,6 +2049,15 @@ function _kontaktAnzeigename(k) {
   return [k.vorname, k.nachname].filter(Boolean).join(" ");
 }
 
+// Anzeigename per Kontakt-ID aus einer Liste (BESTANDSFIX 13.78: etv.jsx rief
+// kontaktAnzeigename fälschlich mit (kontakte, id) auf — die nimmt aber ein
+// Kontakt-OBJEKT. Ergebnis: Leiter/Protokollführer/Beirat wurden leer gedruckt).
+function kontaktNameVonId(kontakte, id) {
+  if (id == null) return "";
+  const k = (kontakte || []).find((x) => x && x.id === id);
+  return _kontaktAnzeigename(k);
+}
+
 // Alle E-Mail-Werte eines Kontakts (Firma: einzelnes email; Person: emails[]).
 function _kontaktEmails(k) {
   if (!k) return [];
@@ -2988,10 +2997,16 @@ const ETV_ARTEN = [
   { id: "ausserordentlich", label: "Außerordentliche ETV" },
   { id: "umlauf",           label: "Umlaufbeschluss" },
 ];
+// Durchführungsart (§2.10 Ausbau-Konzept): rein "online"/virtuell ist rechtlich
+// ein Sonderfall (¾-Vorratsbeschluss + Präsenzpflicht bis 2028), darum NICHT
+// wählbar — bleibt sichtbar aber disabled mit korrektem Zukunfts-Hinweis
+// (möglich seit 2024, ohne Präsenzpflicht erst ab 2029). Hybrid nur wählbar,
+// wenn am Objekt die Zuschaltung am Ort möglich ist (etvStamm.onlineMoeglich).
 const ETV_DURCHFUEHRUNG = [
   { id: "praesenz", label: "Präsenz" },
   { id: "hybrid",   label: "Hybrid" },
-  { id: "online",   label: "Online" },
+  { id: "online",   label: "Online", disabled: true,
+    hinweis: "ab 2029 uneingeschränkt möglich" },
 ];
 // Phasen-Kette (§2b Tab 1) — Fortschritt der Versammlung, wie die
 // Vorgang-PhasenLeiste. Umlauf nutzt dieselbe Kette (eingeladen = versandt).
@@ -3019,6 +3034,14 @@ function neueVersammlung(init) {
     protokollfuehrer_kontakt_id: null,
     beirat_vorsitz_kontakt_id: null,   // Verwaltungsbeirat (Ausbau-Konzept §2.2, 12.07.)
     beirat_mitglied_kontakt_ids: [],   // weitere Beiratsmitglieder
+    // Protokoll-Pflichtangaben (§24 WEG, Ausbau-Konzept §3, 12.07.):
+    protokoll_beginn: "",              // tatsächlicher Beginn (Uhrzeit, kann vom Plan abweichen)
+    protokoll_ende: "",                // tatsächliches Ende
+    einladung_festgestellt: false,     // Haken → Standardsatz im Protokoll
+    unterschrift_eigentuemer_kontakt_id: null,  // WER von den Eigentümern unterschreibt
+    unterschrift_leiter_am: null,      // optionale digitale Erfassung (wer steht fest: Leiter)
+    unterschrift_eigentuemer_am: null,
+    unterschrift_beirat_am: null,      // Beiratsvorsitz (nur relevant wenn Beirat besteht)
     demo: false,
   }, init || {});
 }
@@ -3121,6 +3144,105 @@ function ladungsfristInfo(versammlung, heute) {
   if (rest >= 0) return { status: "rot",
     text: "Einladung offen — 3-Wochen-Frist nicht mehr einhaltbar" };
   return { status: null, text: "" };
+}
+
+// Einladungs-Stichtag (§2.9 Ausbau-Konzept): spätester Tag, an dem die Ladung
+// raus muss, damit die 3-Wochen-Frist gewahrt ist = Termin − 21 Tage.
+function einladungsStichtag(datumIso) {
+  if (!datumIso) return null;
+  const d = new Date(datumIso + "T00:00:00");
+  d.setDate(d.getDate() - 21);
+  return d.toISOString().slice(0, 10);
+}
+
+// Sammel-Leser der ETV-Stammdaten am Objekt (§2.7 Ausbau-Konzept): fasst die an
+// mehreren Stellen verstreuten Werte (ve.etvStamm gespiegelt + verwaltungsKarten
+// kategorie "etv" + ve.verwaltung) an EINER Stelle zusammen. Alle Werte sind
+// Vorbelegungs-VORSCHLÄGE für neue Versammlungen.
+function etvStammVomObjekt(ve) {
+  const stamm = (ve && ve.etvStamm) || {};
+  const vk = (ve && Array.isArray(ve.verwaltungsKarten)) ? ve.verwaltungsKarten : [];
+  const etvK = vk.find((k) => k && k.kategorie === "etv");
+  const feld = (name) => {
+    if (!etvK || !Array.isArray(etvK.stamm)) return null;
+    const f = etvK.stamm.find((x) => x && x.name === name);
+    return f || null;
+  };
+  const ortFeld = feld("Versammlungsort");
+  const onlineFeld = feld("ETV online möglich?");
+  const letzteFeld = feld("Letzte ETV");
+  const naechsteFeld = feld("Nächste ETV");
+  return {
+    abstimmung: stamm.abstimmung || "MEA",
+    gesamtanteile: stamm.gesamtanteile || "1000",
+    wirtschaftsjahr: stamm.wirtschaftsjahr || "Kalenderjahr",
+    // Versammlungsort ist ein Kontakte-Feld — Vorbelegung als Freitext (Name);
+    // Kontakt-Referenz bleibt für später (Leitstand-Kontaktkarte §2.8).
+    versammlungsort: (ortFeld && ortFeld.value) || "",
+    versammlungsort_kontaktIds: (ortFeld && ortFeld.kontaktIds) || [],
+    // Hybrid nur möglich, wenn Zuschaltung am Ort vorhanden (nicht "rein virtuell").
+    hybridMoeglich: !!(onlineFeld && onlineFeld.value === "Ja"),
+    letzteEtv: (letzteFeld && letzteFeld.value) || "",
+    naechsteEtv: (naechsteFeld && naechsteFeld.value)
+      || (ve && ve.verwaltung && ve.verwaltung.naechsteETV) || "",
+  };
+}
+
+// Die offene ordentliche ETV eines Objekts (§2.3): die noch nicht abgeschlossene
+// ordentliche Versammlung, deren Termin offen ODER in der Zukunft liegt. Sie ist
+// die "leere Hülle" / Sammelstelle. Gibt es keine → null (dann muss eine
+// erzeugt werden, siehe garantiereOffeneEtv).
+function offeneOrdentlicheEtv(welt, objektId, heute) {
+  const jetzt = heute || isoHeute();
+  const kandidaten = (welt.versammlungen || []).filter((v) =>
+    v && v.objekt_id === objektId && v.versammlung_art === "ordentlich"
+    && !v.archiviert && v.status !== "abgeschlossen"
+    && (!v.datum || v.datum >= jetzt));
+  if (kandidaten.length === 0) return null;
+  // die früheste offene (kleinstes Datum; datumslose zuletzt)
+  return kandidaten.sort((a, b) =>
+    String(a.datum || "9999").localeCompare(String(b.datum || "9999")))[0];
+}
+
+// Garantiert, dass eine offene ordentliche ETV existiert (§2.3/2.6). Gibt die
+// (ggf. neu erzeugte) Welt zurück PLUS ein Flag, ob etwas erzeugt wurde.
+// Idempotent: erzeugt nur, wenn KEINE offene ordentliche existiert. Funktioniert
+// AUCH ohne jede Historie (Erst-ETV eines frischen Objekts, §2.3b).
+function garantiereOffeneEtv(welt, ve, heute) {
+  const w = welt || {};
+  if (!ve || ve.id == null) return { welt: w, erzeugt: false };
+  if (offeneOrdentlicheEtv(w, ve.id, heute)) return { welt: w, erzeugt: false };
+  const s = etvStammVomObjekt(ve);
+  const huelle = neueVersammlung({
+    objekt_id: ve.id,
+    versammlung_art: "ordentlich",
+    datum: null,                    // Termin offen — die Hülle lebt trotzdem
+    status: "geplant",
+    art: "praesenz",
+    stimmprinzip: s.abstimmung,
+    wirtschaftsjahr: s.wirtschaftsjahr,
+    ort: s.versammlungsort || "",
+  });
+  return {
+    welt: Object.assign({}, w, { versammlungen: [...(w.versammlungen || []), huelle] }),
+    erzeugt: true,
+  };
+}
+
+// Sichtklasse einer Versammlung (§2.5 Ausbau-Konzept, abgeleitet — kein Trigger,
+// kein Jahres-Umschreiben). Rollierung entsteht rein aus Status + Datums-Jahr:
+//   "aktiv"    — noch nicht abgeschlossen (in Arbeit) ODER manuell aus Archiv geholt
+//   "nachschau"— abgeschlossen, Datum im Vorjahr oder aktuellen Jahr (zum Nachlesen)
+//   "archiv"   — abgeschlossen & älter als Vorjahr, ODER manuell ins Archiv gelegt
+// Am Jahreswechsel rutscht eine "nachschau"-ETV von selbst nach "archiv", weil ihr
+// Jahr aus dem Fenster fällt — ohne dass Code etwas ändert.
+function etvSichtklasse(versammlung, heute) {
+  if (!versammlung) return "aktiv";
+  if (versammlung.archiviert) return "archiv";           // manuell übersteuert
+  if (versammlung.status !== "abgeschlossen") return "aktiv";
+  const jahrHeute = Number((heute || isoHeute()).slice(0, 4));
+  const jahrV = versammlung.datum ? Number(String(versammlung.datum).slice(0, 4)) : jahrHeute;
+  return (jahrV >= jahrHeute - 1) ? "nachschau" : "archiv";
 }
 
 // Anfechtungsfrist: 1 Monat ab Beschlussfassung (§45 WEG).
@@ -4319,11 +4441,13 @@ export {
   weltVorgangVonTagesordnung, weltNotizNeu,
   weltVorgangLoeschen, weltAuftragLoeschen, weltDemoEntfernen, zaehleDemoDaten,
   vorgangLetzteAktivitaet, timelineEintraege, weltAuftragFotoRefs,
-  _kontaktAnzeigename as kontaktAnzeigename,
+  _kontaktAnzeigename as kontaktAnzeigename, kontaktNameVonId,
   // ETV-Welt (Konzept _03, Bau 12.07.)
   ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL, TOP_BAUSTEINE,
   neueVersammlung, neuerTop, neueAnwesenheit,
-  ladungsfristInfo, anfechtungsfristBis, versammlungenFuerObjekt,
+  ladungsfristInfo, einladungsStichtag, etvStammVomObjekt, etvSichtklasse,
+  offeneOrdentlicheEtv, garantiereOffeneEtv,
+  anfechtungsfristBis, versammlungenFuerObjekt,
   topsFuerVersammlung, anwesenheitenFuer, beschlussfaehigkeitInfo,
   etvNaechsterSchritt,
   weltVersammlungNeu, weltVersammlungPatch, weltVersammlungLoeschen,

@@ -3,7 +3,8 @@ import { ACCENT, FS, FW, RAD, KACHEL_W, kartenGridStyle, feldInput, getContrastC
 import { listeBreiteAus, parseDatumWert } from "./utils-basis.js";
 import {
   aktiveBelegung, belegungsPhase, eigStatus, heuteLaufendeBelegung,
-  istAnonymesMitglied, sevStatus, teileVon
+  istAnonymesMitglied, sevStatus, teileVon,
+  ladungsfristInfo, einladungsStichtag, versammlungenFuerObjekt
 } from "./datenmodell.js";
 import {
   Avatar, DatumFeld, DatumKalender, DetailRahmen, objektKopfProps, FeldKontaktKarte, KontaktPicker, KopfPille, MasterDetailRahmen, ScreenKopf, HeaderZurueck, HeaderPlus,
@@ -38,7 +39,7 @@ import { objektBezugInfo } from "./kontakte.jsx";
 
 // Wie weit der Kalender in die Zukunft reicht (Monate). Zentral steuerbar.
 var KAL_FENSTER_MONATE = 24;
-function sammleTermine(ves, kontakte, fensterMonate, rueckMonate, freieTermine) {
+function sammleTermine(ves, kontakte, fensterMonate, rueckMonate, freieTermine, welt) {
   var heute = new Date();
   heute.setHours(0, 0, 0, 0);
   var monate = fensterMonate || 12;
@@ -94,9 +95,36 @@ function sammleTermine(ves, kontakte, fensterMonate, rueckMonate, freieTermine) 
     var bb = parseDatumWert(kartenFeldWert(stammKarte, "Bestellt bis") || vw.bestelltBis);
     if (bb && bb >= fensterStart && bb <= fensterEnde)
       add(bb, "Bestellung läuft aus", "verwaltung", "#F59E0B", "calendar", objLabel, objSub, ve.id, null, zielStamm);
-    var etv = parseDatumWert(kartenFeldWert(etvKarte, "Nächste ETV") || vw.naechsteETV);
-    if (etv && etv >= fensterStart && etv <= fensterEnde)
-      add(etv, "Eigentümerversammlung", "etv", "#8B5CF6", "calendar", objLabel, objSub, ve.id, null, zielEtv);
+    // ETV-Termine (§2.9): VERSAMMLUNGEN der Vorgangswelt haben VORRANG vor dem
+    // Karten-Feld "Nächste ETV" (sonst Doppel-Eintrag am selben Tag). Termin wird
+    // nach Ladungsfrist-Ampel eingefärbt; zusätzlich ein Stichtag-Eintrag
+    // "Einladung spätestens raus" (Termin − 21 Tage), solange Ladung nicht raus.
+    var etvAusVersammlung = false;
+    var versammlungen = welt ? versammlungenFuerObjekt(welt, ve.id) : [];
+    versammlungen.forEach(function(v) {
+      if (!v || v.archiviert || v.status === "abgeschlossen" || !v.datum) return;
+      var vd = parseDatumWert(v.datum);
+      if (!vd || vd < fensterStart || vd > fensterEnde) return;
+      etvAusVersammlung = true;
+      var frist = ladungsfristInfo(v);
+      var farbe = frist.status === "rot" ? "#DC2626"
+        : (frist.status === "gelb" ? "#F59E0B" : "#8B5CF6");
+      var titel = v.versammlung_art === "umlauf" ? "Umlaufbeschluss (Stichtag)"
+        : (v.versammlung_art === "ausserordentlich" ? "Außerordentliche ETV" : "Eigentümerversammlung");
+      add(vd, titel, "etv", farbe, "calendar", objLabel, objSub, ve.id, null, zielEtv);
+      // Stichtag-Eintrag nur bei echter Versammlung (nicht Umlauf) und offener Ladung.
+      if (v.versammlung_art !== "umlauf" && !v.ladung_versendet_am) {
+        var st = parseDatumWert(einladungsStichtag(v.datum));
+        if (st && st >= fensterStart && st <= fensterEnde)
+          add(st, "Einladung spätestens raus", "etv", "#F59E0B", "mail", objLabel, objSub, ve.id, null, zielEtv);
+      }
+    });
+    // Fallback: Karten-Feld nur, wenn KEINE Versammlung den Termin liefert.
+    if (!etvAusVersammlung) {
+      var etv = parseDatumWert(kartenFeldWert(etvKarte, "Nächste ETV") || vw.naechsteETV);
+      if (etv && etv >= fensterStart && etv <= fensterEnde)
+        add(etv, "Eigentümerversammlung", "etv", "#8B5CF6", "calendar", objLabel, objSub, ve.id, null, zielEtv);
+    }
     var wahl = parseDatumWert(vw.naechsteWahl);
     if (wahl && wahl >= fensterStart && wahl <= fensterEnde)
       add(wahl, "Verwalterwahl", "wahl", "#0EA5E9", "calendar", objLabel, objSub, ve.id, null, zielStamm);
@@ -2605,7 +2633,7 @@ function KalenderPanel({ offen, onClose, termine, settings, t, accent, variante 
   );
 }
 
-function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes = null, setKontakte = null, plusAccent = null, settings = null, dockOffen = false, freieTermine = [], setFreieTermine = null, pendingTerminKey = null, kalView = "objekte", setKalView = null, kalViewVEId = null, setKalViewVEId = null, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, festeGridSpec = null, listenAnsicht = "karten" }) {
+function KalenderScreen({ ves, kontakte, welt = null, t, accent, gotoVE, gotoKontakt, setVes = null, setKontakte = null, plusAccent = null, settings = null, dockOffen = false, freieTermine = [], setFreieTermine = null, pendingTerminKey = null, kalView = "objekte", setKalView = null, kalViewVEId = null, setKalViewVEId = null, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null, festeGridSpec = null, listenAnsicht = "karten" }) {
   const [typFilter, setTypFilter] = useState("alle");
   // Orientierungskalender-Panel (Desktop: Inline-Seitenpanel rechts im
   // Kalender-Fenster; Mobil: Overlay von rechts).
@@ -2665,7 +2693,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
     }, 120);
     return () => clearTimeout(tid);
   }, [pendingTerminKey]);
-  const termine = sammleTermine(ves, kontakte, KAL_FENSTER_MONATE, 0, freieTermine);
+  const termine = sammleTermine(ves, kontakte, KAL_FENSTER_MONATE, 0, freieTermine, welt);
   // Panel-Termine inkl. 12 Monate Rückblick (Liste bleibt zukunftsbasiert).
   // Bei aktivem Desktop-Dock (Seitenleiste) entfallen Inline-Panel + Toggle.
   const dockAktiv = (kalIstDesktop && settings && settings.kalSeitenleiste === true) || dockOffen;
@@ -2683,7 +2711,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
     if (!offenTerminKey && !kalViewVEId && kalNurDetail) setKalNurDetail(false);
   }, [offenTerminKey, kalViewVEId, kalView, kalIstDesktop, kalNurDetail]);
   const panelTermine = (panelOffen && !dockAktiv)
-    ? sammleTermine(ves, kontakte, KAL_FENSTER_MONATE, 12, freieTermine) : termine;
+    ? sammleTermine(ves, kontakte, KAL_FENSTER_MONATE, 12, freieTermine, welt) : termine;
   const gefiltert = typFilter === "alle" ? termine : termine.filter(function(x) { return x.typ === typFilter; });
 
   const counts = { alle: termine.length };
@@ -2863,7 +2891,7 @@ function KalenderScreen({ ves, kontakte, t, accent, gotoVE, gotoKontakt, setVes 
           // Detail-Inhalt: objektgefilterte Termine + Fristen, chronologisch.
           const renderTerminDetail = (veObj) => {
             if (!veObj) return null;
-            const objTermine = sammleTermine([veObj], kontakte, KAL_FENSTER_MONATE, 0, freieTermine);
+            const objTermine = sammleTermine([veObj], kontakte, KAL_FENSTER_MONATE, 0, freieTermine, welt);
             return (
               <DetailRahmen t={t} accent={kalFarbe} {...objektKopfProps(veObj)}>
                 {objTermine.length === 0 ? (

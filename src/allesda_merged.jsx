@@ -2949,7 +2949,7 @@ export default function App() {
         )}
 
         {!suchErg && screen === "kalender" && (
-          <KalenderScreen ves={vesKalender} kontakte={kontakteKalender} setVes={setVes} setKontakte={setKontakte} plusAccent={kalenderAccent} t={t} accent={objektAccent}
+          <KalenderScreen ves={vesKalender} kontakte={kontakteKalender} welt={vorgangsWelt} setVes={setVes} setKontakte={setKontakte} plusAccent={kalenderAccent} t={t} accent={objektAccent}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt} settings={effectiveSettings}
             freieTermine={freieTermine} setFreieTermine={setFreieTermine}
             pendingTerminKey={pendingTerminKey}

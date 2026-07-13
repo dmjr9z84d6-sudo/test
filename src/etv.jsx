@@ -15,7 +15,7 @@
 //   TE            · Nachschlage-Backup = TERegisterAnsicht (§67, EIN Baustein)
 //   Beschlüsse    · gefasste dieser Versammlung + besondere (ist_besonders)
 // ═══════════════════════════════════════════════════════════════════════════
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute } from "./utils-basis.js";
 import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggle } from "./components.jsx";
@@ -26,8 +26,10 @@ import { gemeinschaftName, istEigentuemergemeinschaft } from "./liegenschaft.jsx
 import { druckeHtml } from "./listen-tools.jsx";
 import {
   ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL,
-  TOP_BAUSTEINE, eigStatus, kontaktAnzeigename,
-  ladungsfristInfo, versammlungenFuerObjekt, topsFuerVersammlung,
+  TOP_BAUSTEINE, eigStatus, kontaktNameVonId,
+  ladungsfristInfo, einladungsStichtag, etvStammVomObjekt, etvSichtklasse,
+  offeneOrdentlicheEtv, garantiereOffeneEtv,
+  versammlungenFuerObjekt, topsFuerVersammlung,
   anwesenheitenFuer, beschlussfaehigkeitInfo, etvNaechsterSchritt,
   neueAnwesenheit, neueVersammlung,
   weltVersammlungPatch, weltVersammlungLoeschen,
@@ -123,32 +125,90 @@ function AmpelZeile({ status, text, t }) {
 }
 
 // ── VersammlungNeuForm — Anlegen (Art · Termin · Ort · Durchführung) ────────
+// ── FristHinweis — Live-Klartext beim Termin-Setzen (§2.9) ──────────────────
+// Zeigt sofort, bis wann die Einladung raus muss (Termin − 21 Tage). Rot, wenn
+// der Stichtag schon in der Vergangenheit liegt (Frist nicht mehr einhaltbar).
+function FristHinweis({ datum, t }) {
+  if (!datum) return null;
+  const stichtag = einladungsStichtag(datum);
+  if (!stichtag) return null;
+  const verpasst = stichtag < isoHeute();
+  const farbe = verpasst ? (AMPEL_FARBEN.rot || "#DC2626") : t.muted;
+  return (
+    <div style={{ fontSize: FS.xs, color: farbe, marginTop: -4 }}>
+      {verpasst
+        ? "3-Wochen-Frist nicht mehr einhaltbar (Stichtag " + datumDe(stichtag) + " war schon)"
+        : "Einladung bis " + datumDe(stichtag) + " versenden (3-Wochen-Frist)"}
+    </div>
+  );
+}
+
+// ── DurchfuehrungWahl — Präsenz/Hybrid wählbar, Online gesperrt (§2.10) ──────
+// Eigenbau statt SegmentControl, weil dieser keine disabled-Option + Hinweis
+// kann (SONDERFALL: rechtlich gesperrte Zukunftsoption). Hybrid nur wählbar,
+// wenn am Objekt die Zuschaltung möglich ist (hybridMoeglich).
+function DurchfuehrungWahl({ value, onChange, hybridMoeglich, t, accent }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "inline-flex", gap: 4, background: t.surface,
+        border: "1px solid " + t.border, borderRadius: RAD.md, padding: 3,
+        maxWidth: "100%", flexWrap: "wrap" }}>
+        {ETV_DURCHFUEHRUNG.map((opt) => {
+          const gesperrt = opt.disabled || (opt.id === "hybrid" && !hybridMoeglich);
+          const aktiv = value === opt.id;
+          return (
+            <button key={opt.id} disabled={gesperrt}
+              onClick={() => { if (!gesperrt) onChange(opt.id); }}
+              title={opt.id === "hybrid" && !hybridMoeglich
+                ? "Am Versammlungsort nicht möglich" : (opt.hinweis || "")}
+              style={{ padding: "6px 12px", borderRadius: RAD.sm,
+                background: aktiv ? accent : "transparent",
+                color: gesperrt ? t.muted : (aktiv ? getContrastColor(accent) : t.sub),
+                border: "none", cursor: gesperrt ? "not-allowed" : "pointer",
+                fontFamily: "inherit", fontSize: FS.m, fontWeight: FW.medium,
+                opacity: gesperrt ? 0.5 : 1, whiteSpace: "nowrap" }}>
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: FS.xs, color: t.muted }}>
+        Rein virtuelle Versammlung: ab 2029 uneingeschränkt möglich.
+        {!hybridMoeglich ? " · Hybrid am Versammlungsort derzeit nicht hinterlegt." : ""}
+      </div>
+    </div>
+  );
+}
+
 function VersammlungNeuForm({ ve, welt, kontakte, t, accent, onAnlegen, onAbbrechen }) {
-  // Vorbelegung aus der JUENGSTEN Versammlung des Objekts (Ausbau-Konzept §2.2):
-  // Ort, Leiter, Protokollfuehrer und Beirat wiederholen sich meist — einmal
-  // gepflegt, in die naechste ETV uebernommen (statt etvStamm-Doppelpflege).
+  // Nur AUSSERORDENTLICHE ETV + UMLAUFBESCHLUSS werden hier neu angelegt (§2.3b).
+  // Die ordentliche ETV existiert als Auto-Hülle und wird nur TERMINIERT (über
+  // ihre Zeile geöffnet, Termin in der Akte gesetzt) — sie ist hier bewusst KEINE
+  // Option, sonst entstünden Dubletten neben der Hülle.
+  const neuArten = ETV_ARTEN.filter((a) => a.id !== "ordentlich");
+  // Vorbelegung aus Objekt-Stammdaten (§2.7) + jüngster Versammlung (Personen).
+  const s = etvStammVomObjekt(ve);
   const letzte = versammlungenFuerObjekt(welt || {}, ve.id)
     .filter((v) => v.datum)
     .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")))[0] || {};
-  const [vArt, setVArt] = useState("ordentlich");
+  const [vArt, setVArt] = useState("ausserordentlich");
   const [datum, setDatum] = useState("");
   const [uhrzeit, setUhrzeit] = useState(letzte.uhrzeit || "");
-  const [ort, setOrt] = useState(letzte.ort || "");
+  const [ort, setOrt] = useState(letzte.ort || s.versammlungsort || "");
   const [durch, setDurch] = useState("praesenz");
   const [leiterId, setLeiterId] = useState(letzte.leiter_kontakt_id || "");
   const [protokollId, setProtokollId] = useState(letzte.protokollfuehrer_kontakt_id || "");
   const beiratVorsitzId = letzte.beirat_vorsitz_kontakt_id || null;
   const beiratIds = letzte.beirat_mitglied_kontakt_ids || [];
   const istUmlauf = vArt === "umlauf";
-  const stamm = (ve && ve.etvStamm) || {};
   const legeAn = () => {
     onAnlegen({
       objekt_id: ve.id, versammlung_art: vArt,
-      art: istUmlauf ? "online" : durch,
+      art: istUmlauf ? "praesenz" : durch,
       datum: datum || null, uhrzeit: istUmlauf ? "" : uhrzeit,
       ort: istUmlauf ? "" : ort,
-      stimmprinzip: stamm.abstimmung || "MEA",
-      wirtschaftsjahr: stamm.wirtschaftsjahr || "",
+      stimmprinzip: s.abstimmung,
+      wirtschaftsjahr: s.wirtschaftsjahr,
       leiter_kontakt_id: leiterId || null,
       protokollfuehrer_kontakt_id: protokollId || null,
       beirat_vorsitz_kontakt_id: beiratVorsitzId,
@@ -158,20 +218,22 @@ function VersammlungNeuForm({ ve, welt, kontakte, t, accent, onAnlegen, onAbbrec
   return (
     <div style={{ background: t.surface, border: "1px solid " + accent + "50",
       borderRadius: RAD.md, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>Neue Versammlung</div>
+      <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
+        Außerordentliche Versammlung / Umlaufbeschluss</div>
       <SegmentControl t={t} accent={accent} value={vArt} onChange={setVArt}
-        options={ETV_ARTEN.map((a) => ({ id: a.id, label: a.label }))}/>
+        options={neuArten.map((a) => ({ id: a.id, label: a.label }))}/>
       <DatumFeld t={t} accent={accent} iso
         label={istUmlauf ? "Stichtag (Rücklauf bis)" : "Termin"}
         value={datum} onChange={setDatum} defaultHeute={false}/>
       {!istUmlauf ? (
         <>
+          {datum ? <FristHinweis datum={datum} t={t} /> : null}
           <Inp t={t} accent={accent} label="Uhrzeit" value={uhrzeit}
             onChange={setUhrzeit} placeholder="z. B. 18:30"/>
           <Inp t={t} accent={accent} label="Ort" value={ort}
             onChange={setOrt} placeholder="z. B. Gemeindesaal, Musterstr. 1"/>
-          <SegmentControl t={t} accent={accent} value={durch} onChange={setDurch}
-            options={ETV_DURCHFUEHRUNG.map((a) => ({ id: a.id, label: a.label }))}/>
+          <DurchfuehrungWahl t={t} accent={accent} value={durch} onChange={setDurch}
+            hybridMoeglich={s.hybridMoeglich}/>
         </>
       ) : (
         <div style={{ fontSize: FS.xs, color: t.muted }}>
@@ -201,16 +263,32 @@ function VersammlungNeuForm({ ve, welt, kontakte, t, accent, onAnlegen, onAbbrec
 function VersammlungZeile({ versammlung, welt, t, accent, onOeffnen }) {
   const frist = ladungsfristInfo(versammlung);
   const tops = topsFuerVersammlung(welt, versammlung.id);
+  const istOrdentlichOhneTermin = versammlung.versammlung_art === "ordentlich"
+    && !versammlung.datum && !versammlung.archiviert;
+  // Countdown zum Einladungs-Stichtag (§2.9): nur solange Termin gesetzt,
+  // Ladung noch nicht raus und Stichtag in der Zukunft.
+  let countdown = null;
+  if (versammlung.datum && !versammlung.ladung_versendet_am) {
+    const st = einladungsStichtag(versammlung.datum);
+    if (st) {
+      const rest = Math.round(
+        (new Date(st + "T00:00:00") - new Date(isoHeute() + "T00:00:00")) / 86400000);
+      if (rest >= 0) countdown = "noch " + rest + " Tag" + (rest === 1 ? "" : "e") + " zum Einladen";
+      else countdown = "Einladungsfrist überschritten";
+    }
+  }
   const sub = [
     versammlung.datum ? datumDe(versammlung.datum) : "Termin offen",
     versammlung.uhrzeit || null,
     versammlung.ort || null,
     tops.length > 0 ? tops.length + " TOP" + (tops.length > 1 ? "s" : "") : null,
   ].filter(Boolean).join(" · ");
+  const istFertig = versammlung.status === "abgeschlossen";
   return (
     <div onClick={onOeffnen} style={{ background: t.card,
       border: "1px solid " + t.border, borderRadius: RAD.lg,
-      padding: "11px 13px", cursor: "pointer", minWidth: 0 }}>
+      padding: "11px 13px", cursor: "pointer", minWidth: 0,
+      opacity: istFertig ? 0.72 : 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {frist.status ? (
           <div title={frist.text} style={{ width: 9, height: 9, flexShrink: 0,
@@ -224,6 +302,17 @@ function VersammlungZeile({ versammlung, welt, t, accent, onOeffnen }) {
           text={ETV_STATUS_LABEL[versammlung.status] || versammlung.status}/>
       </div>
       <div style={{ fontSize: FS.s, color: t.muted, marginTop: 3 }}>{sub}</div>
+      {istOrdentlichOhneTermin ? (
+        <div style={{ fontSize: FS.xs, color: accent, marginTop: 4, fontWeight: FW.bold }}>
+          Termin setzen — Sammelstelle für vertagte &amp; vorgemerkte Beschlüsse
+        </div>
+      ) : null}
+      {countdown ? (
+        <div style={{ fontSize: FS.xs, marginTop: 4,
+          color: frist.status === "rot" ? (AMPEL_FARBEN.rot || "#DC2626") : t.muted }}>
+          {countdown}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -335,14 +424,14 @@ function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }
               ["Stimmprinzip", versammlung.stimmprinzip || "MEA"],
               ["Wirtschaftsjahr", versammlung.wirtschaftsjahr || "Kalenderjahr"],
               ["Versammlungsleiter", versammlung.leiter_kontakt_id
-                ? kontaktAnzeigename(kontakte, versammlung.leiter_kontakt_id) : "—"],
+                ? kontaktNameVonId(kontakte, versammlung.leiter_kontakt_id) : "—"],
               ["Protokollführer", versammlung.protokollfuehrer_kontakt_id
-                ? kontaktAnzeigename(kontakte, versammlung.protokollfuehrer_kontakt_id) : "—"],
+                ? kontaktNameVonId(kontakte, versammlung.protokollfuehrer_kontakt_id) : "—"],
               ["Beirat (Vorsitz)", versammlung.beirat_vorsitz_kontakt_id
-                ? kontaktAnzeigename(kontakte, versammlung.beirat_vorsitz_kontakt_id) : "—"],
+                ? kontaktNameVonId(kontakte, versammlung.beirat_vorsitz_kontakt_id) : "—"],
               ["Beirat (Mitglieder)", (versammlung.beirat_mitglied_kontakt_ids || []).length > 0
                 ? (versammlung.beirat_mitglied_kontakt_ids || [])
-                    .map((id) => kontaktAnzeigename(kontakte, id)).join(", ")
+                    .map((id) => kontaktNameVonId(kontakte, id)).join(", ")
                 : "—"],
             ].map((z, i) => (
               <div key={i} style={{ display: "flex", gap: 8, fontSize: FS.s }}>
@@ -460,6 +549,58 @@ function EtvUebersichtTab({ versammlung, ve, welt, onWelt, kontakte, t, accent }
         )}
       </BausteinKarte>
 
+      {/* Protokoll-Pflichtangaben (§24 WEG, Ausbau-Konzept §3) */}
+      <BausteinKarte t={t} accent={accent} titel="Protokoll"
+        offen={offen === "protokoll"} onToggle={() => toggle("protokoll")}
+        sub={versammlung.protokoll_beginn
+          ? "Beginn " + versammlung.protokoll_beginn
+            + (versammlung.protokoll_ende ? " · Ende " + versammlung.protokoll_ende : "")
+          : "Pflichtangaben noch nicht erfasst"}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <Inp t={t} accent={accent} label="Beginn" value={versammlung.protokoll_beginn || ""}
+                onChange={(v) => patch({ protokoll_beginn: v })} placeholder="z. B. 18:30"/>
+            </div>
+            <div style={{ flex: 1 }}>
+              <Inp t={t} accent={accent} label="Ende" value={versammlung.protokoll_ende || ""}
+                onChange={(v) => patch({ protokoll_ende: v })} placeholder="z. B. 20:15"/>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Toggle value={!!versammlung.einladung_festgestellt} color={accent}
+              onChange={(v) => patch({ einladung_festgestellt: v })}/>
+            <div style={{ fontSize: FS.s, color: t.text }}>
+              Ordnungsgemäße Einladung festgestellt
+              <div style={{ fontSize: FS.xs, color: t.muted }}>
+                Setzt den Standardsatz ins Protokoll (§24 WEG)</div>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+              textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
+              Unterschriften (Leiter · ein Eigentümer · Beiratsvorsitz)</div>
+            <KontaktPickerMitAllen t={t} accent={accent}
+              kontakteObjekt={null} kontakteAlle={kontakte}
+              label="Unterschreibender Eigentümer" value={versammlung.unterschrift_eigentuemer_kontakt_id || null}
+              onChange={(id) => patch({ unterschrift_eigentuemer_kontakt_id: id || null })}/>
+          </div>
+          <div style={{ fontSize: FS.xs, color: t.muted }}>
+            Optional digital festhalten, wann unterschrieben wurde:</div>
+          <DatumFeld t={t} accent={accent} iso label="Leiter unterschrieben am"
+            value={versammlung.unterschrift_leiter_am || ""}
+            onChange={(v) => patch({ unterschrift_leiter_am: v || null })} defaultHeute={false}/>
+          <DatumFeld t={t} accent={accent} iso label="Eigentümer unterschrieben am"
+            value={versammlung.unterschrift_eigentuemer_am || ""}
+            onChange={(v) => patch({ unterschrift_eigentuemer_am: v || null })} defaultHeute={false}/>
+          {versammlung.beirat_vorsitz_kontakt_id ? (
+            <DatumFeld t={t} accent={accent} iso label="Beiratsvorsitz unterschrieben am"
+              value={versammlung.unterschrift_beirat_am || ""}
+              onChange={(v) => patch({ unterschrift_beirat_am: v || null })} defaultHeute={false}/>
+          ) : null}
+        </div>
+      </BausteinKarte>
+
       {/* Fuß-Aktionen: Protokoll · Archiv · Löschen */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
         <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
@@ -503,12 +644,13 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
         options={ETV_ARTEN.map((a) => ({ id: a.id, label: a.label }))}/>
       <DatumFeld t={t} accent={accent} iso label={vArt === "umlauf" ? "Stichtag" : "Termin"}
         value={datum} onChange={setDatum} defaultHeute={false}/>
+      {vArt !== "umlauf" && datum ? <FristHinweis datum={datum} t={t} /> : null}
       {vArt !== "umlauf" ? (
         <>
           <Inp t={t} accent={accent} label="Uhrzeit" value={uhrzeit} onChange={setUhrzeit}/>
           <Inp t={t} accent={accent} label="Ort" value={ort} onChange={setOrt}/>
-          <SegmentControl t={t} accent={accent} value={durch} onChange={setDurch}
-            options={ETV_DURCHFUEHRUNG.map((a) => ({ id: a.id, label: a.label }))}/>
+          <DurchfuehrungWahl t={t} accent={accent} value={durch} onChange={setDurch}
+            hybridMoeglich={etvStammVomObjekt(ve).hybridMoeglich}/>
         </>
       ) : null}
       <DatumFeld t={t} accent={accent} iso label="Einladung versendet am"
@@ -533,7 +675,7 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
           <div key={id} style={{ display: "flex", alignItems: "center", gap: 8,
             padding: "3px 0" }}>
             <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text,
-              overflowWrap: "anywhere" }}>{kontaktAnzeigename(kontakte, id)}</div>
+              overflowWrap: "anywhere" }}>{kontaktNameVonId(kontakte, id)}</div>
             <button onClick={() => setBeiratIds(beiratIds.filter((x) => x !== id))}
               style={{ width: 26, height: 26, borderRadius: RAD.pill, flexShrink: 0,
                 border: "1px solid " + t.border, background: t.card, color: t.muted,
@@ -1057,8 +1199,9 @@ function EtvBeschluesseTab({ versammlung, welt, onWelt, t, accent }) {
   );
 }
 
-// ── Protokoll (§5): strukturiert TOP-für-TOP + Anwesenheitsliste, druckeHtml ─
-function druckeEtvProtokoll(versammlung, ve, welt, kontakte) {
+// ── Protokoll (§5 + §3 Ausbau): TOP-für-TOP + Anwesenheit + Pflichtangaben ───
+// HTML-Bau getrennt (testbar); druckeEtvProtokoll druckt nur noch.
+function baueEtvProtokollHtml(versammlung, ve, welt, kontakte) {
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const anw = anwesenheitenFuer(welt, versammlung.id);
   const stamm = (ve && ve.etvStamm) || {};
@@ -1076,7 +1219,10 @@ function druckeEtvProtokoll(versammlung, ve, welt, kontakte) {
       inner += "<p><b>Abstimmung (" + esc(versammlung.stimmprinzip || "MEA") + "):</b> "
         + "Ja " + meaStr(b.abstimmung.ja) + " · Nein " + meaStr(b.abstimmung.nein)
         + " · Enthaltung " + meaStr(b.abstimmung.enthaltung)
-        + " — <b>" + (b.ergebnis === "angenommen" ? "ANGENOMMEN" : "ABGELEHNT") + "</b></p>";
+        + " — <b>" + (b.ergebnis === "angenommen" ? "ANGENOMMEN" : "ABGELEHNT") + "</b></p>"
+        // Verkündung (§24 WEG, Ausbau-Konzept §3): Standardsatz je gefasstem
+        // Beschluss — mit der Verkündung wird der Beschluss rechtlich existent.
+        + "<p>Der Versammlungsleiter verkündete das Beschlussergebnis.</p>";
       if (b.anfechtungsfrist_bis) {
         inner += "<p style='color:#555'>Anfechtungsfrist bis "
           + esc(datumDe(b.anfechtungsfrist_bis)) + " (§45 WEG)</p>";
@@ -1120,27 +1266,65 @@ function druckeEtvProtokoll(versammlung, ve, welt, kontakte) {
     + "<br/><b>" + (versammlung.versammlung_art === "umlauf" ? "Stichtag" : "Termin") + ":</b> "
     + esc(versammlung.datum ? datumDe(versammlung.datum) : "—")
     + (versammlung.uhrzeit ? " · " + esc(versammlung.uhrzeit) + " Uhr" : "")
+    + (versammlung.protokoll_beginn
+      ? "<br/><b>Beginn:</b> " + esc(versammlung.protokoll_beginn) + " Uhr"
+        + (versammlung.protokoll_ende
+          ? " · <b>Ende:</b> " + esc(versammlung.protokoll_ende) + " Uhr" : "")
+      : "")
     + (versammlung.ort ? "<br/><b>Ort:</b> " + esc(versammlung.ort) : "")
     + "<br/><b>Stimmprinzip:</b> " + esc(versammlung.stimmprinzip || "MEA")
     + (versammlung.leiter_kontakt_id
-      ? "<br/><b>Versammlungsleiter:</b> " + esc(kontaktAnzeigename(kontakte, versammlung.leiter_kontakt_id)) : "")
+      ? "<br/><b>Versammlungsleiter:</b> " + esc(kontaktNameVonId(kontakte, versammlung.leiter_kontakt_id)) : "")
     + (versammlung.protokollfuehrer_kontakt_id
-      ? "<br/><b>Protokollführer:</b> " + esc(kontaktAnzeigename(kontakte, versammlung.protokollfuehrer_kontakt_id)) : "")
+      ? "<br/><b>Protokollführer:</b> " + esc(kontaktNameVonId(kontakte, versammlung.protokollfuehrer_kontakt_id)) : "")
     + (versammlung.beirat_vorsitz_kontakt_id
       ? "<br/><b>Verwaltungsbeirat (Vorsitz):</b> "
-        + esc(kontaktAnzeigename(kontakte, versammlung.beirat_vorsitz_kontakt_id))
+        + esc(kontaktNameVonId(kontakte, versammlung.beirat_vorsitz_kontakt_id))
         + ((versammlung.beirat_mitglied_kontakt_ids || []).length > 0
           ? " · Mitglieder: " + (versammlung.beirat_mitglied_kontakt_ids || [])
-              .map((id) => esc(kontaktAnzeigename(kontakte, id))).join(", ")
+              .map((id) => esc(kontaktNameVonId(kontakte, id))).join(", ")
           : "")
       : "")
-    + "</p>";
+    + "</p>"
+    // Feststellung der ordnungsgemäßen Einladung (§24 WEG) — Standardsatz per Haken.
+    + (versammlung.einladung_festgestellt
+      ? "<p>Der Versammlungsleiter stellte fest, dass zu der Versammlung form-"
+        + " und fristgerecht eingeladen wurde.</p>"
+      : "")
+    // Feststellung der Beschlussfähigkeit (üblich, wenn Anwesenheit erfasst).
+    + (anw.length > 0
+      ? "<p>Der Versammlungsleiter stellte die Beschlussfähigkeit fest ("
+        + esc(bf.text) + ").</p>"
+      : "");
+  // Unterschriftenblock (§24 WEG: Leiter + ein Eigentümer + Beiratsvorsitz).
+  const uName = (kid, fallback) => kid ? kontaktNameVonId(kontakte, kid) : fallback;
+  const uZeile = (name, rolle, am) =>
+    "<p style='margin-top:30px'>_________________________________<br/>"
+    + esc(name) + ", " + rolle
+    + (am ? " — unterschrieben am " + esc(datumDe(am)) : "") + "</p>";
+  const unterschriftenHtml = "<h3>Unterschriften</h3>"
+    + uZeile(uName(versammlung.leiter_kontakt_id, "________________"),
+        "Versammlungsleiter", versammlung.unterschrift_leiter_am)
+    + uZeile(uName(versammlung.unterschrift_eigentuemer_kontakt_id, "________________"),
+        "Wohnungseigentümer", versammlung.unterschrift_eigentuemer_am)
+    + (versammlung.beirat_vorsitz_kontakt_id
+      ? uZeile(uName(versammlung.beirat_vorsitz_kontakt_id, ""),
+          "Vorsitzender des Verwaltungsbeirats", versammlung.unterschrift_beirat_am)
+      : "");
   const css = "h3{margin:14px 0 4px 0;font-size:13px} p{margin:4px 0;font-size:11px}"
     + " table{border-collapse:collapse;width:100%;font-size:10px}"
     + " th,td{border:1px solid #999;padding:3px 6px;text-align:left}";
-  druckeHtml("Protokoll · " + artLabel(versammlung.versammlung_art)
-    + (versammlung.datum ? " · " + datumDe(versammlung.datum) : ""),
-    kopf + topHtml + anwHtml, false, css);
+  return {
+    titel: "Protokoll · " + artLabel(versammlung.versammlung_art)
+      + (versammlung.datum ? " · " + datumDe(versammlung.datum) : ""),
+    html: kopf + topHtml + anwHtml + unterschriftenHtml,
+    css: css,
+  };
+}
+
+function druckeEtvProtokoll(versammlung, ve, welt, kontakte) {
+  const p = baueEtvProtokollHtml(versammlung, ve, welt, kontakte);
+  druckeHtml(p.titel, p.html, false, p.css);
 }
 
 // ── Die ETV-AKTE: Kopf + TabLeiste (§97) + vier Tabs (§2b) ──────────────────
@@ -1204,10 +1388,27 @@ function EtvDetail({ versammlung, ve, welt, onWelt, kontakte, settings, t, accen
 function EtvBereichFuerObjekt({ ve, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId }) {
   const [neuOffen, setNeuOffen] = useState(false);
   const [archivOffen, setArchivOffen] = useState(false);
+
+  // Auto-Hülle (§2.3/2.6): garantiert, dass IMMER eine offene ordentliche ETV
+  // existiert — sie ist das Zuhause vertagter/vorgemerkter Beschlüsse. Sicht-Ebene
+  // via useEffect (seiteneffektfrei im Render); idempotent, erzeugt nur wenn keine
+  // offene existiert. Läuft auch ohne Historie (Erst-ETV §2.3b).
+  useEffect(() => {
+    if (!ve || ve.id == null) return;
+    if (offeneOrdentlicheEtv(welt, ve.id)) return;
+    onWelt((w) => garantiereOffeneEtv(w, ve).welt);
+    // Abhängig von objekt-id + Anzahl Versammlungen: nach Erzeugung existiert
+    // eine offene → Effekt feuert nicht erneut (idempotent).
+    // eslint-disable-next-line
+  }, [ve && ve.id, (welt.versammlungen || []).length]);
+
   const alle = versammlungenFuerObjekt(welt, ve.id)
     .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")));
-  const aktive = alle.filter((v) => !v.archiviert);
-  const archiv = alle.filter((v) => v.archiviert);
+  // Rollierendes Fenster (§2.5, abgeleitet): "aktiv" (in Arbeit) + "nachschau"
+  // (abgeschlossen, Vorjahr/aktuell) bleiben oben; "archiv" (älter oder manuell)
+  // klappt weg. Kein Trigger, kein Jahres-Umschreiben — reine Ableitung.
+  const aktive = alle.filter((v) => etvSichtklasse(v) !== "archiv");
+  const archiv = alle.filter((v) => etvSichtklasse(v) === "archiv");
   const akte = akteId ? alle.find((v) => v.id === akteId) || null : null;
 
   if (akte) {
@@ -1230,7 +1431,8 @@ function EtvBereichFuerObjekt({ ve, welt, onWelt, kontakte, settings, t, accent,
       ))}
       {!neuOffen ? (
         <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-          onClick={() => setNeuOffen(true)} text="Neue Versammlung"/>
+          onClick={() => setNeuOffen(true)}
+          text="Außerordentliche ETV / Umlaufbeschluss"/>
       ) : (
         <VersammlungNeuForm ve={ve} welt={welt} kontakte={kontakte} t={t} accent={accent}
           onAbbrechen={() => setNeuOffen(false)}
@@ -1266,5 +1468,5 @@ function EtvBereichFuerObjekt({ ve, welt, onWelt, kontakte, settings, t, accent,
 
 export {
   EtvBereichFuerObjekt, EtvDetail, VersammlungZeile,
-  etvAnwesenheitZeilen, druckeEtvProtokoll,
+  etvAnwesenheitZeilen, druckeEtvProtokoll, baueEtvProtokollHtml,
 };
