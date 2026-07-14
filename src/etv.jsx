@@ -37,6 +37,7 @@ import {
   weltVersammlungPatch, weltVersammlungLoeschen,
   weltTopNeu, weltTopPatch, weltTopLoeschen, weltTopVerschieben,
   weltTopAbstimmen, weltBeschlussPatch, weltAnwesenheitenSetzen, weltTopVertagen,
+  MEHRHEITSTYPEN, berechneAbstimmung,
 } from "./datenmodell.js";
 
 // ── Kleine Helfer (reine Anzeige) ───────────────────────────────────────────
@@ -76,7 +77,8 @@ function etvAnwesenheitZeilen(ve, versammlungId, stimmprinzip) {
     rows.push(neueAnwesenheit({ versammlung_id: versammlungId,
       einheit_id: e.id != null ? e.id : null, einheit_nr: e.nr || "",
       eigentuemer_namen: namen, eigentuemer_kontakt_ids: ids,
-      stimmgewicht: nachMea ? zahl(e.mea) : 1 }));
+      stimmgewicht: nachMea ? zahl(e.mea) : 1,
+      mea_einheit: zahl(e.mea) }));  // echtes MEA IMMER (Cockpit-MEA-Spur, 14.07.)
   });
   return rows;
 }
@@ -325,6 +327,7 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
   const [editStamm, setEditStamm] = useState(false);
   const [loeschStufe, setLoeschStufe] = useState(false);
   const [bilderEinbetten, setBilderEinbetten] = useState(false);   // Druck-Haken §4.7
+  const [einzelstimmen, setEinzelstimmen] = useState(false);       // Druck-Haken Cockpit 14.07. (Default AUS)
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const anw = anwesenheitenFuer(welt, versammlung.id);
   const frist = ladungsfristInfo(versammlung);
@@ -619,7 +622,8 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
         </div>
       </BausteinKarte>
 
-      {/* Fuß-Aktionen: Protokoll (mit Bilder-Haken §4.7) · Archiv · Löschen */}
+      {/* Fuß-Aktionen: Protokoll (mit Bilder-Haken §4.7 + Einzelstimmen-Haken
+          Cockpit-Konzept 14.07. §4.3, Default AUS) · Archiv · Löschen */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
         <Toggle value={bilderEinbetten} color={accent} onChange={setBilderEinbetten}/>
         <div style={{ fontSize: FS.s, color: t.text }}>
@@ -628,9 +632,17 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
             Bild-Anlagen als Abbildungen ins Protokoll; PDFs bleiben Verzeichnis-Einträge</div>
         </div>
       </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+        <Toggle value={einzelstimmen} color={accent} onChange={setEinzelstimmen}/>
+        <div style={{ fontSize: FS.s, color: t.text }}>
+          Einzelstimmen namentlich drucken
+          <div style={{ fontSize: FS.xs, color: t.muted }}>
+            Je Beschluss eine Tabelle, wer wie gestimmt hat (nur Cockpit-Abstimmungen)</div>
+        </div>
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
         <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-          onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten })}
+          onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}
           text="Protokoll drucken"/>
         {versammlung.status === "abgeschlossen" ? (
           <AktionsButton rolle={versammlung.archiviert ? "abbrechen" : "bestaetigen"}
@@ -1290,11 +1302,149 @@ function TopHinzufuegen({ versammlung, ve, welt, onWelt, settings, t, accent, on
 }
 
 // Die TOP-Karte: BausteinKarte-Accordion, wächst per Baustein-Katalog (§2b).
+// ── AbstimmCockpit (Konzept 14.07. §4.2) — ersetzt die drei Handeingabe- ────
+// Felder. Klick pro anwesender/vertretener Einheit, Schnell-Schalter, Live-
+// Summe nach Kopf UND MEA (Rechenkern berechneAbstimmung = EINE Wahrheit mit
+// weltTopAbstimmen). Weisungen aus Verwaltervollmachten belegen den Klick vor.
+// WICHTIG (Phase-4-Merker §7): stimmen-Format ist quellenneutral — später
+// füllen es zugeschaltete Eigentümer selbst (Hybrid/Online), gleiche Struktur.
+function AbstimmCockpit({ top, versammlung, ve, welt, onWelt, t, accent, beschluss }) {
+  const zeilen = anwesenheitenFuer(welt, versammlung.id)
+    .filter((a) => a.status === "anwesend" || a.status === "vertreten");
+  const stamm = (ve && ve.etvStamm) || {};
+  // Vorbelegung: bestehende Einzelstimmen (Neu-Auszählen) > Vollmacht-Weisung.
+  const [stimmen, setStimmen] = useState(() => {
+    const init = {};
+    zeilen.forEach((a) => {
+      if (a.einheit_id == null) return;
+      const alt = (beschluss && beschluss.stimmen) ? beschluss.stimmen[a.einheit_id] : undefined;
+      const weisung = (a.weisungen && a.weisungen[top.id]) || undefined;
+      const v = alt || weisung;
+      if (v === "ja" || v === "nein" || v === "enthaltung") init[a.einheit_id] = v;
+    });
+    return init;
+  });
+  const typ = top.mehrheitstyp || "einfach";
+  const nachMea = (versammlung.stimmprinzip || "MEA") === "MEA";
+  const calc = berechneAbstimmung(zeilen, stimmen, {
+    mehrheitstyp: typ, stimmprinzip: versammlung.stimmprinzip,
+    gesamtMea: stamm.gesamtanteile });
+  const abgegeben = Object.keys(stimmen).length;
+  const setzen = (einheitId, v) => setStimmen((s) => {
+    const n = Object.assign({}, s);
+    if (n[einheitId] === v) delete n[einheitId]; else n[einheitId] = v;  // Toggle-Off
+    return n;
+  });
+  const alleSetzen = (v) => setStimmen(() => {
+    const n = {};
+    zeilen.forEach((a) => { if (a.einheit_id != null) n[a.einheit_id] = v; });
+    return n;
+  });
+  const optJNE = [{ id: "ja", label: "Ja" }, { id: "nein", label: "Nein" },
+    { id: "enthaltung", label: "Enth." }];
+  const schnellBtn = (label, v) => (
+    <button onClick={() => alleSetzen(v)}
+      style={{ fontSize: FS.xs, fontWeight: FW.medium, padding: "5px 10px",
+        borderRadius: RAD.pill, border: "1px solid " + t.border, cursor: "pointer",
+        background: t.card, color: t.text, fontFamily: "inherit" }}>{label}</button>
+  );
+  const summeZeile = (label, k, m) => (
+    <div style={{ display: "flex", gap: 8, fontSize: FS.s, color: t.text }}>
+      <div style={{ width: 44, fontWeight: FW.medium }}>{label}</div>
+      <div>{k} {k === 1 ? "Stimme" : "Stimmen"}</div>
+      <div style={{ color: t.muted }}>· {meaStr(m)} MEA</div>
+    </div>
+  );
+  const gesamtMeaZahl = calc.gesamt_mea;
+  const schwelleZeile = (label, ok, detail) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: FS.xs }}>
+      <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 9,
+        background: ok ? "#10B981" : "#EF4444" }}/>
+      <span style={{ color: t.text }}>{label}: {ok ? "erreicht" : "nicht erreicht"}</span>
+      <span style={{ color: t.muted }}>({detail})</span>
+    </div>
+  );
+  if (zeilen.length === 0) {
+    return (
+      <div style={{ fontSize: FS.xs, color: t.muted }}>
+        Keine anwesenden oder vertretenen Einheiten — erst die Anwesenheit im
+        Übersicht-Tab erfassen.
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {schnellBtn("Alle Ja", "ja")}
+        {schnellBtn("Alle Nein", "nein")}
+        {schnellBtn("Alle Enthaltung", "enthaltung")}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {zeilen.map((a) => (
+          <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8,
+            padding: "6px 8px", borderRadius: RAD.sm, border: "1px solid " + t.border,
+            background: t.card }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: FS.s, color: t.text, fontWeight: FW.medium,
+                overflowWrap: "anywhere" }}>
+                {(a.einheit_nr ? a.einheit_nr + " · " : "") + (a.eigentuemer_namen || "—")}
+              </div>
+              <div style={{ fontSize: FS.xs, color: t.muted }}>
+                {meaStr(a.mea_einheit || a.stimmgewicht) + " MEA"
+                  + (a.status === "vertreten"
+                    ? " · vertreten" + (a.vertreten_durch ? " durch " + a.vertreten_durch : "")
+                    : "")
+                  + (a.weisungen && a.weisungen[top.id] ? " · Weisung vorbelegt" : "")}
+              </div>
+            </div>
+            <SegmentControl t={t} accent={accent} voll={false}
+              value={a.einheit_id != null ? (stimmen[a.einheit_id] || null) : null}
+              onChange={(v) => a.einheit_id != null && setzen(a.einheit_id, v)}
+              options={optJNE}/>
+          </div>
+        ))}
+      </div>
+      {/* Live-Summe: Kopf UND MEA (Konzept §4.2) */}
+      <div style={{ padding: "8px 10px", borderRadius: RAD.sm,
+        border: "1px solid " + t.border, background: t.surface,
+        display: "flex", flexDirection: "column", gap: 4 }}>
+        {summeZeile("Ja", calc.ja_kopf, calc.ja_mea)}
+        {summeZeile("Nein", calc.nein_kopf, calc.nein_mea)}
+        {summeZeile("Enth.", calc.enth_kopf, calc.enth_mea)}
+        <div style={{ fontSize: FS.xs, color: t.muted }}>
+          {abgegeben} von {zeilen.length} Einheiten abgestimmt
+          {abgegeben < zeilen.length ? " — ohne Klick = keine Stimme abgegeben" : ""}
+        </div>
+        {typ !== "einfach" && abgegeben > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
+            {schwelleZeile(
+              typ === "doppelt_21" ? "Kopf-Quote 2/3" : "Kopf-Quote 3/4",
+              calc.schwelle_erreicht && calc.schwelle_erreicht.kopf,
+              calc.ja_kopf + " Ja von " + calc.abgegeben_kopf + " abgegeben, Enthaltung zählt nicht")}
+            {schwelleZeile("MEA-Schwelle > 1/2 ALLER Anteile",
+              calc.schwelle_erreicht && calc.schwelle_erreicht.mea,
+              meaStr(calc.ja_mea) + " Ja-MEA von " + meaStr(gesamtMeaZahl) + " gesamt — Abwesende zählen im Nenner mit!")}
+          </div>
+        ) : null}
+        {abgegeben > 0 ? (
+          <div style={{ marginTop: 2 }}>
+            <StatusPille t={t}
+              farbe={calc.angenommen ? "#10B981" : "#EF4444"}
+              text={"Stand jetzt: " + (calc.angenommen ? "Angenommen" : "Abgelehnt")}/>
+          </div>
+        ) : null}
+      </div>
+      <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+        onClick={() => onWelt((w) => weltTopAbstimmen(w, top.id,
+          { stimmen: stimmen, mehrheitstyp: typ, gesamtMea: stamm.gesamtanteile }))}
+        disabled={abgegeben === 0}
+        text={beschluss ? "Neu auszählen (überschreibt)" : "Auszählen — Beschluss fassen"}/>
+    </div>
+  );
+}
+
 function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, offen, onToggle, gesperrt }) {
   const [loeschStufe, setLoeschStufe] = useState(false);
-  const [ja, setJa] = useState("");
-  const [nein, setNein] = useState("");
-  const [enth, setEnth] = useState("");
   const [aufgabeText, setAufgabeText] = useState("");
   const beschluss = top.beschluss_id
     ? (welt.beschluesse || []).find((b) => b.id === top.beschluss_id) || null : null;
@@ -1305,16 +1455,6 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
     && !(b.id === "abstimmung" && !top.beschluss_noetig));
   const ausgang = topAusgang(top, beschluss);
   const subText = ausgang ? ausgang.label : null;
-  const zahlInp = (label, v, setV) => (
-    <div style={{ flex: 1, minWidth: 70 }}>
-      <div style={{ fontSize: FS.xs, color: t.muted, marginBottom: 2 }}>{label}</div>
-      <input value={v} onChange={(ev) => setV(ev.target.value.replace(/[^0-9.,]/g, ""))}
-        inputMode="decimal"
-        style={{ width: "100%", fontSize: 16, padding: "6px 8px", boxSizing: "border-box",
-          borderRadius: RAD.sm, border: "1px solid " + t.border,
-          background: t.card, color: t.text }}/>
-    </div>
-  );
   return (
     <BausteinKarte t={t} accent={accent}
       titel={"TOP " + (top.nummer || "?") + " · " + (top.titel || "—")}
@@ -1346,6 +1486,22 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
               Geschäftsordnungsbeschluss (nicht in die Beschluss-Sammlung)</div>
             <Toggle value={!!top.go_beschluss} color={accent}
               onChange={(v) => patch({ go_beschluss: v })}/>
+          </div>
+        ) : null}
+        {/* Mehrheitstyp (Cockpit-Konzept 14.07. §4.1): in der VORBEREITUNG
+            wählen (§23 II WEG — erhöhtes Quorum gehört in die Einladung).
+            Default „einfach"; Hinweistext nennt die Schwelle. */}
+        {!gesperrt && top.beschluss_noetig ? (
+          <div>
+            <div style={{ fontSize: FS.xs, color: t.muted, marginBottom: 4 }}>
+              Erforderliche Mehrheit</div>
+            <SegmentControl t={t} accent={accent}
+              value={top.mehrheitstyp || "einfach"}
+              onChange={(v) => patch({ mehrheitstyp: v })}
+              options={MEHRHEITSTYPEN.map((m) => ({ id: m.id, label: m.kurz }))}/>
+            <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
+              {(MEHRHEITSTYPEN.find((m) => m.id === (top.mehrheitstyp || "einfach")) || {}).hinweis}
+            </div>
           </div>
         ) : null}
         {!gesperrt ? (
@@ -1406,11 +1562,25 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
                     farbe={beschluss.ergebnis === "angenommen" ? "#10B981" : "#EF4444"}
                     text={beschluss.ergebnis === "angenommen" ? "Angenommen" : "Abgelehnt"}/>
                   <div style={{ fontSize: FS.s, color: t.text }}>
-                    Ja {meaStr((beschluss.abstimmung || {}).ja)} ·
-                    Nein {meaStr((beschluss.abstimmung || {}).nein)} ·
-                    Enth. {meaStr((beschluss.abstimmung || {}).enthaltung)}
+                    {(beschluss.abstimmung || {}).ja_kopf != null
+                      ? "Ja " + beschluss.abstimmung.ja_kopf + " (" + meaStr(beschluss.abstimmung.ja_mea) + " MEA) · "
+                        + "Nein " + beschluss.abstimmung.nein_kopf + " (" + meaStr(beschluss.abstimmung.nein_mea) + " MEA) · "
+                        + "Enth. " + beschluss.abstimmung.enth_kopf + " (" + meaStr(beschluss.abstimmung.enth_mea) + " MEA)"
+                      : "Ja " + meaStr((beschluss.abstimmung || {}).ja)
+                        + " · Nein " + meaStr((beschluss.abstimmung || {}).nein)
+                        + " · Enth. " + meaStr((beschluss.abstimmung || {}).enthaltung)}
                   </div>
                 </div>
+                {beschluss.mehrheitstyp && beschluss.mehrheitstyp !== "einfach" ? (
+                  <div style={{ fontSize: FS.xs, color: t.muted }}>
+                    {(MEHRHEITSTYPEN.find((m) => m.id === beschluss.mehrheitstyp) || {}).label}
+                    {beschluss.schwelle_erreicht
+                      ? " — Kopf-Quote " + (beschluss.schwelle_erreicht.kopf ? "erreicht" : "verfehlt")
+                        + " · MEA-Schwelle " + (beschluss.schwelle_erreicht.mea ? "erreicht" : "verfehlt")
+                        + " (von " + meaStr(beschluss.gesamt_mea) + " Gesamt-MEA)"
+                      : ""}
+                  </div>
+                ) : null}
                 {beschluss.anfechtungsfrist_bis ? (
                   <div style={{ fontSize: FS.xs, color: t.muted }}>
                     Anfechtungsfrist bis {datumDe(beschluss.anfechtungsfrist_bis)} (§45 WEG)
@@ -1444,21 +1614,11 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
             ) : null}
             {!gesperrt && !top.vertagt ? (
               <div style={{ marginTop: beschluss ? 8 : 0 }}>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {zahlInp("Ja", ja, setJa)}
-                  {zahlInp("Nein", nein, setNein)}
-                  {zahlInp("Enthaltung", enth, setEnth)}
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-                    onClick={() => {
-                      onWelt((w) => weltTopAbstimmen(w, top.id,
-                        { ja: zahl(ja), nein: zahl(nein), enthaltung: zahl(enth) }));
-                      setJa(""); setNein(""); setEnth("");
-                    }}
-                    disabled={ja === "" && nein === "" && enth === ""}
-                    text={beschluss ? "Neu auszählen (überschreibt)" : "Auszählen — Beschluss fassen"}/>
-                </div>
+                {/* Abstimm-Cockpit (14.07.): Klick je Einheit statt Handeingabe.
+                    key erzwingt frische Vorbelegung bei TOP-/Beschluss-Wechsel. */}
+                <AbstimmCockpit key={top.id + "_" + (beschluss ? beschluss.id : "neu")}
+                  top={top} versammlung={versammlung} ve={ve} welt={welt}
+                  onWelt={onWelt} t={t} accent={accent} beschluss={beschluss}/>
                 {!beschluss ? (
                   <div style={{ marginTop: 6 }}>
                     <AktionsButton rolle="bestaetigen" variante="breit" t={t}
@@ -1635,7 +1795,8 @@ function EtvBeschluesseTab({ versammlung, welt, onWelt, t, accent }) {
 
 // ── Protokoll (§5 + §3 Ausbau): TOP-für-TOP + Anwesenheit + Pflichtangaben ───
 // HTML-Bau getrennt (testbar); druckeEtvProtokoll druckt nur noch.
-function baueEtvProtokollHtml(versammlung, ve, welt, kontakte) {
+function baueEtvProtokollHtml(versammlung, ve, welt, kontakte, optionen) {
+  const opt = optionen || {};
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const anw = anwesenheitenFuer(welt, versammlung.id);
   const stamm = (ve && ve.etvStamm) || {};
@@ -1650,10 +1811,44 @@ function baueEtvProtokollHtml(versammlung, ve, welt, kontakte) {
       inner += "<p><b>Anlagen:</b> " + tp.anlagen.map((a) => esc(a.titel)).join(", ") + "</p>";
     }
     if (b && b.abstimmung) {
-      inner += "<p><b>Abstimmung (" + esc(versammlung.stimmprinzip || "MEA") + "):</b> "
-        + "Ja " + meaStr(b.abstimmung.ja) + " · Nein " + meaStr(b.abstimmung.nein)
-        + " · Enthaltung " + meaStr(b.abstimmung.enthaltung)
-        + " — <b>" + (b.ergebnis === "angenommen" ? "ANGENOMMEN" : "ABGELEHNT") + "</b></p>"
+      // Cockpit-Beschlüsse (14.07.): Kopf UND MEA ausweisen + Mehrheitstyp +
+      // Schwellen. Alt-Beschlüsse (nur ja/nein/enthaltung): bisherige Zeile.
+      const ab = b.abstimmung;
+      if (ab.ja_kopf != null) {
+        inner += "<p><b>Abstimmung:</b> "
+          + "Ja " + ab.ja_kopf + " Stimmen (" + meaStr(ab.ja_mea) + " MEA) · "
+          + "Nein " + ab.nein_kopf + " Stimmen (" + meaStr(ab.nein_mea) + " MEA) · "
+          + "Enthaltung " + ab.enth_kopf + " Stimmen (" + meaStr(ab.enth_mea) + " MEA)"
+          + " — <b>" + (b.ergebnis === "angenommen" ? "ANGENOMMEN" : "ABGELEHNT") + "</b></p>";
+        const mt = MEHRHEITSTYPEN.find((m) => m.id === b.mehrheitstyp);
+        if (b.mehrheitstyp && b.mehrheitstyp !== "einfach" && mt) {
+          inner += "<p style='color:#555'>Erforderliche Mehrheit: " + esc(mt.label)
+            + (b.schwelle_erreicht
+              ? " — Kopf-Quote " + (b.schwelle_erreicht.kopf ? "erreicht" : "verfehlt")
+                + ", MEA-Schwelle " + (b.schwelle_erreicht.mea ? "erreicht" : "verfehlt")
+                + " (Ja-MEA " + meaStr(ab.ja_mea) + " von " + meaStr(b.gesamt_mea)
+                + " Gesamt-MEA)"
+              : "") + "</p>";
+        }
+        // Einzelstimmen namentlich — NUR per Druck-Haken (Default AUS, §2 Nr. 7).
+        if (opt.einzelstimmen && b.stimmen && Object.keys(b.stimmen).length > 0) {
+          const anwAlle = anwesenheitenFuer(welt, versammlung.id);
+          const sLabel = { ja: "Ja", nein: "Nein", enthaltung: "Enthaltung" };
+          inner += "<table><tr><th>Einheit</th><th>Eigentümer</th><th>Stimme</th></tr>"
+            + Object.keys(b.stimmen).map((eid) => {
+                const az = anwAlle.find((x) => String(x.einheit_id) === String(eid));
+                return "<tr><td>" + esc(az ? az.einheit_nr : eid) + "</td><td>"
+                  + esc(az ? az.eigentuemer_namen : "—") + "</td><td>"
+                  + (sLabel[b.stimmen[eid]] || "—") + "</td></tr>";
+              }).join("") + "</table>";
+        }
+      } else {
+        inner += "<p><b>Abstimmung (" + esc(versammlung.stimmprinzip || "MEA") + "):</b> "
+          + "Ja " + meaStr(ab.ja) + " · Nein " + meaStr(ab.nein)
+          + " · Enthaltung " + meaStr(ab.enthaltung)
+          + " — <b>" + (b.ergebnis === "angenommen" ? "ANGENOMMEN" : "ABGELEHNT") + "</b></p>";
+      }
+      inner += ""
         // Verkündung (§24 WEG, Ausbau-Konzept §3): Standardsatz je gefasstem
         // Beschluss — mit der Verkündung wird der Beschluss rechtlich existent.
         + "<p>Der Versammlungsleiter verkündete das Beschlussergebnis.</p>";
@@ -1800,7 +1995,7 @@ function baueEtvProtokollHtml(versammlung, ve, welt, kontakte) {
 // die Blobs asynchron aus IndexedDB geladen und als dataURL angehängt — nur
 // echte Bilder (blob.type image/*), PDFs/Office bleiben Verzeichnis-Einträge.
 function druckeEtvProtokoll(versammlung, ve, welt, kontakte, optionen) {
-  const p = baueEtvProtokollHtml(versammlung, ve, welt, kontakte);
+  const p = baueEtvProtokollHtml(versammlung, ve, welt, kontakte, optionen);
   const einbetten = !!(optionen && optionen.bilderEinbetten);
   if (!einbetten || p.verzeichnis.length === 0) {
     druckeHtml(p.titel, p.html, false, p.css);
@@ -1968,5 +2163,5 @@ function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings,
 
 export {
   EtvBereichFuerObjekt, EtvDetail, VersammlungZeile,
-  etvAnwesenheitZeilen, druckeEtvProtokoll, baueEtvProtokollHtml,
+  etvAnwesenheitZeilen, druckeEtvProtokoll, baueEtvProtokollHtml, AbstimmCockpit,
 };

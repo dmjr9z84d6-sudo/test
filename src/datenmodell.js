@@ -2975,7 +2975,16 @@ function neuerBeschluss(init) {
     betreff: "",                 // (Alt-Feld, bleibt für Bestand)
     titel: "",
     wortlaut: "",
-    abstimmung: null,            // { ja, nein, enthaltung } — gewichtet nach Stimmprinzip
+    abstimmung: null,            // Cockpit (14.07.): { ja_kopf,nein_kopf,enth_kopf,
+                                 //   ja_mea,nein_mea,enth_mea, ja,nein,enthaltung }
+                                 // — Kopf UND MEA getrennt; ja/nein/enthaltung bleiben
+                                 // als Alias der nach Stimmprinzip maßgeblichen Reihe
+                                 // (Alt-Beschlüsse + einfacher Druck, rückwärtskompatibel)
+    stimmen: {},                 // Einzelstimmen { [einheit_id]: "ja"|"nein"|"enthaltung" }
+                                 // — Redundanz-Entscheidung 14.07.: Einzelstimmen UND Summen
+    mehrheitstyp: "einfach",     // gespiegelt vom TOP (fürs Protokoll/Sammlung)
+    gesamt_mea: 0,               // Gesamt-MEA der WEG zum Zeitpunkt (Nenner, eingefroren)
+    schwelle_erreicht: null,     // { kopf: bool, mea: bool } bei qualifiz. | null bei einfach
     ergebnis: null,              // "angenommen" | "abgelehnt"
     gefasst_am: null,
     anfechtungsfrist_bis: null,  // gefasst_am + 1 Monat (§45 WEG)
@@ -3071,6 +3080,10 @@ function neuerTop(init) {
     titel: "",
     text: "",
     beschluss_noetig: false,
+    mehrheitstyp: "einfach",        // "einfach" | "qualifiziert_16" | "doppelt_21"
+                                    // (Abstimm-Cockpit-Konzept 14.07. §3.1) — wird in
+                                    // der VORBEREITUNG gewählt (§23 II WEG), steuert
+                                    // die Schwellenprüfung bei der Auszählung.
     beschluss_id: null,             // FK → beschluss (null bis gefasst)
     vorgang_id: null,               // Quelle 2: aus Vorgang (naechste_etv) entstanden
     quelle: "frei",                 // standard | vorgang | frei
@@ -3116,6 +3129,9 @@ function neueAnwesenheit(init) {
     eigentuemer_namen: "",          // ALLE Eigentümer der Einheit (Anzeige, ein String)
     eigentuemer_kontakt_ids: [],    // Referenzen (für Kontaktkarten, Block 2)
     stimmgewicht: 0,                // nach Prinzip: Objekt=1 | MEA=einheit.mea | Kopf=1
+    mea_einheit: 0,                 // ECHTES MEA der Einheit, UNABHÄNGIG vom Prinzip
+                                    // (Cockpit 14.07.: MEA-Spur der Auszählung braucht
+                                    // das reale MEA auch bei Kopf-/Objektprinzip)
     status: "abwesend",             // abwesend | anwesend | vertreten (ersetzt bool)
     vertreten_durch: "",            // Anzeige-Name des Vertreters (Freitext)
     vertreten_durch_kontakt_id: null, // strukturierte Vertretung (optional)
@@ -3544,13 +3560,93 @@ function weltTopVerschieben(welt, id, richtung) {
 // Abstimmung auszählen → Beschluss fassen (Kern der Präsenz-Erfassung §4.1).
 // Erzeugt/aktualisiert das beschluss-Objekt, verknüpft den TOP und — Nahtstelle
 // §9 — löst einen wartenden Vorgang aus (Entscheidung ist gefallen, egal wie).
-function weltTopAbstimmen(welt, topId, stimmen) {
+// ── Abstimm-Cockpit (Konzept 14.07.): Mehrheitstypen + Rechenkern ───────────
+// Rechtslage (recherchiert 14.07.): Normalfall einfache Mehrheit (§25 I WEG,
+// Ja > Nein, Enthaltung zählt nicht). Zwei gesetzliche Sonderfälle mit DOPPELTER
+// Schwelle — Kopf-Quote bezieht sich auf die ABGEGEBENEN Stimmen (Anwesende),
+// die MEA-Schwelle auf ALLE MEA der WEG (Gesamt-Nenner! Kern-Falle §1 Konzept).
+const MEHRHEITSTYPEN = [
+  { id: "einfach", label: "Einfache Mehrheit", kurz: "Einfach",
+    hinweis: "Ja > Nein der abgegebenen Stimmen (§25 WEG); Enthaltungen zählen nicht." },
+  { id: "qualifiziert_16", label: "Qualifiziert (Kostenverteilung, §16 IV)", kurz: "Qualif. §16",
+    hinweis: "3/4 der abgegebenen Stimmen UND mehr als die Hälfte ALLER MEA." },
+  { id: "doppelt_21", label: "Doppelt qualifiziert (baulich, §21 II)", kurz: "Doppelt §21",
+    hinweis: "2/3 der abgegebenen Stimmen UND mehr als die Hälfte ALLER MEA." },
+];
+// EINE Wahrheit für Live-Summe (Cockpit-UI) UND Verkündung (weltTopAbstimmen).
+// zeilen = Anwesenheits-Zeilen (nur anwesend/vertreten zählen); stimmen =
+// { [einheit_id]: "ja"|"nein"|"enthaltung" } — Einheiten ohne Eintrag haben
+// KEINE Stimme abgegeben (zählen nirgends, auch nicht als Enthaltung).
+// Enthaltung gilt als NICHT abgegeben → fällt aus dem Nenner der Kopf-Quote
+// (h.M. zu §25 I WEG, Konzept §6 Nr. 2 — beim Bau abgesichert).
+function berechneAbstimmung(zeilen, stimmen, optionen) {
+  const o = optionen || {};
+  const typ = o.mehrheitstyp || "einfach";
+  const prinzip = o.stimmprinzip || "MEA";
+  const gesamtMea = Number(String(o.gesamtMea == null ? "" : o.gesamtMea).replace(",", ".")) || 0;
+  const s = stimmen || {};
+  let jaK = 0, neinK = 0, enthK = 0, jaM = 0, neinM = 0, enthM = 0;
+  (zeilen || []).forEach((a) => {
+    if (!a || (a.status !== "anwesend" && a.status !== "vertreten")) return;
+    const v = a.einheit_id != null ? s[a.einheit_id] : undefined;
+    if (v !== "ja" && v !== "nein" && v !== "enthaltung") return;
+    // MEA-Spur: echtes Einheiten-MEA; Fallback stimmgewicht (Alt-Zeilen vor 13.82,
+    // dort nur bei Prinzip MEA korrekt — Demo wird ohnehin neu erzeugt).
+    const mea = Number(a.mea_einheit) || Number(a.stimmgewicht) || 0;
+    if (v === "ja") { jaK += 1; jaM += mea; }
+    else if (v === "nein") { neinK += 1; neinM += mea; }
+    else { enthK += 1; enthM += mea; }
+  });
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  jaM = r3(jaM); neinM = r3(neinM); enthM = r3(enthM);
+  const abgegebenK = jaK + neinK; // Enthaltung ≠ abgegeben (Nenner der Quoten)
+  let angenommen, schwelle = null;
+  if (typ === "doppelt_21" || typ === "qualifiziert_16") {
+    // Ganzzahl-Vergleich statt Float: ja*3 ≥ 2*abg (2/3) bzw. ja*4 ≥ 3*abg (3/4)
+    const kopfOk = abgegebenK > 0 && (typ === "doppelt_21"
+      ? jaK * 3 >= abgegebenK * 2 : jaK * 4 >= abgegebenK * 3);
+    const meaOk = gesamtMea > 0 && jaM > gesamtMea / 2;
+    schwelle = { kopf: kopfOk, mea: meaOk };
+    angenommen = kopfOk && meaOk;
+  } else {
+    // einfach: maßgebliche Spur nach Stimmprinzip der Versammlung
+    angenommen = prinzip === "MEA" ? jaM > neinM : jaK > neinK;
+  }
+  return {
+    ja_kopf: jaK, nein_kopf: neinK, enth_kopf: enthK,
+    ja_mea: jaM, nein_mea: neinM, enth_mea: enthM,
+    abgegeben_kopf: abgegebenK, gesamt_mea: gesamtMea,
+    angenommen, schwelle_erreicht: schwelle,
+    // Alias-Reihe (rückwärtskompatibel): die nach Prinzip maßgebliche Spur
+    ja: prinzip === "MEA" ? jaM : jaK,
+    nein: prinzip === "MEA" ? neinM : neinK,
+    enthaltung: prinzip === "MEA" ? enthM : enthK,
+  };
+}
+
+// Verkündung/Auszählung. ZWEI Eingabeformen (Cockpit-Umbau 14.07.):
+// NEU:  { stimmen: {einheit_id: "ja"|...}, mehrheitstyp, gesamtMea } — App rechnet selbst.
+// ALT:  { ja, nein, enthaltung } als fertige Zahlen — bleibt als Fallback
+//       (Alt-Aufrufer/Bestand), einfache Mehrheit wie bisher.
+function weltTopAbstimmen(welt, topId, eingabe) {
   const tp = (welt.tops || []).find((x) => x.id === topId);
   if (!tp) return welt;
   const versammlung = (welt.versammlungen || []).find((v) => v.id === tp.versammlung_id) || {};
-  const ja = Number(stimmen.ja) || 0, nein = Number(stimmen.nein) || 0,
-    enth = Number(stimmen.enthaltung) || 0;
-  const angenommen = ja > nein; // einfache Mehrheit; Enthaltungen zählen nicht mit (§25 WEG)
+  const e = eingabe || {};
+  let ja, nein, enth, angenommen, cockpit = null;
+  if (e.stimmen && typeof e.stimmen === "object") {
+    const zeilen = (welt.anwesenheiten || []).filter((a) => a.versammlung_id === tp.versammlung_id);
+    cockpit = berechneAbstimmung(zeilen, e.stimmen, {
+      mehrheitstyp: e.mehrheitstyp || tp.mehrheitstyp || "einfach",
+      stimmprinzip: versammlung.stimmprinzip,
+      gesamtMea: e.gesamtMea,
+    });
+    ja = cockpit.ja; nein = cockpit.nein; enth = cockpit.enthaltung;
+    angenommen = cockpit.angenommen;
+  } else {
+    ja = Number(e.ja) || 0; nein = Number(e.nein) || 0; enth = Number(e.enthaltung) || 0;
+    angenommen = ja > nein; // einfache Mehrheit; Enthaltungen zählen nicht mit (§25 WEG)
+  }
   const gefasstAm = versammlung.datum || isoHeute();
   // Sammlung (§24 VII): fortlaufende Nummer AUTOMATISCH bei Verkündung —
   // „unverzüglich" per Konstruktion. Auch Negativbeschlüsse (verkündet =
@@ -3567,7 +3663,15 @@ function weltTopAbstimmen(welt, topId, stimmen) {
     versammlung_id: tp.versammlung_id, top_id: tp.id,
     vorgang_id: tp.vorgang_id || null,
     titel: tp.titel, wortlaut: tp.wortlaut || tp.text || "",
-    abstimmung: { ja: ja, nein: nein, enthaltung: enth },
+    abstimmung: cockpit ? {
+      ja_kopf: cockpit.ja_kopf, nein_kopf: cockpit.nein_kopf, enth_kopf: cockpit.enth_kopf,
+      ja_mea: cockpit.ja_mea, nein_mea: cockpit.nein_mea, enth_mea: cockpit.enth_mea,
+      ja: ja, nein: nein, enthaltung: enth,
+    } : { ja: ja, nein: nein, enthaltung: enth },
+    stimmen: cockpit ? Object.assign({}, e.stimmen) : {},
+    mehrheitstyp: cockpit ? (e.mehrheitstyp || tp.mehrheitstyp || "einfach") : "einfach",
+    gesamt_mea: cockpit ? cockpit.gesamt_mea : 0,
+    schwelle_erreicht: cockpit ? cockpit.schwelle_erreicht : null,
     ergebnis: angenommen ? "angenommen" : "abgelehnt",
     status: angenommen ? "gefasst" : "abgelehnt",
     gefasst_am: gefasstAm,
@@ -4629,6 +4733,8 @@ export {
   weltVersammlungNeu, weltVersammlungPatch, weltVersammlungLoeschen,
   weltTopNeu, weltTopPatch, weltTopLoeschen, weltTopVerschieben,
   weltTopAbstimmen, weltBeschlussPatch, weltAnwesenheitenSetzen,
+  // Abstimm-Cockpit (Konzept 14.07.):
+  MEHRHEITSTYPEN, berechneAbstimmung,
   // Beschluss-Sammlung (§24 VII WEG, Konzept 13.07.):
   neueGerichtsentscheidung, naechsteLfdNummer, sammlungsStatus,
   SAMMLUNG_STATUS_LABEL, sammlungFuerObjekt, beschlussOrtDatum,
