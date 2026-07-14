@@ -140,13 +140,17 @@ function PhasenLeiste({ vorgang, welt, t, accent }) {
 // ── BausteinKarte — aufklappbare Karte im Vorgangs-Stapel (§6) ─────────────
 // Objekt-Verwaltung-Muster: ganzer Kopf ist Klickfläche, KEIN Chevron.
 // Accordion macht der Aufrufer (offen/onToggle). Badge = Anzahl.
-function BausteinKarte({ titel, anzahl, sub, offen, onToggle, t, accent, children }) {
+function BausteinKarte({ titel, anzahl, sub, punktFarbe, offen, onToggle, t, accent, children }) {
   return (
     <div style={{ background: t.surface,
       border: "1px solid " + (offen ? accent + "60" : t.border),
       borderRadius: RAD.md, minWidth: 0 }}>
       <div onClick={onToggle} style={{ padding: "9px 12px", cursor: "pointer",
         display: "flex", alignItems: "center", gap: 8 }}>
+        {punktFarbe ? (
+          <span style={{ width: 10, height: 10, borderRadius: RAD.pill,
+            background: punktFarbe, flexShrink: 0 }}/>
+        ) : null}
         <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.bold,
           color: t.text }}>
           {titel}

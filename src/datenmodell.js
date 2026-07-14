@@ -2981,6 +2981,15 @@ function neuerBeschluss(init) {
     anfechtungsfrist_bis: null,  // gefasst_am + 1 Monat (§45 WEG)
     jahr: null,
     ist_besonders: false,        // Verwalter-Merker → ETV-Tab "Beschlüsse" (§2b)
+    // Beschluss-Sammlung (§24 VII WEG, Konzept 13.07.):
+    lfd_nummer: null,            // FORTLAUFENDE Sammlungs-Nummer — einmal vergeben, für immer
+                                 // stabil; EIN Nummernkreis mit gerichtsentscheidungen; KEIN
+                                 // Jahres-Reset (h.M.: unzulässig). Vergabe automatisch bei
+                                 // Verkündung (weltTopAbstimmen), außer GO-Beschluss.
+    vermerke: [],                // [{datum, typ:"angefochten"|"aufgehoben"|"bedeutungslos"|"frei", text}]
+                                 // additiv (Journal, §24 VII S.4/7) — nie editiert/gelöscht
+    ort: "",                     // NUR Alt-Beschlüsse ohne versammlung_id (sonst abgeleitet)
+    alt_erfasst: false,          // Alt-Bestand (Übernahme Vorverwalter / später KI)
     demo: false,
   }, init || {});
 }
@@ -3069,6 +3078,9 @@ function neuerTop(init) {
     bausteine: [],                  // sichtbare Blöcke (Katalog-IDs)
     wortlaut: "",                   // Baustein Beschlussvorlage/Wortlaut
     anlagen: [],                    // Baustein Anlage (§4, 13.07.): [{id,titel,quelle:"dokument"|"foto",refId,dateiRef}] — jede Anlage braucht eine Datei
+    go_beschluss: false,            // Geschäftsordnung → KEINE lfd_nummer, nicht in die Sammlung
+    vertagt: false,                 // Ausgang „vertagt" (gelb) — kein Beschluss, keine Nummer
+    vertagt_nach_id: null,          // FK auf den Folge-TOP in der nächsten ETV (freie TOPs)
     aufgaben: [],                   // Baustein Aufgabe: [{id,text,erledigt}]
     notiz: "",                      // Baustein Notiz (EINE freie Notiz, Vorgang-Muster)
     demo: false,
@@ -3256,6 +3268,155 @@ function anfechtungsfristBis(gefasstAmIso) {
   return d.toISOString().slice(0, 10);
 }
 
+// ═══ Beschluss-Sammlung (§24 VII/VIII WEG — Konzept 13.07.2026) ═════════════
+// Die Sammlung ist eine SICHT auf beschluesse (mit lfd_nummer) + die neue
+// Liste gerichtsentscheidungen — EIN gemeinsamer, fortlaufender Nummernkreis.
+
+// Gerichtsentscheidung (§43 WEG): NUR die Urteilsformel mit Datum/Gericht/
+// Parteien (Pflichtinhalt §24 VII Nr. 3) — kein Urteils-Volltext.
+function neueGerichtsentscheidung(init) {
+  return Object.assign({
+    id: vgId("ger"),
+    objekt_id: null,
+    lfd_nummer: null,            // gleicher Nummernkreis wie Beschlüsse
+    urteilsformel: "",
+    gericht: "",
+    datum: null,                 // Datum der Entscheidung (ISO)
+    parteien: "",
+    vermerke: [],                // z. B. Rechtsmittel anhängig / rechtskräftig
+    demo: false,
+  }, init || {});
+}
+
+// Nächste fortlaufende Nummer eines Objekts: max über BEIDE Quellen + 1.
+// Nummern werden NIE neu vergeben — gelöschte/lückige Nummern bleiben Lücken.
+function naechsteLfdNummer(welt, objektId) {
+  let max = 0;
+  (welt.beschluesse || []).forEach((b) => {
+    if (b && b.objekt_id === objektId && Number(b.lfd_nummer) > max) max = Number(b.lfd_nummer);
+  });
+  (welt.gerichtsentscheidungen || []).forEach((g) => {
+    if (g && g.objekt_id === objektId && Number(g.lfd_nummer) > max) max = Number(g.lfd_nummer);
+  });
+  return max + 1;
+}
+
+// Sammlungs-Status: BERECHNET aus ergebnis + Anfechtungsfrist + Vermerken
+// (kein gepflegtes Feld). Vermerke schlagen alles.
+function sammlungsStatus(beschluss, heute) {
+  if (!beschluss) return "gefasst";
+  const v = Array.isArray(beschluss.vermerke) ? beschluss.vermerke : [];
+  if (v.some((x) => x && x.typ === "aufgehoben")) return "aufgehoben";
+  if (v.some((x) => x && x.typ === "bedeutungslos")) return "bedeutungslos";
+  if (v.some((x) => x && x.typ === "angefochten")) return "angefochten";
+  if (beschluss.ergebnis === "abgelehnt") return "abgelehnt";
+  const h = heute || isoHeute();
+  if (beschluss.anfechtungsfrist_bis && beschluss.anfechtungsfrist_bis < h) return "bestandskraeftig";
+  return "gefasst";
+}
+const SAMMLUNG_STATUS_LABEL = {
+  gefasst: "gefasst (Frist läuft)", bestandskraeftig: "bestandskräftig",
+  abgelehnt: "abgelehnt", angefochten: "angefochten",
+  aufgehoben: "aufgehoben", bedeutungslos: "gegenstandslos",
+};
+
+// Die Sammlung eines Objekts: Beschlüsse MIT Nummer + Gerichtsentscheidungen,
+// chronologisch nach lfd_nummer. Einträge ohne Nummer (GO/alt-offen) fehlen —
+// die Sammlung zeigt nur Nummeriertes (§24 VII S. 3).
+function sammlungFuerObjekt(welt, objektId) {
+  const eintraege = [];
+  (welt.beschluesse || []).forEach((b) => {
+    if (b && b.objekt_id === objektId && b.lfd_nummer != null)
+      eintraege.push({ art: "beschluss", nr: Number(b.lfd_nummer), obj: b });
+  });
+  (welt.gerichtsentscheidungen || []).forEach((g) => {
+    if (g && g.objekt_id === objektId && g.lfd_nummer != null)
+      eintraege.push({ art: "urteil", nr: Number(g.lfd_nummer), obj: g });
+  });
+  return eintraege.sort((a, b) => a.nr - b.nr);
+}
+
+// Ort + Datum eines Sammlungs-Beschlusses: aus der Versammlung abgeleitet;
+// Alt-Beschlüsse (ohne versammlung_id) tragen eigene Fallback-Felder.
+function beschlussOrtDatum(welt, beschluss) {
+  const v = beschluss.versammlung_id
+    ? (welt.versammlungen || []).find((x) => x && x.id === beschluss.versammlung_id) : null;
+  return {
+    ort: (v && v.ort) || beschluss.ort || "",
+    datum: (v && v.datum) || beschluss.gefasst_am || beschluss.datum || "",
+    versammlung_art: (v && v.versammlung_art) || (beschluss.alt_erfasst ? "" : "ordentlich"),
+  };
+}
+
+// ── Sammlungs-Mutationen ─────────────────────────────────────────────────────
+// Vermerk: additiv, mit Datum (§24 VII S. 7 — unverzüglich + datiert).
+function weltBeschlussVermerk(welt, beschlussId, vermerk) {
+  const b = (welt.beschluesse || []).find((x) => x && x.id === beschlussId);
+  if (!b) return welt;
+  const v = Object.assign({ datum: isoHeute(), typ: "frei", text: "" }, vermerk || {});
+  return weltBeschlussPatch(welt, beschlussId,
+    { vermerke: [...(Array.isArray(b.vermerke) ? b.vermerke : []), v] });
+}
+// Alt-Beschluss (Übernahme Vorverwalter): Nummer frei — Automatik zählt ab Max weiter.
+function weltBeschlussAltNeu(welt, init) {
+  const b = neuerBeschluss(Object.assign({ alt_erfasst: true, status: "gefasst",
+    ergebnis: "angenommen" }, init || {}));
+  return Object.assign({}, welt, { beschluesse: [...(welt.beschluesse || []), b] });
+}
+function weltGerichtsentscheidungNeu(welt, init) {
+  const g = neueGerichtsentscheidung(init || {});
+  return Object.assign({}, welt,
+    { gerichtsentscheidungen: [...(welt.gerichtsentscheidungen || []), g] });
+}
+function weltGerichtsentscheidungVermerk(welt, gerId, vermerk) {
+  const g = (welt.gerichtsentscheidungen || []).find((x) => x && x.id === gerId);
+  if (!g) return welt;
+  const v = Object.assign({ datum: isoHeute(), typ: "frei", text: "" }, vermerk || {});
+  return Object.assign({}, welt, {
+    gerichtsentscheidungen: _ersetzeEtvIn(welt.gerichtsentscheidungen, gerId,
+      { vermerke: [...(Array.isArray(g.vermerke) ? g.vermerke : []), v] }),
+  });
+}
+
+// Vertagen (gelb, Konzept §5.2): KEIN Beschluss, KEINE Nummer. Vorgangs-TOP →
+// Vorgang zurück in den Wartekorb (bestehender Kreislauf §2.4); freier TOP →
+// Kopie in der offenen nächsten ETV (Auto-Hülle wird bei Bedarf erzeugt).
+function weltTopVertagen(welt, topId, ve, heute) {
+  const tp = (welt.tops || []).find((x) => x && x.id === topId);
+  if (!tp || tp.beschluss_id) return welt;   // schon beschlossen → nicht vertagbar
+  let neu = Object.assign({}, welt, {
+    tops: _ersetzeEtvIn(welt.tops, tp.id, { vertagt: true }) });
+  if (tp.vorgang_id) {
+    // Wartekorb ist die Wahrheit — der Vorgang taucht als Kandidat der
+    // nächsten ETV auf (Quelle 2 im TOP-Picker).
+    return weltVorgangAufTagesordnung(neu, tp.vorgang_id);
+  }
+  // Freier/Standard-TOP: Kopie in die garantierte offene Hülle.
+  const g = garantiereOffeneEtv(neu, ve, heute);
+  neu = g.welt;
+  const ziel = offeneOrdentlicheEtv(neu, ve && ve.id, heute);
+  if (!ziel || ziel.id === tp.versammlung_id) return neu;   // Schutz: nie in dieselbe
+  const maxRf = (neu.tops || []).filter((x) => x && x.versammlung_id === ziel.id)
+    .reduce((m, x) => Math.max(m, x.reihenfolge || 0), 0);
+  const kopie = neuerTop({
+    versammlung_id: ziel.id,
+    nummer: 0, reihenfolge: maxRf + 1,
+    titel: tp.titel, text: tp.text,
+    beschluss_noetig: tp.beschluss_noetig,
+    quelle: tp.quelle, wortlaut: tp.wortlaut,
+    bausteine: (tp.bausteine || []).slice(),
+    anlagen: (tp.anlagen || []).map((a) => Object.assign({}, a)),   // Referenzen, keine Datei-Kopien
+    go_beschluss: !!tp.go_beschluss,
+  });
+  return Object.assign({}, neu, {
+    tops: [
+      ...(neu.tops || []).map((x) =>
+        (x && x.id === tp.id) ? Object.assign({}, x, { vertagt_nach_id: kopie.id }) : x),
+      kopie,
+    ],
+  });
+}
+
 function versammlungenFuerObjekt(welt, objektId) {
   return (welt.versammlungen || []).filter((v) => v.objekt_id === objektId);
 }
@@ -3391,6 +3552,16 @@ function weltTopAbstimmen(welt, topId, stimmen) {
     enth = Number(stimmen.enthaltung) || 0;
   const angenommen = ja > nein; // einfache Mehrheit; Enthaltungen zählen nicht mit (§25 WEG)
   const gefasstAm = versammlung.datum || isoHeute();
+  // Sammlung (§24 VII): fortlaufende Nummer AUTOMATISCH bei Verkündung —
+  // „unverzüglich" per Konstruktion. Auch Negativbeschlüsse (verkündet =
+  // Beschluss) erhalten eine Nummer. AUSNAHMEN: GO-Beschlüsse (nie) und
+  // bereits nummerierte (Nummer ist für immer stabil, Korrektur-Abstimmung
+  // vergibt NICHT neu).
+  const bestehend = tp.beschluss_id
+    ? (welt.beschluesse || []).find((x) => x && x.id === tp.beschluss_id) : null;
+  const lfd = tp.go_beschluss ? null
+    : (bestehend && bestehend.lfd_nummer != null) ? bestehend.lfd_nummer
+    : naechsteLfdNummer(welt, versammlung.objekt_id);
   const patch = {
     objekt_id: versammlung.objekt_id || null,
     versammlung_id: tp.versammlung_id, top_id: tp.id,
@@ -3402,6 +3573,7 @@ function weltTopAbstimmen(welt, topId, stimmen) {
     gefasst_am: gefasstAm,
     anfechtungsfrist_bis: anfechtungsfristBis(gefasstAm),
     jahr: Number(String(gefasstAm).slice(0, 4)) || null,
+    lfd_nummer: lfd,
   };
   let neu;
   if (tp.beschluss_id) {
@@ -3520,6 +3692,7 @@ function normalisiereVorgangsWelt(roh) {
     rechnungen:    norm(r.rechnungen, neueRechnung),
     aufgaben:      norm(r.aufgaben, neueAufgabe),
     beschluesse:   norm(r.beschluesse, neuerBeschluss),
+    gerichtsentscheidungen: norm(r.gerichtsentscheidungen, neueGerichtsentscheidung),
     // ETV-Welt (Konzept _03): drei weitere flache Listen an derselben Welt.
     versammlungen: norm(r.versammlungen, neueVersammlung),
     tops:          norm(r.tops, neuerTop),
@@ -4456,4 +4629,10 @@ export {
   weltVersammlungNeu, weltVersammlungPatch, weltVersammlungLoeschen,
   weltTopNeu, weltTopPatch, weltTopLoeschen, weltTopVerschieben,
   weltTopAbstimmen, weltBeschlussPatch, weltAnwesenheitenSetzen,
+  // Beschluss-Sammlung (§24 VII WEG, Konzept 13.07.):
+  neueGerichtsentscheidung, naechsteLfdNummer, sammlungsStatus,
+  SAMMLUNG_STATUS_LABEL, sammlungFuerObjekt, beschlussOrtDatum,
+  weltBeschlussVermerk, weltBeschlussAltNeu,
+  weltGerichtsentscheidungNeu, weltGerichtsentscheidungVermerk,
+  weltTopVertagen,
 };

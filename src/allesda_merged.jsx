@@ -205,6 +205,7 @@ import {
 } from "./vorgang.jsx";
 
 import { EtvBereichFuerObjekt } from "./etv.jsx";
+import { BeschlussSammlungFuerObjekt } from "./beschluss.jsx";
 
 
 import {
@@ -3501,32 +3502,11 @@ export default function App() {
             }}
             emptyText="Keine Beschlüsse für dieses Objekt."
             renderDetail={(veObj) => {
-              // Fake-Demo-Daten nur zum Layout-Testen (echte Quelle folgt).
               const bAccent = (effectiveSettings.kacheln.find(k => k.id === "beschluss") || {}).farbe || "#F59E0B";
-              const demo = [
-                { titel: "TOP 3 — Fassadensanierung beschlossen", datum: "04.11.2025", nummer: "2025-07" },
-                { titel: "TOP 5 — Wirtschaftsplan 2026 genehmigt", datum: "04.11.2025", nummer: "2025-08" },
-                { titel: "TOP 2 — Verwalterbestellung verlängert", datum: "12.03.2025", nummer: "2025-02" },
-              ];
               return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {demo.map((d, i) => (
-                    <div key={i} style={{ background: t.card, border: `1px solid ${t.border}`,
-                      borderRadius: RAD.lg, padding: "12px 14px", minWidth: 0,
-                      boxSizing: "border-box", width: "100%" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0, fontSize: FS.l, fontWeight: FW.bold,
-                          color: t.text, overflowWrap: "anywhere" }}>{d.titel}</div>
-                        <div style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
-                          color: getContrastColor(bAccent), background: bAccent,
-                          borderRadius: RAD.sm, padding: "2px 8px" }}>Nr. {d.nummer}</div>
-                      </div>
-                      <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4 }}>
-                        Beschlossen am {d.datum}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <BeschlussSammlungFuerObjekt ve={veObj} welt={vorgangsWelt}
+                  onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
+                  t={t} accent={bAccent}/>
               );
             }}/>
         )}

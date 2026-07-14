@@ -36,7 +36,7 @@ import {
   neueAnwesenheit, neueVersammlung,
   weltVersammlungPatch, weltVersammlungLoeschen,
   weltTopNeu, weltTopPatch, weltTopLoeschen, weltTopVerschieben,
-  weltTopAbstimmen, weltBeschlussPatch, weltAnwesenheitenSetzen,
+  weltTopAbstimmen, weltBeschlussPatch, weltAnwesenheitenSetzen, weltTopVertagen,
 } from "./datenmodell.js";
 
 // ── Kleine Helfer (reine Anzeige) ───────────────────────────────────────────
@@ -450,7 +450,13 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
         ) : (
           <EtvStammEdit versammlung={versammlung} kontakte={kontakte} ve={ve}
             t={t} accent={accent}
-            onSave={(p) => { patch(p); setEditStamm(false); }}
+            onSave={(p) => {
+              patch(p);
+              if (p.datum) syncNaechsteEtvInsObjekt(
+                (welt.versammlungen || []).map((v) =>
+                  (v && v.id === versammlung.id) ? Object.assign({}, v, p) : v),
+                versammlung.objekt_id, onVePatch);
+              setEditStamm(false); }}
             onAbbruch={() => setEditStamm(false)}/>
         )}
       </BausteinKarte>
@@ -727,6 +733,51 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
       </div>
     </div>
   );
+}
+
+// ── TOP-Ausgang-Ampel (Beschluss-Sammlung-Konzept §5.1, 13.07.) ──────────────
+// EINE Funktion für Karten-Punkt, Abstimmungs-Pille und Deckblatt:
+// 🟢 angenommen · 🔴 abgelehnt · 🟡 vertagt · grau offen · null (kein Beschluss).
+// Erfassung UNVERÄNDERT über die Zahlen — die Ampel FOLGT dem Ergebnis.
+function topAusgang(top, beschluss) {
+  if (top.vertagt) return { farbe: AMPEL_FARBEN.gelb, label: "Vertagt" };
+  if (beschluss && beschluss.ergebnis === "angenommen")
+    return { farbe: AMPEL_FARBEN.gruen, label: "Angenommen" };
+  if (beschluss && beschluss.ergebnis === "abgelehnt")
+    return { farbe: AMPEL_FARBEN.rot, label: "Abgelehnt" };
+  if (top.beschluss_noetig) return { farbe: AMPEL_FARBEN.grau, label: "Beschluss offen" };
+  return null;
+}
+
+// ── Termin-Sync (§2.9-Rest, entschieden 13.07.): Rückschreiben ───────────────
+// Setzt/ändert ein Save den Versammlungs-Termin, wird das Objekt-Feld
+// „Nächste ETV" nachgezogen (Empfehlung §2.9: Objekt-Übersicht + Kalender-
+// Fallback bleiben konsistent; der Kalender-VORRANG der Versammlungsdaten ist
+// seit Block 2 gebaut). Regel: das Datum der FRÜHESTEN offenen zukünftigen
+// Versammlung (ordentlich + außerordentlich; Umlauf ist keine Versammlung).
+// Geschrieben werden BEIDE Lese-Quellen: ve.verwaltung.naechsteETV (Fallback)
+// und das Kartenfeld „Nächste ETV" (nur wenn Karte/Feld existieren — nichts
+// erzeugen). Kein Termin gefunden → NICHT leeren (manuelle Pflege respektieren).
+function syncNaechsteEtvInsObjekt(versammlungen, objektId, onVePatch) {
+  if (!onVePatch) return;
+  const heute = isoHeute();
+  const offene = (versammlungen || []).filter((v) => v && v.objekt_id === objektId
+    && !v.archiviert && v.status !== "abgeschlossen"
+    && v.versammlung_art !== "umlauf" && v.datum && v.datum >= heute)
+    .sort((a, b) => (a.datum < b.datum ? -1 : 1));
+  if (offene.length === 0) return;
+  const datum = offene[0].datum;
+  onVePatch((v) => {
+    const vw = Object.assign({}, v.verwaltung || {}, { naechsteETV: datum });
+    const vk = Array.isArray(v.verwaltungsKarten)
+      ? v.verwaltungsKarten.map((k) => {
+          if (!k || k.kategorie !== "etv" || !Array.isArray(k.stamm)) return k;
+          return Object.assign({}, k, { stamm: k.stamm.map((f) =>
+            (f && f.name === "Nächste ETV") ? Object.assign({}, f, { value: datum }) : f) });
+        })
+      : v.verwaltungsKarten;
+    return Object.assign({}, v, { verwaltung: vw, verwaltungsKarten: vk });
+  });
 }
 
 // ── Anlage-Picker (Ausbau-Konzept §4, 13.07.) ────────────────────────────────
@@ -1252,9 +1303,8 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
   const addBaustein = (id) => patch({ bausteine: [...(top.bausteine || []), id] });
   const fehlende = TOP_BAUSTEINE.filter((b) => !hatB(b.id)
     && !(b.id === "abstimmung" && !top.beschluss_noetig));
-  const subText = beschluss
-    ? (beschluss.ergebnis === "angenommen" ? "angenommen" : "abgelehnt")
-    : (top.beschluss_noetig ? "Beschluss offen" : null);
+  const ausgang = topAusgang(top, beschluss);
+  const subText = ausgang ? ausgang.label : null;
   const zahlInp = (label, v, setV) => (
     <div style={{ flex: 1, minWidth: 70 }}>
       <div style={{ fontSize: FS.xs, color: t.muted, marginBottom: 2 }}>{label}</div>
@@ -1268,7 +1318,8 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
   return (
     <BausteinKarte t={t} accent={accent}
       titel={"TOP " + (top.nummer || "?") + " · " + (top.titel || "—")}
-      sub={subText} offen={offen} onToggle={onToggle}>
+      sub={subText} punktFarbe={ausgang ? ausgang.farbe : null}
+      offen={offen} onToggle={onToggle}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {/* Reihenfolge + Kern */}
         {!gesperrt ? (
@@ -1285,6 +1336,16 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
             <div style={{ fontSize: FS.xs, color: t.muted }}>Beschluss nötig</div>
             <Toggle value={!!top.beschluss_noetig} color={accent}
               onChange={(v) => patch({ beschluss_noetig: v })}/>
+          </div>
+        ) : null}
+        {/* GO-Haken (Konzept §2 Nr. 6): Geschäftsordnungsbeschlüsse erhalten
+            KEINE lfd. Nummer und erscheinen nicht in der Beschluss-Sammlung. */}
+        {!gesperrt && top.beschluss_noetig && !beschluss ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ flex: 1, fontSize: FS.xs, color: t.muted }}>
+              Geschäftsordnungsbeschluss (nicht in die Beschluss-Sammlung)</div>
+            <Toggle value={!!top.go_beschluss} color={accent}
+              onChange={(v) => patch({ go_beschluss: v })}/>
           </div>
         ) : null}
         {!gesperrt ? (
@@ -1372,7 +1433,16 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
                 ) : null}
               </div>
             ) : null}
-            {!gesperrt ? (
+            {top.vertagt ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <StatusPille t={t} farbe={AMPEL_FARBEN.gelb} text="Vertagt"/>
+                <div style={{ fontSize: FS.xs, color: t.muted }}>
+                  {top.vorgang_id
+                    ? "Vorgang wartet auf die nächste ETV (Wartekorb)"
+                    : "als TOP in die nächste ETV übernommen"}</div>
+              </div>
+            ) : null}
+            {!gesperrt && !top.vertagt ? (
               <div style={{ marginTop: beschluss ? 8 : 0 }}>
                 <div style={{ display: "flex", gap: 8 }}>
                   {zahlInp("Ja", ja, setJa)}
@@ -1389,6 +1459,14 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
                     disabled={ja === "" && nein === "" && enth === ""}
                     text={beschluss ? "Neu auszählen (überschreibt)" : "Auszählen — Beschluss fassen"}/>
                 </div>
+                {!beschluss ? (
+                  <div style={{ marginTop: 6 }}>
+                    <AktionsButton rolle="bestaetigen" variante="breit" t={t}
+                      accent={AMPEL_FARBEN.gelb}
+                      onClick={() => onWelt((w) => weltTopVertagen(w, top.id, ve, isoHeute()))}
+                      text="Vertagen — in nächste ETV"/>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -1614,6 +1692,33 @@ function baueEtvProtokollHtml(versammlung, ve, welt, kontakte) {
         + (a.ist_verwaltervollmacht ? " (Verwalter-Vollmacht)" : "") + "</td></tr>").join("")
       + "</table><p><b>" + esc(bf.text) + "</b></p>" + weisungsHtml
     : "";
+  // Deckblatt (Sammlung-Konzept §5.3, 13.07.): IMMER Seite 1 — Versammlungskopf
+  // + Tabelle „TOP · Titel · Ausgang". Ausgang als Wort UND Farbmarker (nie
+  // Farbe allein — druckfreundlich). Seitenumbruch danach.
+  const deckZeilen = tops.map((tp) => {
+    const b = tp.beschluss_id
+      ? (welt.beschluesse || []).find((x) => x.id === tp.beschluss_id) || null : null;
+    const a = topAusgang(tp, b);
+    const wort = a ? a.label : "—";
+    const farbe = a ? a.farbe : "#94A3B8";
+    const nr = b && b.lfd_nummer != null ? " (Beschluss Nr. " + b.lfd_nummer + ")" : "";
+    return "<tr><td>" + esc(String(tp.nummer || "")) + "</td>"
+      + "<td>" + esc(tp.titel || "—") + nr + "</td>"
+      + "<td><span style='display:inline-block;width:9px;height:9px;border-radius:9px;"
+      + "background:" + farbe + ";margin-right:5px'></span>" + esc(wort) + "</td></tr>";
+  }).join("");
+  const deckblatt = "<div class='deckblatt'>"
+    + "<h2 style='margin:0 0 2px 0'>" + esc(artLabel(versammlung.versammlung_art)) + "</h2>"
+    + "<p>"
+    + "<b>Objekt:</b> " + esc((ve && (ve.nr || ve.name)) || "") + " · " + esc((ve && ve.adresse) || "")
+    + "<br/><b>" + (versammlung.versammlung_art === "umlauf" ? "Stichtag" : "Termin") + ":</b> "
+    + esc(versammlung.datum ? datumDe(versammlung.datum) : "—")
+    + (versammlung.uhrzeit ? " · " + esc(versammlung.uhrzeit) + " Uhr" : "")
+    + (versammlung.ort ? "<br/><b>Ort:</b> " + esc(versammlung.ort) : "")
+    + "</p>"
+    + "<h3>Tagesordnung und Ausgang</h3>"
+    + "<table><tr><th style='width:36px'>TOP</th><th>Titel</th><th style='width:150px'>Ausgang</th></tr>"
+    + deckZeilen + "</table></div>";
   const kopf = "<p>"
     + "<b>Objekt:</b> " + esc((ve && (ve.nr || ve.name)) || "") + " · " + esc((ve && ve.adresse) || "") + "<br/>"
     + "<b>Art:</b> " + esc(artLabel(versammlung.versammlung_art))
@@ -1680,11 +1785,12 @@ function baueEtvProtokollHtml(versammlung, ve, welt, kontakte) {
   const css = "h3{margin:14px 0 4px 0;font-size:13px} p{margin:4px 0;font-size:11px}"
     + " table{border-collapse:collapse;width:100%;font-size:10px}"
     + " th,td{border:1px solid #999;padding:3px 6px;text-align:left}"
-    + " img.anlage-bild{max-width:100%;max-height:800px;display:block;margin:6px 0}";
+    + " img.anlage-bild{max-width:100%;max-height:800px;display:block;margin:6px 0}"
+    + " .deckblatt{page-break-after:always}";
   return {
     titel: "Protokoll · " + artLabel(versammlung.versammlung_art)
       + (versammlung.datum ? " · " + datumDe(versammlung.datum) : ""),
-    html: kopf + topHtml + anwHtml + anlagenHtml + unterschriftenHtml,
+    html: deckblatt + kopf + topHtml + anwHtml + anlagenHtml + unterschriftenHtml,
     css: css,
     verzeichnis: verzeichnis,
   };
@@ -1832,6 +1938,8 @@ function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings,
             const v = neueVersammlung(init);
             onWelt((w) => Object.assign({}, w,
               { versammlungen: [...(w.versammlungen || []), v] }));
+            if (v.datum) syncNaechsteEtvInsObjekt(
+              [...(welt.versammlungen || []), v], ve.id, onVePatch);
             setNeuOffen(false);
             setAkteId(v.id);
           }}/>
