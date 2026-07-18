@@ -2078,9 +2078,18 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
 // ── EtvBereichFuerObjekt — der renderDetail-Inhalt der ETV-Kachel ───────────
 // Ohne offene Akte: Versammlungsliste (aktiv) + Archiv (KlappBereich) +
 // Neu-Anlegen. Mit offener Akte: EtvDetail (die vier Tabs).
-function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId }) {
+function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId, neuSignal = 0 }) {
   const [neuOffen, setNeuOffen] = useState(false);
   const [archivOffen, setArchivOffen] = useState(false);
+
+  // Screen-Plus (Kalender-Prinzip): Der Header-Plus des ETV-Screens zählt
+  // neuSignal hoch → hier öffnet sich das Neu-Formular. Eine offene Akte wird
+  // dafür geschlossen (das Formular lebt auf Listen-Ebene).
+  useEffect(() => {
+    if (!neuSignal) return;
+    if (setAkteId) setAkteId(null);
+    setNeuOffen(true);
+  }, [neuSignal]);
 
   // Auto-Hülle (§2.3/2.6): garantiert, dass IMMER eine offene ordentliche ETV
   // existiert — sie ist das Zuhause vertagter/vorgemerkter Beschlüsse. Sicht-Ebene

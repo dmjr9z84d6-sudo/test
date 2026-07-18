@@ -302,6 +302,7 @@ import {
   ScreenKopf,
   HeaderZurueck,
   HeaderPlus,
+  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody,
   DatumKalender,
   EckPille,
   EigentumBlock,
@@ -353,6 +354,7 @@ import {
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, FotosAnsicht, HistorieAnsicht,
   LegionellenAnsicht, TERegisterAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
+  ObjektWahlOverlay,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 } from "./objektansicht.jsx";
 // Kontakt-Kategorien — ausgelagert nach kontakte.jsx (zyklischer Import).
@@ -1124,7 +1126,7 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   gotoVE, gotoKontakt, cardWidth = 280, kartenSpalten = 2, detailMinBreite = 300, detailMin = null, kartenMaxBreite = 340, kartenMin = 272, listeOpt = null,
   listenAnsicht = "karten", viewVEId = null, setViewVEId = null, festeGridSpec = null,
   renderDetail = null, istDesktop = true, emptyText = "Keine Einträge.",
-  detailAktion = null, masterBadge = null, kopfMitte = null,
+  detailAktion = null, masterBadge = null, kopfMitte = null, kopfPlus = null,
   titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null,
   statusKontext = null }) {
   const offenVEObj = (ves || []).find(v => v.id === viewVEId) || null;
@@ -1154,8 +1156,18 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
           ) : null}
         </div>
       ) : null}
-      rechts={zeigeZurueck ? (
-        <HeaderZurueck onClick={() => setViewVEId && setViewVEId(null)} t={t}/>
+      rechts={(kopfPlus || zeigeZurueck) ? (
+        // §Plus-Buttons: HeaderPlus (kanonisch) + ggf. Zurück — gleiche
+        // Anordnung wie im Vorgänge-Screen (Plus links, Zurück rechts).
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {kopfPlus ? (
+            <HeaderPlus onClick={kopfPlus.onClick} accent={accent}
+              title={kopfPlus.title || "Neu"} t={t}/>
+          ) : null}
+          {zeigeZurueck ? (
+            <HeaderZurueck onClick={() => setViewVEId && setViewVEId(null)} t={t}/>
+          ) : null}
+        </div>
       ) : null}/>
   );
   // Detail-Override-Wrapper: einheitliche Detail-Hülle (Objektkopf + Inhalt),
@@ -1780,6 +1792,11 @@ export default function App() {
   // Master-Detail-Muster wie Kalender: Liste = Objekte, Detail = Override).
   const [etvViewVEId, setEtvViewVEId] = useState(null);
   const [etvAkteId, setEtvAkteId] = useState(null); // offene ETV-Akte (§2b)
+  // Screen-Plus (Kalender-Prinzip): Objektwahl-Overlay für „Neu anlegen" ohne
+  // offene Akte. Ziel steuert, welches Formular nach der Wahl startet.
+  const [plusWahlZiel, setPlusWahlZiel] = useState(null); // null | "etv" | "auftraege"
+  const [etvNeuSignal, setEtvNeuSignal] = useState(0);    // öffnet VersammlungNeuForm
+  const [kommPlusHinweis, setKommPlusHinweis] = useState(false); // Kommunikation: Modul folgt
   const [auftragViewVEId, setAuftragViewVEId] = useState(null);
   // Sprung vom Schreibtisch (§96.8): dieser Vorgang wird beim Öffnen des
   // Objekt-Details direkt aufgeklappt (initialOffeneId + key-Remount).
@@ -3049,6 +3066,51 @@ export default function App() {
             }}/>
         )}
 
+        {/* Screen-Plus: Objektwahl-Schritt (Kalender-Prinzip). Nach der Wahl
+            öffnet die Akte des Objekts + das jeweilige Anlege-Formular mit
+            vorbelegtem Objekt. Baustein: ObjektWahlOverlay (objektansicht). */}
+        {plusWahlZiel && (
+          <ObjektWahlOverlay ves={vesSichtbar} t={t}
+            accent={(effectiveSettings.kacheln.find(k => k.id === plusWahlZiel) || {}).farbe
+              || (plusWahlZiel === "etv" ? "#8B5CF6" : "#EF4444")}
+            titel={plusWahlZiel === "etv"
+              ? "Objekt wählen — neue Versammlung"
+              : "Objekt wählen — neuer Vorgang"}
+            onClose={() => setPlusWahlZiel(null)}
+            onWaehle={(veObj) => {
+              if (plusWahlZiel === "etv") {
+                setEtvAkteId(null);
+                setEtvViewVEId(veObj.id);
+                setEtvNeuSignal(s => s + 1);
+              } else {
+                setAuftragView("objekt");
+                setAuftragFirmaId(null);
+                setAuftragSprungId(null);
+                setVorgangAkteId(null);
+                setAuftragViewVEId(veObj.id);
+                setAuftragNeuOffen(true);
+              }
+              setPlusWahlZiel(null);
+            }}/>
+        )}
+
+        {/* Kommunikation: Plus zeigt Hinweis, bis das echte Modul existiert. */}
+        {kommPlusHinweis && (
+          <div style={overlayBackdrop()} onClick={() => setKommPlusHinweis(false)}>
+            <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+              <OverlayKopf t={t} titel="Kommunikation" onClose={() => setKommPlusHinweis(false)} icon="mail"/>
+              <div style={overlayBody()}>
+                <div style={{ fontSize: FS.m, color: t.text, lineHeight: 1.5 }}>
+                  Das Anlegen von Nachrichten kommt mit dem Kommunikations-Modul.
+                </div>
+                <div style={{ fontSize: FS.s, color: t.muted, marginTop: 6, lineHeight: 1.5 }}>
+                  Dieser Bereich zeigt aktuell Beispieldaten zur Layout-Vorschau.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!suchErg && screen === "etv" && (
           <ObjektListeMitDetail
             ves={vesSichtbar} kontakte={kontakteSichtbar}
@@ -3062,6 +3124,12 @@ export default function App() {
             setViewVEId={(id) => { setEtvAkteId(null); setEtvViewVEId(id); }}
             istDesktop={istDesktop}
             titel="ETV" anzahl={(vesSichtbar || []).length}
+            kopfPlus={{ title: "Neue Versammlung", onClick: () => {
+              // Akte/Objekt offen → direkt Formular (Objekt vorbelegt);
+              // sonst erst Objektwahl (Kalender-Prinzip).
+              if (etvViewVEId) { setEtvNeuSignal(s => s + 1); }
+              else { setPlusWahlZiel("etv"); }
+            } }}
             legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
@@ -3086,7 +3154,8 @@ export default function App() {
                   onVePatch={(fn) => setVes(prev => prev.map(v => (v && v.id === veObj.id) ? fn(v) : v))}
                   kontakte={kontakteSichtbar} settings={effectiveSettings}
                   t={t} accent={etvAccent}
-                  akteId={etvAkteId} setAkteId={setEtvAkteId}/>
+                  akteId={etvAkteId} setAkteId={setEtvAkteId}
+                  neuSignal={etvNeuSignal}/>
               );
             }}/>
         )}
@@ -3235,12 +3304,18 @@ export default function App() {
                   : ((hatAuswahl && (auftragNurDetail || !istDesk))
                     ? () => { setAuftragViewVEId(null); setAuftragFirmaId(null); }
                     : null);
-                const plus = auftragView === "objekt" && auftragViewVEId && !akteOffenMobil;
+                // Plus IMMER sichtbar (Kalender-Prinzip) — nur im Mobil-Detail
+                // einer offenen Akte ausgeblendet (dort führt Zurück).
+                const plus = !akteOffenMobil;
+                const plusClick = () => {
+                  if (auftragView === "objekt" && auftragViewVEId) setAuftragNeuOffen(true);
+                  else setPlusWahlZiel("auftraege");
+                };
                 if (!zurueck && !plus) return null;
                 return (
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {plus ? (
-                      <HeaderPlus onClick={() => setAuftragNeuOffen(true)}
+                      <HeaderPlus onClick={plusClick}
                         accent={aAccent} title="Neu (Vorgang / Auftrag erfassen)" t={t}/>
                     ) : null}
                     {zurueck ? <HeaderZurueck onClick={zurueck} t={t}/> : null}
@@ -3854,6 +3929,7 @@ export default function App() {
             viewVEId={kommunikationViewVEId} setViewVEId={setKommunikationViewVEId}
             istDesktop={istDesktop}
             titel="Kommunikation" anzahl={(vesSichtbar || []).length}
+            kopfPlus={{ title: "Neu", onClick: () => setKommPlusHinweis(true) }}
             legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");

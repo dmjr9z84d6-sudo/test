@@ -16,7 +16,8 @@ import {
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenEffektiveNaechste, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
-  objektHatZentralesWarmwasser, SegmentControl, TabLeiste, wjEndeDatum
+  objektHatZentralesWarmwasser, SegmentControl, TabLeiste, wjEndeDatum,
+  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody
 } from "./components.jsx";
 import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
@@ -1065,6 +1066,34 @@ function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = fal
           background: accent + "18", padding: "1px 8px", borderRadius: RAD.pill,
           flexShrink: 0, whiteSpace: "nowrap" }}>{extraBadge}</span>
       ) : null}
+    </div>
+  );
+}
+
+// ── ObjektWahlOverlay — Baustein (§76): „Neu anlegen"-Plus ohne offene Akte ──
+// Kalender-Prinzip für die Screen-Plus-Buttons (ETV, Vorgänge, …): Ist keine
+// Objekt-Akte offen, fragt dieses Overlay zuerst das Zielobjekt ab; der
+// Aufrufer öffnet danach das eigentliche Anlege-Formular mit vorbelegtem
+// Objekt. Bei offener Akte entfällt der Schritt (Aufrufer zeigt das Formular
+// direkt). Reine Objektwahl — bewusst KEIN Formular-Inhalt hier.
+function ObjektWahlOverlay({ ves, t, accent, titel = "Objekt wählen", onWaehle, onClose }) {
+  return (
+    <div style={overlayBackdrop()} onClick={onClose}>
+      <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+        <OverlayKopf t={t} titel={titel} onClose={onClose} icon="building"/>
+        <div style={overlayBody()}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {(ves || []).map((v) => (
+              <VEListenZeile key={v.id} ve={v} t={t} accent={accent}
+                onClick={() => { onWaehle && onWaehle(v); }}/>
+            ))}
+            {(!ves || ves.length === 0) ? (
+              <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic",
+                padding: "8px 2px" }}>Keine Objekte vorhanden.</div>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3030,5 +3059,6 @@ export {
   HistorieAnsicht, LegionellenAnsicht, TERegisterAnsicht,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, STATUS_KONTEXTE, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
+  ObjektWahlOverlay,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 };
