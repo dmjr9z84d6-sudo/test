@@ -2435,7 +2435,7 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
 // Mehrfach-Auswahl JA (Begehung = viele Fotos auf einmal): alle gewählten
 // Dateien teilen Album/Zuordnung/Gerät/Notiz — bewusste Vereinfachung (§93.10).
 // Zuordnung ist PFLICHT; Hochladen bleibt disabled, bis sie vollständig ist.
-function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
+function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) {
   const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
     textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
   const inputStyle = { width: "100%", padding: "8px 10px",
@@ -2588,11 +2588,13 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
   };
 
   return (
-    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.7)",
-      zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: t.card, border: `1px solid ${t.border}`,
+    <div style={overlayBackdrop()} onClick={onClose}>
+      {/* §12.8: Backdrop auf Baustein migriert (war eigener zentrierter
+          fixed-Container — Positions-Sprung-Klasse). Panel-Innenleben bleibt. */}
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: t.card, border: `1px solid ${t.border}`,
         borderRadius: RAD.xl, width: "100%", maxWidth: 480,
-        maxHeight: "90dvh", overflowY: "auto",
+        maxHeight: "calc(95dvh - 16px)", overflowY: "auto",
         boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
         {/* Header */}
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.border}`,
@@ -2600,7 +2602,7 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
           position: "sticky", top: 0, background: t.card, zIndex: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <I name="plus" size={14} color={accent}/>
-            <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>Fotos hochladen</span>
+            <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>Fotos hochladen{ve && (ve.nr || ve.name) ? " · " + (ve.nr || ve.name) : ""}</span>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}
             title="Schließen" aria-label="Schließen">
@@ -2609,6 +2611,29 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
         </div>
 
         <div style={{ padding: 16 }}>
+          {/* §12.8: Objektwahl als erstes Feld (Screen-Plus ohne Akte). */}
+          {objektWahl ? (
+            <div style={{ marginBottom: 14 }}>
+              <div style={labelStyle}>Objekt *</div>
+              <select value={objektWahl.aktivId != null ? String(objektWahl.aktivId) : ""}
+                onChange={(e) => objektWahl.onWaehle && objektWahl.onWaehle(e.target.value || null)}
+                style={inputStyle}>
+                <option value="">— Objekt wählen —</option>
+                {(objektWahl.ves || []).map((v) => (
+                  <option key={v.id} value={String(v.id)}>
+                    {(v.nr ? v.nr + " · " : "") + (v.adresse || v.name || "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {(!ve && objektWahl) ? (
+            <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic",
+              padding: "2px 2px 6px" }}>
+              Bitte zuerst ein Objekt wählen.
+            </div>
+          ) : null}
+          {ve ? (<div>
           {/* Dateien */}
           <div style={{ marginBottom: 14 }}>
             <div style={labelStyle}>Fotos</div>
@@ -2754,6 +2779,7 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
             Alle gewählten Fotos erhalten dieselben Angaben. Der Dateiname wird
             automatisch aus Objekt, Album, Zuordnung und Datum erzeugt.
           </div>
+          </div>) : null}
         </div>
 
         {/* Footer */}
@@ -2762,9 +2788,11 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave }) {
           position: "sticky", bottom: 0, background: t.card }}>
           <AktionsButton variante="breit" rolle="abbrechen" onClick={onClose}
             text="Abbrechen" icon={false} flex={1} t={t} accent={accent}/>
+          {ve ? (
           <AktionsButton variante="breit" rolle="bestaetigen" onClick={speichern}
             disabled={!valid} text={ladend ? "Speichert …" : "Hochladen"}
             icon={false} flex={2} t={t} accent={accent}/>
+          ) : null}
         </div>
       </div>
     </div>
@@ -2953,14 +2981,9 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
 // Kopf mit Plus (§86.6) + FotoGalerie (Grid/Liste, Album-Filter). Ansehen über
 // den bestehenden DateiViewerModal (§86.1) inkl. Info-Zeile (Zuordnung/Album/
 // Datum + Quelle/Notiz — GPS bewusst NICHT, §93.2).
-function FotosAnsicht({ ve, setVes, t, accent, editMode = false, uploadSignal = 0 }) {
+function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
   const fotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
   const [uploadOffen, setUploadOffen] = useState(false);
-  // §12.8 Screen-Plus: Signal vom Fotos-Screen-Header öffnet den Upload-Dialog.
-  useEffect(() => {
-    if (!uploadSignal) return;
-    setUploadOffen(true);
-  }, [uploadSignal]);
   // Viewer-Zustand fürs Durchblättern: die beim Öffnen aktuelle (gefilterte)
   // Foto-Liste + Index. Das datei-Objekt für den Viewer wird daraus abgeleitet.
   const [viewer, setViewer] = useState(null); // { liste: foto[], index }
@@ -3064,6 +3087,6 @@ export {
   HistorieAnsicht, LegionellenAnsicht, TERegisterAnsicht,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, STATUS_KONTEXTE, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
-  ObjektWahlOverlay,
+  ObjektWahlOverlay, FotoUploadModal,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 };

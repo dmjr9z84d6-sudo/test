@@ -18,7 +18,8 @@
 import React, { useState, useEffect } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute } from "./utils-basis.js";
-import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggle } from "./components.jsx";
+import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggle,
+  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody } from "./components.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
 import { BausteinKarte, StatusPille } from "./vorgang.jsx";
 import { TERegisterAnsicht, alleEinheitenVonVe } from "./objektansicht.jsx";
@@ -258,6 +259,59 @@ function VersammlungNeuForm({ ve, welt, kontakte, t, accent, onAnlegen, onAbbrec
           onClick={legeAn} text="Anlegen"/>
         <AktionsButton rolle="abbrechen" variante="breit" t={t}
           onClick={onAbbrechen} text="Abbrechen"/>
+      </div>
+    </div>
+  );
+}
+
+// ── VersammlungNeuOverlay (§12.8) — Anlege-Dialog des ETV-Screen-Plus ───────
+// Overlay nach Vorgänge-Muster: Objektwahl als ERSTES Feld (vorbelegt bei
+// offener Akte, sonst wählbar); darunter das bestehende VersammlungNeuForm
+// (Single Truth — kein Zweitbau des Formulars). Die Anlege-Logik entspricht
+// 1:1 dem früheren Inline-Pfad in EtvBereichFuerObjekt.
+function VersammlungNeuOverlay({ ve, welt, kontakte, t, accent, objektWahl,
+  onWelt, onVePatch, onClose, onFertig }) {
+  return (
+    <div style={overlayBackdrop()} onClick={onClose}>
+      <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+        <OverlayKopf t={t} titel={"Neue Versammlung · " + ((ve && (ve.nr || ve.name)) || "Objekt")} onClose={onClose}/>
+        <div style={overlayBody()}>
+          {objektWahl ? (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: FS.s, fontWeight: FW.med, color: t.sub,
+                marginBottom: 4 }}>Objekt *</div>
+              <select value={objektWahl.aktivId != null ? String(objektWahl.aktivId) : ""}
+                onChange={(e) => objektWahl.onWaehle && objektWahl.onWaehle(e.target.value || null)}
+                style={{ width: "100%", padding: "10px 12px", fontSize: 16,
+                  background: t.card, color: t.text, border: `1px solid ${t.border}`,
+                  borderRadius: RAD.ms, boxSizing: "border-box", fontFamily: "inherit" }}>
+                <option value="">— Objekt wählen —</option>
+                {(objektWahl.ves || []).map((v) => (
+                  <option key={v.id} value={String(v.id)}>
+                    {(v.nr ? v.nr + " · " : "") + (v.adresse || v.name || "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {!ve ? (
+            <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic",
+              padding: "4px 2px 8px" }}>
+              Bitte zuerst ein Objekt wählen.
+            </div>
+          ) : (
+            <VersammlungNeuForm ve={ve} welt={welt} kontakte={kontakte} t={t} accent={accent}
+              onAbbrechen={onClose}
+              onAnlegen={(init) => {
+                const v = neueVersammlung(init);
+                onWelt((w) => Object.assign({}, w,
+                  { versammlungen: [...(w.versammlungen || []), v] }));
+                if (v.datum) syncNaechsteEtvInsObjekt(
+                  [...(welt.versammlungen || []), v], ve.id, onVePatch);
+                if (onFertig) onFertig(v.id);
+              }}/>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2078,18 +2132,8 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
 // ── EtvBereichFuerObjekt — der renderDetail-Inhalt der ETV-Kachel ───────────
 // Ohne offene Akte: Versammlungsliste (aktiv) + Archiv (KlappBereich) +
 // Neu-Anlegen. Mit offener Akte: EtvDetail (die vier Tabs).
-function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId, neuSignal = 0 }) {
-  const [neuOffen, setNeuOffen] = useState(false);
+function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId }) {
   const [archivOffen, setArchivOffen] = useState(false);
-
-  // Screen-Plus (Kalender-Prinzip): Der Header-Plus des ETV-Screens zählt
-  // neuSignal hoch → hier öffnet sich das Neu-Formular. Eine offene Akte wird
-  // dafür geschlossen (das Formular lebt auf Listen-Ebene).
-  useEffect(() => {
-    if (!neuSignal) return;
-    if (setAkteId) setAkteId(null);
-    setNeuOffen(true);
-  }, [neuSignal]);
 
   // Auto-Hülle (§2.3/2.6): garantiert, dass IMMER eine offene ordentliche ETV
   // existiert — sie ist das Zuhause vertagter/vorgemerkter Beschlüsse. Sicht-Ebene
@@ -2131,23 +2175,9 @@ function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings,
         <VersammlungZeile key={v.id} versammlung={v} welt={welt} t={t}
           accent={accent} onOeffnen={() => setAkteId(v.id)}/>
       ))}
-      {!neuOffen ? (
-        <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-          onClick={() => setNeuOffen(true)}
-          text="Außerordentliche ETV / Umlaufbeschluss"/>
-      ) : (
-        <VersammlungNeuForm ve={ve} welt={welt} kontakte={kontakte} t={t} accent={accent}
-          onAbbrechen={() => setNeuOffen(false)}
-          onAnlegen={(init) => {
-            const v = neueVersammlung(init);
-            onWelt((w) => Object.assign({}, w,
-              { versammlungen: [...(w.versammlungen || []), v] }));
-            if (v.datum) syncNaechsteEtvInsObjekt(
-              [...(welt.versammlungen || []), v], ve.id, onVePatch);
-            setNeuOffen(false);
-            setAkteId(v.id);
-          }}/>
-      )}
+      {/* §12.8: Neu-Anlegen läuft über den Screen-Header-Plus →
+          VersammlungNeuOverlay (Objektwahl im Dialog). Der frühere breite
+          Aktions-Button + Inline-Form sind entfallen (Beschluss 18.07.). */}
       {archiv.length > 0 ? (
         <div style={{ marginTop: 6 }}>
           <div onClick={() => setArchivOffen(!archivOffen)}
@@ -2171,6 +2201,6 @@ function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings,
 }
 
 export {
-  EtvBereichFuerObjekt, EtvDetail, VersammlungZeile,
+  EtvBereichFuerObjekt, EtvDetail, VersammlungZeile, VersammlungNeuOverlay,
   etvAnwesenheitZeilen, druckeEtvProtokoll, baueEtvProtokollHtml, AbstimmCockpit,
 };

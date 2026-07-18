@@ -4052,17 +4052,60 @@ function ergaenzeTechnikGeraetFelder(g) {
 // Eigenes Anlege-Formular (Beschluss 18.07.): Ziel-Technik-Karte + Gerätetyp.
 // Das Gerät entsteht minimal (ohne Felder) und wird wie gehabt am Objekt
 // (Liegenschaft → Technik-Karte) weiter gepflegt. Overlay-Bausteine Pflicht.
-function TechnikGeraetNeuModal({ ve, t, accent, onClose, onSave }) {
+function TechnikGeraetNeuModal({ ve, t, accent, onClose, onSave, objektWahl = null, setVes = null }) {
   const technikKarten = ((ve && ve.karten) || []).filter(k => k && k.kategorie === "technik");
   const [karteId, setKarteId] = useState(technikKarten.length ? technikKarten[0].id : "");
   const [typId, setTypId] = useState("");
-  const valid = !!karteId && !!typId;
+  // Objektwechsel im Dialog: Karten-Vorwahl auf die erste Technik-Karte des
+  // neuen Objekts nachziehen (sonst zeigt das Select eine fremde Karte).
+  useEffect(() => {
+    setKarteId(technikKarten.length ? technikKarten[0].id : "");
+  }, [ve && ve.id]);
+  const valid = !!ve && !!karteId && !!typId;
+  // Speichern: entweder Callback des Aufrufers (onSave) oder — beim Hosting
+  // auf Screen-Ebene — direkter setVes-Patch (§12.8, Objektwahl im Dialog).
+  const speichern = () => {
+    if (!valid) return;
+    if (onSave) { onSave(karteId, typId); return; }
+    const def = TECHNIK_GERAET_TYPEN.find(x => x.id === typId);
+    const eintrag = { id: Date.now(), typ: typId,
+      typLabel: def ? def.label : "Gerät", icon: def ? def.icon : "⚙",
+      hausId: null, raumId: null, felder: [] };
+    if (setVes) setVes(prev => prev.map(v => {
+      if (!v || v.id !== ve.id) return v;
+      const karten2 = (v.karten || []).map(k => (k && String(k.id) === String(karteId))
+        ? { ...k, technikGeraete: [ ...(Array.isArray(k.technikGeraete) ? k.technikGeraete : []), eintrag ] }
+        : k);
+      return { ...v, karten: karten2 };
+    }));
+    onClose();
+  };
   return (
     <div style={overlayBackdrop()} onClick={onClose}>
       <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
         <OverlayKopf t={t} titel={"Neue Anlage · " + ((ve && (ve.nr || ve.name)) || "Objekt")} onClose={onClose}/>
         <div style={overlayBody()}>
-          {technikKarten.length === 0 ? (
+          {objektWahl ? (
+            <div style={{ marginBottom: 12 }}>
+              <div style={feldLabel(t)}>Objekt *</div>
+              <select value={objektWahl.aktivId != null ? String(objektWahl.aktivId) : ""}
+                onChange={(e) => objektWahl.onWaehle && objektWahl.onWaehle(e.target.value || null)}
+                style={feldInput(t)}>
+                <option value="">— Objekt wählen —</option>
+                {(objektWahl.ves || []).map((v) => (
+                  <option key={v.id} value={String(v.id)}>
+                    {(v.nr ? v.nr + " · " : "") + (v.adresse || v.name || "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {!ve ? (
+            <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic",
+              padding: "4px 2px 8px" }}>
+              Bitte zuerst ein Objekt wählen.
+            </div>
+          ) : technikKarten.length === 0 ? (
             <div style={{ fontSize: FS.m, color: t.muted, lineHeight: 1.5 }}>
               Dieses Objekt hat noch keine Technik-Karte. Bitte zuerst am Objekt
               (Liegenschaft) eine Technik-Karte anlegen.
@@ -4099,8 +4142,8 @@ function TechnikGeraetNeuModal({ ve, t, accent, onClose, onSave }) {
               style={{ padding: "8px 14px", background: "transparent", color: t.sub,
                 border: `1px solid ${t.border}`, borderRadius: RAD.ms,
                 fontSize: FS.m, cursor: "pointer", fontFamily: "inherit" }}>Abbrechen</button>
-            {technikKarten.length > 0 ? (
-              <button onClick={() => { if (valid && onSave) onSave(karteId, typId); }}
+            {(ve && technikKarten.length > 0) ? (
+              <button onClick={speichern}
                 disabled={!valid}
                 style={{ padding: "8px 14px", background: valid ? accent : t.border,
                   color: valid ? getContrastColor(accent) : t.sub, border: "none",
@@ -4114,33 +4157,8 @@ function TechnikGeraetNeuModal({ ve, t, accent, onClose, onSave }) {
   );
 }
 
-function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = null, onKontaktClick = null, ves = [], setVes = null, neuSignal = 0 }) {
+function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = null, onKontaktClick = null, ves = [] }) {
   const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
-  // §12.8 Screen-Plus: Signal vom Technik-Screen-Header öffnet das
-  // Anlege-Modal (Ansicht selbst bleibt read-only).
-  const [neuOffen, setNeuOffen] = useState(false);
-  useEffect(() => {
-    if (!neuSignal) return;
-    setNeuOffen(true);
-  }, [neuSignal]);
-  const geraetNeu = (karteId, typId) => {
-    const def = TECHNIK_GERAET_TYPEN.find(x => x.id === typId);
-    const eintrag = { id: Date.now(), typ: typId,
-      typLabel: def ? def.label : "Gerät", icon: def ? def.icon : "⚙",
-      hausId: null, raumId: null, felder: [] };
-    if (setVes && ve) setVes(prev => prev.map(v => {
-      if (!v || v.id !== ve.id) return v;
-      const karten2 = (v.karten || []).map(k => (k && String(k.id) === String(karteId))
-        ? { ...k, technikGeraete: [ ...(Array.isArray(k.technikGeraete) ? k.technikGeraete : []), eintrag ] }
-        : k);
-      return { ...v, karten: karten2 };
-    }));
-    setNeuOffen(false);
-  };
-  const neuModal = neuOffen ? (
-    <TechnikGeraetNeuModal ve={ve} t={t} accent={accent}
-      onClose={() => setNeuOffen(false)} onSave={geraetNeu}/>
-  ) : null;
   // Geräte hängen an den TECHNIK-Karten; die Gebäude/TG-Karten (haeuser)
   // dienen der Standort-Anzeige je Gerät (GeraetStandort, g.hausId).
   const haeuser = karten.filter(k => k && (k.kategorie === "gebaeude" || k.kategorie === "tiefgarage"));
@@ -4157,13 +4175,11 @@ function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = 
           Noch keine technischen Anlagen hinterlegt. Geräte werden am Objekt
           gepflegt (Liegenschaft → Technik-Karte des Gebäudes).
         </div>
-        {neuModal}
       </div>
     );
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {neuModal}
       {mitGeraeten.map(({ karte, geraete }) => (
         <div key={karte.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {mitGeraeten.length > 1 && (
@@ -7455,8 +7471,49 @@ function DateiViewerModal({ t, accent, datei, onClose, onVor = null, onZurueck =
 // → Body mit labelStyle/inputStyle-Feldern → sticky Footer mit AktionsButton
 // (abbrechen flex 1 / bestaetigen flex 2). KEIN Eigenbau — gleiche Hülle wie
 // alle anderen Dialoge. Fragt: Dokumenttyp wählen → Datei wählen → speichern.
+// ── dokumentUploadAnVe (§12.8) — Speicherpfad für den Screen-Plus-Upload ────
+// Kapselt dateiSpeichern + Karten-Update für ein Ziel-Objekt, damit das
+// DokumentUploadModal auch auf Screen-Ebene (mit Objektwahl im Dialog)
+// gehostet werden kann. Spiegel der metaAnKarte-Logik aus DokumenteAnsicht;
+// Dokument-Karten haben leere stamm/einheiten → der einfache Karten-Patch ist
+// hier äquivalent (keine Kontakt-/Einheiten-Ableitung nötig).
+function dokumentUploadAnVe(setVes, veId, katId, file, ersetzen, fertig, eigenName) {
+  dateiSpeichern(file).then(meta => {
+    setVes(prev => prev.map(v => {
+      if (!v || v.id !== veId) return v;
+      const karten = Array.isArray(v.karten) ? v.karten : [];
+      if (eigenName) {
+        const neu = { id: Date.now() + Math.floor(Math.random() * 1000),
+          name: eigenName, icon: "📄", fixed: false,
+          kategorie: "stammdaten", stamm: dokumentBasisFelder(), einheiten: [],
+          dateien: [meta] };
+        return { ...v, karten: [...karten, neu] };
+      }
+      const existiert = karten.some(k => k && k.dokumentId === katId);
+      if (!existiert) {
+        const neu = neueDokumentKarte(katId);
+        if (!neu) return v;
+        neu.dateien = [meta];
+        return { ...v, karten: [...karten, neu] };
+      }
+      return { ...v, karten: karten.map(k => {
+        if (!k || k.dokumentId !== katId) return k;
+        const alt = Array.isArray(k.dateien) ? k.dateien : [];
+        if (ersetzen) {
+          alt.forEach(m => { if (m && m.id) dateiLoeschen(m.id); });
+          return { ...k, dateien: [meta] };
+        }
+        return { ...k, dateien: [...alt, meta] };
+      }) };
+    }));
+    fertig(true);
+  }).catch(err => {
+    fertig(false, "Datei konnte nicht gespeichert werden: " + ((err && err.message) || "unbekannt"));
+  });
+}
+
 // vorhandeneTypen = Set/Map katalogId→Anzahl Dateien (für Ersetzen-Frage).
-function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene }) {
+function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene, objektWahl = null, ve = null }) {
   const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
     textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
   const inputStyle = { width: "100%", padding: "8px 10px",
@@ -7504,11 +7561,12 @@ function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene }) {
   };
 
   return (
-    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.7)",
-      zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: t.card, border: `1px solid ${t.border}`,
+    <div style={overlayBackdrop()} onClick={onClose}>
+      {/* §12.8: Backdrop auf Baustein migriert (Positions-Sprung-Klasse). */}
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: t.card, border: `1px solid ${t.border}`,
         borderRadius: RAD.xl, width: "100%", maxWidth: 480,
-        maxHeight: "90dvh", overflowY: "auto",
+        maxHeight: "calc(95dvh - 16px)", overflowY: "auto",
         boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
         {/* Header */}
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.border}`,
@@ -7516,7 +7574,7 @@ function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene }) {
           position: "sticky", top: 0, background: t.card, zIndex: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <I name="plus" size={14} color={accent}/>
-            <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>Datei hochladen</span>
+            <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>Datei hochladen{(objektWahl && ve && (ve.nr || ve.name)) ? " · " + (ve.nr || ve.name) : ""}</span>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}
             title="Schließen" aria-label="Schließen">
@@ -7525,6 +7583,28 @@ function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene }) {
         </div>
 
         <div style={{ padding: 16 }}>
+          {/* §12.8: Objektwahl als erstes Feld (Screen-Plus ohne Akte). */}
+          {objektWahl ? (
+            <div style={{ marginBottom: 14 }}>
+              <div style={labelStyle}>Objekt *</div>
+              <select value={objektWahl.aktivId != null ? String(objektWahl.aktivId) : ""}
+                onChange={(e) => objektWahl.onWaehle && objektWahl.onWaehle(e.target.value || null)}
+                style={inputStyle}>
+                <option value="">— Objekt wählen —</option>
+                {(objektWahl.ves || []).map((v) => (
+                  <option key={v.id} value={String(v.id)}>
+                    {(v.nr ? v.nr + " · " : "") + (v.adresse || v.name || "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {(objektWahl && !ve) ? (
+            <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic",
+              padding: "2px 2px 6px" }}>
+              Bitte zuerst ein Objekt wählen.
+            </div>
+          ) : (<div>
           {/* Dokumenttyp */}
           <div style={{ marginBottom: 14 }}>
             <div style={labelStyle}>Welches Dokument ist das?</div>
@@ -7600,6 +7680,7 @@ function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene }) {
             padding: "6px 0 0", lineHeight: 1.4 }}>
             Die Datei wird dem gewählten Dokument zugeordnet und erscheint danach mit Haken in der Liste.
           </div>
+          </div>)}
         </div>
 
         {/* Footer */}
@@ -7608,9 +7689,11 @@ function DokumentUploadModal({ t, accent, onClose, onSave, vorhandene }) {
           position: "sticky", bottom: 0, background: t.card }}>
           <AktionsButton variante="breit" rolle="abbrechen" onClick={onClose}
             text="Abbrechen" icon={false} flex={1} t={t} accent={accent}/>
+          {!(objektWahl && !ve) ? (
           <AktionsButton variante="breit" rolle="bestaetigen" onClick={speichern}
             disabled={!valid || ladend} text={ladend ? "Speichert …" : "Hochladen"}
             icon={false} flex={2} t={t} accent={accent}/>
+          ) : null}
         </div>
       </div>
     </div>
@@ -7630,12 +7713,6 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAns
   // ── Upload-Status ──────────────────────────────────────────────────────
   // uploadOffen: DokumentUploadModal sichtbar?
   const [uploadOffen, setUploadOffen] = useState(false);
-  // §12.8 Screen-Plus: Signal vom Dokumente-Screen-Header öffnet den
-  // Upload-Dialog (merged schaltet zuvor editMode an).
-  useEffect(() => {
-    if (!uploadSignal) return;
-    setUploadOffen(true);
-  }, [uploadSignal]);
 
   const dateienVon = (karte) => (karte && Array.isArray(karte.dateien)) ? karte.dateien : [];
 
@@ -7867,7 +7944,7 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAns
 // ── DokumenteAnsicht: Dokumente-Tab. Erste Karte = Checkliste; darunter je
 // angehaktem Dokument eine eigene Karte (Basisfelder + typspezifische), plus
 // frei ergänzbare eigene Karten. Verhalten exakt wie VerwaltungAnsicht.
-function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null, uploadSignal = 0 }) {
+function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null }) {
   const karten = (ve && Array.isArray(ve.dokumenteKarten)) ? ve.dokumenteKarten : [];
   // EIN Viewer-State für den ganzen Dokumente-Tab (Checkliste + Karten teilen ihn)
   const [viewerDatei, setViewerDatei] = useState(null);
@@ -8609,7 +8686,7 @@ export {
   DokumenteAnsicht,
   NeueKarteMenu,
   neueDokumentKarte,
-  TechnikUebersichtAnsicht,
+  TechnikUebersichtAnsicht, TechnikGeraetNeuModal, DokumentUploadModal, dokumentUploadAnVe,
   EinheitZeile,
   HeaderFilterDropdown,
   KARTEN_ICONS,
