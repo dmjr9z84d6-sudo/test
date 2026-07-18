@@ -3066,30 +3066,19 @@ export default function App() {
             }}/>
         )}
 
-        {/* Screen-Plus: Objektwahl-Schritt (Kalender-Prinzip). Nach der Wahl
-            öffnet die Akte des Objekts + das jeweilige Anlege-Formular mit
-            vorbelegtem Objekt. Baustein: ObjektWahlOverlay (objektansicht). */}
-        {plusWahlZiel && (
+        {/* Screen-Plus ETV: Objektwahl-Schritt. Das ETV-Neu-Formular lebt
+            INLINE in der Objekt-Akte (kein zweites Fenster) — nach der Wahl
+            öffnet die Akte mit geöffnetem Formular. Vorgänge nutzen stattdessen
+            die Objektwahl IM Dialog (VorgangNeuOverlay, objektWahl-Prop). */}
+        {plusWahlZiel === "etv" && (
           <ObjektWahlOverlay ves={vesSichtbar} t={t}
-            accent={(effectiveSettings.kacheln.find(k => k.id === plusWahlZiel) || {}).farbe
-              || (plusWahlZiel === "etv" ? "#8B5CF6" : "#EF4444")}
-            titel={plusWahlZiel === "etv"
-              ? "Objekt wählen — neue Versammlung"
-              : "Objekt wählen — neuer Vorgang"}
+            accent={(effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#8B5CF6"}
+            titel="Objekt wählen — neue Versammlung"
             onClose={() => setPlusWahlZiel(null)}
             onWaehle={(veObj) => {
-              if (plusWahlZiel === "etv") {
-                setEtvAkteId(null);
-                setEtvViewVEId(veObj.id);
-                setEtvNeuSignal(s => s + 1);
-              } else {
-                setAuftragView("objekt");
-                setAuftragFirmaId(null);
-                setAuftragSprungId(null);
-                setVorgangAkteId(null);
-                setAuftragViewVEId(veObj.id);
-                setAuftragNeuOffen(true);
-              }
+              setEtvAkteId(null);
+              setEtvViewVEId(veObj.id);
+              setEtvNeuSignal(s => s + 1);
               setPlusWahlZiel(null);
             }}/>
         )}
@@ -3307,10 +3296,7 @@ export default function App() {
                 // Plus IMMER sichtbar (Kalender-Prinzip) — nur im Mobil-Detail
                 // einer offenen Akte ausgeblendet (dort führt Zurück).
                 const plus = !akteOffenMobil;
-                const plusClick = () => {
-                  if (auftragView === "objekt" && auftragViewVEId) setAuftragNeuOffen(true);
-                  else setPlusWahlZiel("auftraege");
-                };
+                const plusClick = () => setAuftragNeuOffen(true);
                 if (!zurueck && !plus) return null;
                 return (
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -3330,9 +3316,20 @@ export default function App() {
           // optional die erste Notiz als Nachricht.
           const anlegenVe = auftragNeuOffen && auftragView === "objekt" && auftragViewVEId
             ? (vesSichtbar || []).find(v => v.id === auftragViewVEId) : null;
-          const auftragNeuOverlay = anlegenVe ? (
+          // §Plus-Buttons: Overlay öffnet auch OHNE Objekt — die Objektwahl ist
+          // das erste Feld im Dialog (vorbelegt bei offener Akte). Die Wahl
+          // setzt zugleich die Objekt-Sicht (Akte hinter dem Dialog).
+          const auftragNeuOverlay = auftragNeuOffen ? (
             <VorgangNeuOverlay ve={anlegenVe} t={t} accent={aAccent}
               Inp={Inp} kontakteAlle={kontakteSichtbar}
+              objektWahl={{ ves: vesSichtbar, aktivId: auftragViewVEId,
+                onWaehle: (id) => {
+                  setAuftragView("objekt");
+                  setAuftragFirmaId(null);
+                  setAuftragSprungId(null);
+                  setVorgangAkteId(null);
+                  setAuftragViewVEId(id || null);
+                } }}
               onClose={() => setAuftragNeuOffen(false)}
               onAnlegenVorgang={(d) => {
                 const v = neuerVorgang({ objekt_id: anlegenVe.id,

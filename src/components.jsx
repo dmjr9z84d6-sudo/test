@@ -109,16 +109,20 @@ function TabLeiste({ tabs, aktiv, onWaehle, t, accent = ACCENT }) {
 // EIN Overlay-Muster für alle Anlege-/Bearbeiten-Dialoge (Termine, Vorgänge,
 // künftige Flows): abgedunkelter Backdrop, zentriertes Panel (max 460), Kopf
 // mit Icon+Titel+Schließen, scrollender Body. dvh statt vh (§14 Safari).
-function overlayBackdrop() {
+function overlayBackdrop(zIndex = 200) {
+  // §12.9 Overlay-System: OBEN ausgerichtet (fester Kopf-Anker) statt vertikal
+  // zentriert — bei vertikaler Zentrierung SPRINGT der Dialog, sobald sich die
+  // Inhaltshöhe ändert (z. B. Tab-Wechsel Vorgang⇄Auftrag). Fester oberer
+  // Abstand (5dvh) hält den Dialog-Kopf an Ort; Inhalt wächst nach unten.
   return { position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
-    background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex",
-    alignItems: "center", justifyContent: "center",
-    padding: "16px", boxSizing: "border-box" };
+    background: "rgba(0,0,0,0.5)", zIndex: zIndex, display: "flex",
+    alignItems: "flex-start", justifyContent: "center",
+    padding: "5dvh 16px 16px", boxSizing: "border-box" };
 }
 function overlayPanel(t) {
   return { background: t.bg, border: `1px solid ${t.border}`,
     borderRadius: RAD.lg, width: "100%", maxWidth: 460,
-    height: "auto", maxHeight: "calc(100dvh - 32px)",
+    height: "auto", maxHeight: "calc(95dvh - 16px)",
     display: "flex", flexDirection: "column",
     boxSizing: "border-box", overflow: "hidden" };
 }

@@ -2413,7 +2413,7 @@ const feldLabelStil = (t) => ({ fontSize: FS.s, fontWeight: FW.med,
   color: t.sub, display: "block", marginBottom: 4 });
 
 function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
-  onErfasseAuftrag, Inp, kontakteAlle = [] }) {
+  onErfasseAuftrag, Inp, kontakteAlle = [], objektWahl = null }) {
   const kontakteObjektOv = useObjektKontakte(kontakteAlle, ve);
   const [raumId, setRaumId] = useState("");
   const [modus, setModus] = useState("vorgang"); // "vorgang" | "auftrag"
@@ -2460,6 +2460,32 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
       <div onClick={(e) => e.stopPropagation()} style={overlayPanel(t)}>
         <OverlayKopf t={t} titel={kopfTitel} onClose={onClose}/>
         <div style={overlayBody()}>
+          {/* §Plus-Buttons: Objektwahl als ERSTES Feld im Dialog (statt
+              vorgeschaltetem Wahl-Fenster). Vorbelegt, wenn der Screen bereits
+              eine Objekt-Akte offen hat; sonst wählbar. Ohne Objekt bleibt der
+              Rest des Formulars ausgeblendet. */}
+          {objektWahl ? (
+            <div style={{ marginBottom: 12 }}>
+              <label style={feldLabelStil(t)}>Objekt *</label>
+              <select value={objektWahl.aktivId != null ? String(objektWahl.aktivId) : ""}
+                onChange={(e) => objektWahl.onWaehle && objektWahl.onWaehle(e.target.value || null)}
+                style={selectStil(t, accent, true)}>
+                <option value="">— Objekt wählen —</option>
+                {(objektWahl.ves || []).map((v) => (
+                  <option key={v.id} value={String(v.id)}>
+                    {(v.nr ? v.nr + " · " : "") + (v.adresse || v.name || "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {(!ve && objektWahl) ? (
+            <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic",
+              padding: "4px 2px 8px" }}>
+              Bitte zuerst ein Objekt wählen.
+            </div>
+          ) : null}
+          {ve ? (<div>
           <div style={{ marginBottom: 12 }}>
             <SegmentControl t={t} accent={accent} voll={false}
               options={[{ id: "vorgang", label: "Vorgang" },
@@ -2566,6 +2592,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
               </div>
             </div>
           )}
+          </div>) : null}
         </div>
       </div>
     </div>
