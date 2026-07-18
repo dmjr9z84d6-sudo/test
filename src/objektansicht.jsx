@@ -13,7 +13,7 @@ import {
   Avatar, DATUM_MONATE_KURZ, DatumFeld, FeldKontaktKarte, LEGIONELLEN_BEFUNDE,
   LEGIONELLEN_STATUS_FARBE, DetailKopf, ObjektDetailKopf, DetailRahmen, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
-  legionellenBefund, legionellenFaelligStatus, legionellenFindeEinheit,
+  legionellenBefund, legionellenEffektiveNaechste, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
   objektHatZentralesWarmwasser, SegmentControl, TabLeiste, wjEndeDatum
 } from "./components.jsx";
@@ -792,11 +792,29 @@ function objektHandlungsbedarfDetail(ve, cfg) {
 function objektHandlungsbedarf(ve, cfg) {
   return objektHandlungsbedarfDetail(ve, cfg).farbe;
 }
+// §102: Kontextsensitive Status-Ableitung für die Legionellen-Sicht. EINE
+// Quelle für Karten-Statusleiste UND Listen-Punkt (statt objektweitem
+// Handlungsbedarf). Nutzt die bestehenden Legionellen-Helfer (§76).
+//   punkt  → Farbe des Listen-Punkts (null = kein Punkt, neutral)
+//   status → { typ, text } für die Statusleiste (typ null = neutrale Leiste)
+function legionellenStatusKontext(ve) {
+  const naechste = legionellenEffektiveNaechste((ve && ve.legionellen) || {});
+  if (!naechste) {
+    // Prüfpflichtig, aber kein Datum erfasst: neutraler Hinweis, kein Punkt.
+    return { punkt: null, status: { typ: null, text: "Prüfung noch nicht erfasst" } };
+  }
+  const fs = legionellenFaelligStatus(naechste, new Date());
+  const punkt = fs === "ueberfaellig" ? HANDLUNGSBEDARF_FARBEN.rot
+    : fs === "bald" ? HANDLUNGSBEDARF_FARBEN.gelb
+    : HANDLUNGSBEDARF_FARBEN.gruen;
+  const typ = fs === "ueberfaellig" ? "error" : fs === "bald" ? "warn" : null;
+  return { punkt, status: { typ, text: "Nächste Prüfung: " + naechste } };
+}
 
 // ── VEListenZeile (kompakte Listenansicht eines Objekts, DESIGN §35) ────────
 // Eine schmale, scannbare Zeile statt der Kachel: Status-Punkt · WEG-Nr ·
 // Adresse · Einheiten-Zahl. Tippen klappt dasselbe Detail auf wie die Kachel.
-function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = false, auswahlAccentOverride = null, extraBadge = null }) {
+function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = false, auswahlAccentOverride = null, extraBadge = null, statusKontext = null }) {
   const auswahlAccent = auswahlAccentOverride || useKontaktFarbe().auswahlObjekt || accent;
   const hbCfg = useHandlungsbedarf();
   const statusLeisteSettings = useStatusLeiste();
@@ -805,8 +823,13 @@ function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = fal
   const zeigePunkt = statusLeisteSettings.objekt;
   const wohn = (ve.einheiten || []).filter(e => ["Wohneigentum","Teileigentum","Gewerbe"].includes(e.typ)).length;
   const sp = (ve.einheiten || []).filter(e => isStellplatzTyp(e.typ)).length;
-  // Status-Punkt: Gesamt-Handlungsbedarf (rot=muss, gelb=kann, grün=ok).
-  const punkt = HANDLUNGSBEDARF_FARBEN[objektHandlungsbedarf(ve, hbCfg)] || HANDLUNGSBEDARF_FARBEN.gruen;
+  // Status-Punkt: normal Gesamt-Handlungsbedarf (rot=muss, gelb=kann, grün=ok).
+  // §102: im Legionellen-Kontext nur die Prüf-Fälligkeit (kein Punkt bei
+  // fehlendem Datum → legStatus.punkt kann null sein).
+  const legStatus = statusKontext === "legionellen" ? legionellenStatusKontext(ve) : null;
+  const punkt = legStatus
+    ? legStatus.punkt
+    : (HANDLUNGSBEDARF_FARBEN[objektHandlungsbedarf(ve, hbCfg)] || HANDLUNGSBEDARF_FARBEN.gruen);
   const nr = ve.nr || ve.name || ("Objekt " + ve.id);
   const adrTeile = (ve.adresse || "").split(",").map(s => s.trim());
   const strasse = adrTeile[0] || "";
@@ -822,7 +845,7 @@ function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = fal
         background: aktiv ? auswahlAccent + "12" : t.card,
         border: `1px solid ${aktiv ? auswahlAccent : t.border}`,
         borderRadius: RAD.md }}>
-      {zeigePunkt && (
+      {zeigePunkt && punkt && (
         <span style={{ width: 9, height: 9, borderRadius: 5, flexShrink: 0,
           background: punkt }}/>
       )}
@@ -848,7 +871,7 @@ function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = fal
   );
 }
 
-function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, id, kompakt = false, ohneRahmen = false, kbItem = false, auswahlAccentOverride = null, extraBadge = null }) {
+function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, id, kompakt = false, ohneRahmen = false, kbItem = false, auswahlAccentOverride = null, extraBadge = null, statusKontext = null }) {
   const statusLeisteSettings = useStatusLeiste();
   const hbCfg = useHandlungsbedarf();
   // Auswahl-Hervorhebung: im Mehr-Farbe-Modus die Objekt-Bereichsfarbe,
@@ -901,11 +924,18 @@ function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, i
   // Punkt in der Liste (eine Einstellung für beides). Gelb/Rot zeigen den
   // dringlichsten Auslöser als Text; Grün blendet die Leiste aus.
   // Rot → "error"-Farbe (#EF4444), Gelb → "warn"-Farbe (#F59E0B).
+  // §102: im Legionellen-Kontext zeigt die Leiste den nächsten Prüftermin
+  // (auch bei „ok" — Datum immer sichtbar), sonst den objektweiten
+  // Handlungsbedarf wie bisher.
   let status = null;
   if (!ohneStatus && statusLeisteSettings.objekt) {
-    const hb = objektHandlungsbedarfDetail(ve, hbCfg);
-    if (hb.farbe === "rot") status = { typ: "error", text: hb.text };
-    else if (hb.farbe === "gelb") status = { typ: "warn", text: hb.text };
+    if (statusKontext === "legionellen") {
+      status = legionellenStatusKontext(ve).status;
+    } else {
+      const hb = objektHandlungsbedarfDetail(ve, hbCfg);
+      if (hb.farbe === "rot") status = { typ: "error", text: hb.text };
+      else if (hb.farbe === "gelb") status = { typ: "warn", text: hb.text };
+    }
   }
 
   const bc = aktiv ? auswahlAccent : t.border;

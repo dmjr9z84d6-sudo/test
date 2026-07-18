@@ -1113,7 +1113,8 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
   listenAnsicht = "karten", viewVEId = null, setViewVEId = null, festeGridSpec = null,
   renderDetail = null, istDesktop = true, emptyText = "Keine Einträge.",
   detailAktion = null, masterBadge = null, kopfMitte = null,
-  titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null }) {
+  titel = "", anzahl = null, legendeAn = false, onGotoStatusEinstellungen = null,
+  statusKontext = null }) {
   const offenVEObj = (ves || []).find(v => v.id === viewVEId) || null;
   // Im Mobil-Detail (Objekt offen, kein Desktop-Nebeneinander) zeigt der Header
   // einen „Zurück"-Button — analog zum Objekte-Tab. Zusätzlich meldet der
@@ -1213,13 +1214,13 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
           {(ves || []).map(veObj => listenAnsicht === "liste" ? (
             <VEListenZeile key={veObj.id} ve={veObj} t={t} accent={accent}
               aktiv={false} kbItem id={"objliste-" + veObj.id}
-              auswahlAccentOverride={accent}
+              auswahlAccentOverride={accent} statusKontext={statusKontext}
               extraBadge={masterBadge ? masterBadge(veObj) : null}
               onClick={() => setViewVEId && setViewVEId(veObj.id)}/>
           ) : (
             <VEKachel key={veObj.id} ve={veObj} t={t} accent={accent}
               aktiv={false} kbItem id={"objliste-" + veObj.id}
-              auswahlAccentOverride={accent}
+              auswahlAccentOverride={accent} statusKontext={statusKontext}
               extraBadge={masterBadge ? masterBadge(veObj) : null}
               onClick={() => setViewVEId && setViewVEId(veObj.id)}/>
           ))}
@@ -3687,7 +3688,8 @@ export default function App() {
         )}
         {!suchErg && screen === "legionellen" && legionellenView === "objekte" && (
           <ObjektListeMitDetail
-            ves={vesSichtbar} kontakte={kontakteSichtbar}
+            ves={(vesSichtbar || []).filter(objektHatZentralesWarmwasser)} kontakte={kontakteSichtbar}
+            statusKontext="legionellen"
             setVes={setVes} setKontakte={setKontakte} t={t}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             kopfMitte={legionellenPille}
@@ -3710,8 +3712,8 @@ export default function App() {
             }}
             accent={legionellenAccent}
             viewVEId={legionellenViewVEId} setViewVEId={(id) => { setLegionellenViewVEId(id); setLegionellenEditMode(false); }}
-            titel="Legionellen" anzahl={(vesSichtbar || []).length}
-            emptyText="Keine Legionellen-Daten für dieses Objekt."
+            titel="Legionellen" anzahl={(vesSichtbar || []).filter(objektHatZentralesWarmwasser).length}
+            emptyText="Keine prüfpflichtigen Objekte (zentrale Warmwasserversorgung)."
             detailAktion={(veObj) => {
               // Stift nur bei Prüfpflicht (zentrales Warmwasser) — sonst gibt es
               // nichts zu erfassen und der Hinweis unten erklärt das.
