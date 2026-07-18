@@ -151,7 +151,21 @@ function overlayBody() {
 // rund 36×36, RAD.pill, accent-Hintergrund — Muster-Quelle VEDetail/Kontakte.
 // Destruktive Aktionen: gefahr=true (rot umrandet), confirm=true nach erstem
 // Klick (rot gefüllt, zweiter Klick führt aus) — Zwei-Stufen wie AktionsButton.
-function KopfIconButton({ icon, title, onClick, t, accent, gefahr = false, confirm = false }) {
+function KopfIconButton({ icon, title, onClick, t, accent, gefahr = false, confirm = false, gefahrVoll = false }) {
+  // gefahrVoll (§12.9): accent-Vollton, rotes Icon, KEIN Rand (wie X-Button).
+  // Zwei-Stufen: confirm=true → rot gefüllt, weißes Icon (führt aus).
+  if (gefahrVoll) {
+    const bg = confirm ? "#EF4444" : accent;
+    const fg = confirm ? "#FFFFFF" : "#EF4444";
+    return (
+      <button onClick={onClick} title={title} aria-label={title}
+        style={{ display: "flex", alignItems: "center", justifyContent: "center",
+          width: 36, height: 36, flexShrink: 0, background: bg, border: "none",
+          borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
+        <I name={icon} size={16} color={fg}/>
+      </button>
+    );
+  }
   const bg = gefahr ? (confirm ? "#EF4444" : "transparent") : accent;
   const fg = gefahr ? (confirm ? "#FFFFFF" : "#EF4444") : getContrastColor(accent);
   return (

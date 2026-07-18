@@ -376,11 +376,18 @@ function VersammlungZeile({ versammlung, welt, t, accent, onOeffnen }) {
 }
 
 // ── Tab 1 · ÜBERSICHT — errechneter Kopf + Stammdaten + Anwesenheit ─────────
-function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, t, accent }) {
-  const [offen, setOffen] = useState("stand");
+function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, t, accent, editModeGlobal = false,
+  bilderEinbetten = false, setBilderEinbetten = () => {}, einzelstimmen = false, setEinzelstimmen = () => {} }) {
+  // Karten unabhängig auf-/zuklappbar (Set statt Single) — Gesamtüberblick:
+  // mehrere Karten können gleichzeitig offen bleiben. Default: Stand offen.
+  const [offenSet, setOffenSet] = useState(() => ({ stand: true }));
   const [editStamm, setEditStamm] = useState(false);
-  const [bilderEinbetten, setBilderEinbetten] = useState(false);   // Druck-Haken §4.7
-  const [einzelstimmen, setEinzelstimmen] = useState(false);       // Druck-Haken Cockpit 14.07. (Default AUS)
+  // Globaler Bearbeiten-Modus (Kopf-Stift der Akte) schaltet die Stammdaten-
+  // Bearbeitung frei; die Karte klappt dabei auf.
+  useEffect(() => {
+    if (editModeGlobal) { setOffenSet(s => ({ ...s, stamm: true })); setEditStamm(true); }
+    else { setEditStamm(false); }
+  }, [editModeGlobal]);
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const anw = anwesenheitenFuer(welt, versammlung.id);
   const frist = ladungsfristInfo(versammlung);
@@ -392,7 +399,8 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
   const patch = (p) => onWelt((w) => weltVersammlungPatch(w, versammlung.id, p));
   const statusIdx = ETV_STATUS_KETTE.indexOf(versammlung.status);
   const istUmlauf = versammlung.versammlung_art === "umlauf";
-  const toggle = (id) => setOffen(offen === id ? null : id);
+  const istOffen = (id) => !!offenSet[id];
+  const toggle = (id) => setOffenSet(s => ({ ...s, [id]: !s[id] }));
 
   // Anwesenheit erzeugen/aktualisieren.
   const anwErzeugen = () => {
@@ -410,7 +418,7 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {/* Stand-Karte: alles ERRECHNET (Konzept: Abgeleitetes schlägt Gespeichertes) */}
       <BausteinKarte t={t} accent={accent} titel="Stand"
-        offen={offen === "stand"} onToggle={() => toggle("stand")}
+        offen={istOffen("stand")} onToggle={() => toggle("stand")}
         sub={ETV_STATUS_LABEL[versammlung.status]}>
         <EtvPhasenLeiste versammlung={versammlung} t={t} accent={accent}/>
         <AmpelZeile status={frist.status} text={frist.text} t={t}/>
@@ -466,10 +474,10 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
 
       {/* Stammdaten-Karte */}
       <BausteinKarte t={t} accent={accent} titel="Stammdaten"
-        offen={offen === "stamm"} onToggle={() => toggle("stamm")}
+        offen={istOffen("stamm")} onToggle={() => toggle("stamm")}
         kopfAktion={!editStamm ? (
           <KopfIconButton icon="pencil" title="Stammdaten bearbeiten" t={t} accent={accent}
-            onClick={() => { setOffen("stamm"); setEditStamm(true); }}/>
+            onClick={() => { setOffenSet(s => ({ ...s, stamm: true })); setEditStamm(true); }}/>
         ) : null}
         sub={versammlung.datum ? datumDe(versammlung.datum) : "Termin offen"}>
         {!editStamm ? (
@@ -522,7 +530,7 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
       <BausteinKarte t={t} accent={accent}
         titel={istUmlauf ? "Rücklauf (schriftlich)" : "Anwesenheit"}
         anzahl={anw.length > 0 ? anw.filter((a) => a.status === "anwesend" || a.status === "vertreten").length + "/" + anw.length : null}
-        offen={offen === "anw"} onToggle={() => toggle("anw")}
+        offen={istOffen("anw")} onToggle={() => toggle("anw")}
         sub={anw.length > 0 ? bf.text : "noch nicht erfasst"}>
         {anw.length === 0 ? (
           <div>
@@ -617,11 +625,7 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
 
       {/* Protokoll-Pflichtangaben (§24 WEG, Ausbau-Konzept §3) */}
       <BausteinKarte t={t} accent={accent} titel="Protokoll"
-        offen={offen === "protokoll"} onToggle={() => toggle("protokoll")}
-        kopfAktion={
-          <KopfIconButton icon="printer" title="Protokoll drucken" t={t} accent={accent}
-            onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}/>
-        }
+        offen={istOffen("protokoll")} onToggle={() => toggle("protokoll")}
         sub={versammlung.protokoll_beginn
           ? "Beginn " + versammlung.protokoll_beginn
             + (versammlung.protokoll_ende ? " · Ende " + versammlung.protokoll_ende : "")
@@ -2072,9 +2076,13 @@ function druckeEtvProtokoll(versammlung, ve, welt, kontakte, optionen) {
 // ── Die ETV-AKTE: Kopf + TabLeiste (§97) + vier Tabs (§2b) ──────────────────
 function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, onZurueck }) {
   const [tab, setTab] = useState("uebersicht");
-  // §12.9: Versammlung löschen = runder Icon-Button im Akten-Kopf,
-  // Zwei-Stufen-Confirm; nach dem Löschen zurück zur Liste.
+  // §12.9: Akten-Kopf trägt Bearbeiten (globaler editMode), Drucken, Löschen.
   const [loeschConfirm, setLoeschConfirm] = useState(false);
+  const [editModeGlobal, setEditModeGlobal] = useState(false);
+  // Druck-Optionen liegen hier (Kopf-Drucker nutzt sie); die Übersicht-Karte
+  // zeigt die Toggles und schreibt hierher zurück.
+  const [bilderEinbetten, setBilderEinbetten] = useState(false);
+  const [einzelstimmen, setEinzelstimmen] = useState(false);
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const tabs = [
     { id: "uebersicht", label: "Übersicht", icon: "home" },
@@ -2099,9 +2107,19 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
         </div>
         <StatusPille t={t} farbe={STATUS_FARBE[versammlung.status] || t.muted}
           text={ETV_STATUS_LABEL[versammlung.status] || versammlung.status}/>
+        {/* §12.9: Akten-Aktionen im Kopf — Bearbeiten (ganze Übersicht),
+            Drucken, Löschen (accent-Vollton, rotes Icon, Zwei-Stufen). */}
+        {tab === "uebersicht" ? (
+          <KopfIconButton icon="pencil"
+            title={editModeGlobal ? "Bearbeiten beenden" : "Versammlung bearbeiten"}
+            t={t} accent={accent}
+            onClick={() => setEditModeGlobal(v => !v)}/>
+        ) : null}
+        <KopfIconButton icon="printer" title="Protokoll drucken" t={t} accent={accent}
+          onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}/>
         <KopfIconButton icon="trash"
           title={loeschConfirm ? "Wirklich löschen? (Beschlüsse bleiben)" : "Versammlung löschen"}
-          t={t} accent={accent} gefahr confirm={loeschConfirm}
+          t={t} accent={accent} gefahrVoll confirm={loeschConfirm}
           onClick={() => {
             if (!loeschConfirm) { setLoeschConfirm(true); return; }
             onWelt((w) => weltVersammlungLoeschen(w, versammlung.id));
@@ -2118,7 +2136,10 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
       <TabLeiste t={t} accent={accent} tabs={tabs} aktiv={tab} onWaehle={setTab}/>
       {tab === "uebersicht" ? (
         <EtvUebersichtTab versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
-          onWelt={onWelt} kontakte={kontakte} t={t} accent={accent}/>
+          onWelt={onWelt} kontakte={kontakte} t={t} accent={accent}
+          editModeGlobal={editModeGlobal}
+          bilderEinbetten={bilderEinbetten} setBilderEinbetten={setBilderEinbetten}
+          einzelstimmen={einzelstimmen} setEinzelstimmen={setEinzelstimmen}/>
       ) : null}
       {tab === "tagesordnung" ? (
         <EtvTagesordnungTab versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
