@@ -22,7 +22,7 @@ import { Avatar, HeaderZurueck, Inp, KontaktPicker, KontaktPickerMitAllen, KopfP
 import { NeueKarteMenu } from "./liegenschaft.jsx";
 import { KontaktDetailKarte, KontaktZeile, objektBezugInfo } from "./kontakte.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
-import { DESKTOP_MIN_WIDTH, useFristen, useVorlagen, useWindowWidth, useRollen, useFirmenRollen, useKontaktFarbe } from "./utils-icons.jsx";
+import { DESKTOP_MIN_WIDTH, I, useFristen, useVorlagen, useWindowWidth, useRollen, useFirmenRollen, useKontaktFarbe } from "./utils-icons.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
