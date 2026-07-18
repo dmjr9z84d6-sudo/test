@@ -1264,11 +1264,11 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
 // Dokumente-Inhalt, kein Zweitbau). Da der Hauptscreen keinen globalen
 // Bearbeiten-Schalter hat, hält dieser Wrapper einen EIGENEN lokalen editMode
 // + Bearbeiten-Toggle, damit Upload/Bearbeiten direkt hier möglich ist.
-function DokumenteScreenDetail({ ve, setVes, t, accent, kontakte, setKontakte, gotoKontakt, ves, editMode = false }) {
+function DokumenteScreenDetail({ ve, setVes, t, accent, kontakte, setKontakte, gotoKontakt, ves, editMode = false, uploadSignal = 0 }) {
   return (
     <DokumenteAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
       kontakte={kontakte} setKontakte={setKontakte} editMode={editMode}
-      onKontaktClick={gotoKontakt} ves={ves}/>
+      onKontaktClick={gotoKontakt} ves={ves} uploadSignal={uploadSignal}/>
   );
 }
 
@@ -1794,8 +1794,11 @@ export default function App() {
   const [etvAkteId, setEtvAkteId] = useState(null); // offene ETV-Akte (§2b)
   // Screen-Plus (Kalender-Prinzip): Objektwahl-Overlay für „Neu anlegen" ohne
   // offene Akte. Ziel steuert, welches Formular nach der Wahl startet.
-  const [plusWahlZiel, setPlusWahlZiel] = useState(null); // null | "etv" | "auftraege"
+  const [plusWahlZiel, setPlusWahlZiel] = useState(null); // null | "etv" | "technik" | "dokumente" | "fotos"
   const [etvNeuSignal, setEtvNeuSignal] = useState(0);    // öffnet VersammlungNeuForm
+  const [technikNeuSignal, setTechnikNeuSignal] = useState(0); // öffnet TechnikGeraetNeuModal
+  const [dokUploadSignal, setDokUploadSignal] = useState(0);   // öffnet DokumentUploadModal
+  const [fotoUploadSignal, setFotoUploadSignal] = useState(0); // öffnet FotoUploadModal
   const [kommPlusHinweis, setKommPlusHinweis] = useState(false); // Kommunikation: Modul folgt
   const [auftragViewVEId, setAuftragViewVEId] = useState(null);
   // Sprung vom Schreibtisch (§96.8): dieser Vorgang wird beim Öffnen des
@@ -3066,22 +3069,30 @@ export default function App() {
             }}/>
         )}
 
-        {/* Screen-Plus ETV: Objektwahl-Schritt. Das ETV-Neu-Formular lebt
-            INLINE in der Objekt-Akte (kein zweites Fenster) — nach der Wahl
-            öffnet die Akte mit geöffnetem Formular. Vorgänge nutzen stattdessen
+        {/* Screen-Plus: Objektwahl-Schritt für Ziele, deren Anlege-UI in der
+            Objekt-Akte lebt (Signal-Muster §12.8). Vorgänge nutzen stattdessen
             die Objektwahl IM Dialog (VorgangNeuOverlay, objektWahl-Prop). */}
-        {plusWahlZiel === "etv" && (
-          <ObjektWahlOverlay ves={vesSichtbar} t={t}
-            accent={(effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#8B5CF6"}
-            titel="Objekt wählen — neue Versammlung"
-            onClose={() => setPlusWahlZiel(null)}
-            onWaehle={(veObj) => {
-              setEtvAkteId(null);
-              setEtvViewVEId(veObj.id);
-              setEtvNeuSignal(s => s + 1);
-              setPlusWahlZiel(null);
-            }}/>
-        )}
+        {plusWahlZiel && (() => {
+          const ziele = {
+            etv:       { titel: "Objekt wählen — neue Versammlung",
+              waehle: (id) => { setEtvAkteId(null); setEtvViewVEId(id); setEtvNeuSignal(s => s + 1); } },
+            technik:   { titel: "Objekt wählen — neue Anlage",
+              waehle: (id) => { setTechnikViewVEId(id); setTechnikNeuSignal(s => s + 1); } },
+            dokumente: { titel: "Objekt wählen — Dokument hochladen",
+              waehle: (id) => { setDokumenteViewVEId(id); setDokumenteEditMode(true); setDokUploadSignal(s => s + 1); } },
+            fotos:     { titel: "Objekt wählen — Fotos hochladen",
+              waehle: (id) => { setFotosViewVEId(id); setFotoUploadSignal(s => s + 1); } },
+          };
+          const ziel = ziele[plusWahlZiel];
+          if (!ziel) return null;
+          return (
+            <ObjektWahlOverlay ves={vesSichtbar} t={t}
+              accent={(effectiveSettings.kacheln.find(k => k.id === plusWahlZiel) || {}).farbe || ACCENT}
+              titel={ziel.titel}
+              onClose={() => setPlusWahlZiel(null)}
+              onWaehle={(veObj) => { ziel.waehle(veObj.id); setPlusWahlZiel(null); }}/>
+          );
+        })()}
 
         {/* Kommunikation: Plus zeigt Hinweis, bis das echte Modul existiert. */}
         {kommPlusHinweis && (
@@ -3613,6 +3624,10 @@ export default function App() {
             viewVEId={technikViewVEId} setViewVEId={setTechnikViewVEId}
             istDesktop={istDesktop}
             titel="Technik" anzahl={(vesSichtbar || []).length}
+            kopfPlus={{ title: "Neue Anlage", onClick: () => {
+              if (technikViewVEId) { setTechnikNeuSignal(s => s + 1); }
+              else { setPlusWahlZiel("technik"); }
+            } }}
             legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
@@ -3634,7 +3649,8 @@ export default function App() {
               <TechnikUebersichtAnsicht ve={veObj} t={t}
                 accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
                 kontakte={kontakteSichtbar} setKontakte={setKontakte}
-                onKontaktClick={gotoKontakt} ves={vesSichtbar}/>
+                onKontaktClick={gotoKontakt} ves={vesSichtbar}
+                setVes={setVes} neuSignal={technikNeuSignal}/>
             )}/>
         )}
         {!suchErg && screen === "dokumente" && (
@@ -3648,6 +3664,10 @@ export default function App() {
             viewVEId={dokumenteViewVEId} setViewVEId={(id) => { setDokumenteViewVEId(id); setDokumenteEditMode(false); }}
             istDesktop={istDesktop}
             titel="Dokumente" anzahl={(vesSichtbar || []).length}
+            kopfPlus={{ title: "Dokument hochladen", onClick: () => {
+              if (dokumenteViewVEId) { setDokumenteEditMode(true); setDokUploadSignal(s => s + 1); }
+              else { setPlusWahlZiel("dokumente"); }
+            } }}
             legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
@@ -3689,6 +3709,7 @@ export default function App() {
                 accent={(effectiveSettings.kacheln.find(k => k.id === "dokumente") || {}).farbe || "#64748B"}
                 kontakte={kontakteSichtbar} setKontakte={setKontakte}
                 editMode={dokumenteEditMode}
+                uploadSignal={dokUploadSignal}
                 gotoKontakt={gotoKontakt} ves={vesSichtbar}/>
             )}/>
         )}
@@ -3704,6 +3725,10 @@ export default function App() {
             viewVEId={fotosViewVEId} setViewVEId={(id) => { setFotosViewVEId(id); setFotosEditMode(false); }}
             istDesktop={istDesktop}
             titel="Fotos" anzahl={(vesSichtbar || []).length}
+            kopfPlus={{ title: "Fotos hochladen", onClick: () => {
+              if (fotosViewVEId) { setFotoUploadSignal(s => s + 1); }
+              else { setPlusWahlZiel("fotos"); }
+            } }}
             masterBadge={(veObj) => {
               const n = (veObj && Array.isArray(veObj.fotos)) ? veObj.fotos.length : 0;
               return n > 0 ? (n === 1 ? "1 Foto" : n + " Fotos") : null;
@@ -3750,7 +3775,7 @@ export default function App() {
               <FotosAnsicht
                 ve={veObj} setVes={setVes} t={t}
                 accent={(effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899"}
-                editMode={fotosEditMode}/>
+                editMode={fotosEditMode} uploadSignal={fotoUploadSignal}/>
             )}/>
         )}
         {/* §95: Timeline-Sicht der Legionellen-Kachel — EXAKT die Kalender-

@@ -23,7 +23,8 @@ import {
 import {
   Avatar, BelegungswechselVorgang, DatumFeld, EckPille, EigentumBlock, EigentumHistorie,
   EigentumswechselVorgang, FeldKontaktKarte, FieldList, KontaktPicker, PersonCard, Toggle,
-  VerwendungBadge, datumAnzeige, parseAnteile
+  VerwendungBadge, datumAnzeige, parseAnteile,
+  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody
 } from "./components.jsx";
 import { StatusLeiste, VEDetail, VEKachel } from "./objektansicht.jsx";
 // Kontakt-Komponenten (S7) — Laufzeit-Refs in JSX (Zyklus liegenschaft⇄kontakte-modul).
@@ -4047,8 +4048,99 @@ function ergaenzeTechnikGeraetFelder(g) {
 // (gebaeude/tiefgarage) — für den Technik-Hauptscreen (linke Nav). Nutzt die
 // ECHTE GeraetKarte read-only (Baustein-Regel: ein Geräte-Inhalt, kein
 // Zweitbau). Gepflegt werden Geräte weiterhin am Objekt (Liegenschaft-Tab).
-function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = null, onKontaktClick = null, ves = [] }) {
+// ── TechnikGeraetNeuModal (§12.8 Screen-Plus) — Anlage neu vom Technik-Screen ─
+// Eigenes Anlege-Formular (Beschluss 18.07.): Ziel-Technik-Karte + Gerätetyp.
+// Das Gerät entsteht minimal (ohne Felder) und wird wie gehabt am Objekt
+// (Liegenschaft → Technik-Karte) weiter gepflegt. Overlay-Bausteine Pflicht.
+function TechnikGeraetNeuModal({ ve, t, accent, onClose, onSave }) {
+  const technikKarten = ((ve && ve.karten) || []).filter(k => k && k.kategorie === "technik");
+  const [karteId, setKarteId] = useState(technikKarten.length ? technikKarten[0].id : "");
+  const [typId, setTypId] = useState("");
+  const valid = !!karteId && !!typId;
+  return (
+    <div style={overlayBackdrop()} onClick={onClose}>
+      <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+        <OverlayKopf t={t} titel={"Neue Anlage · " + ((ve && (ve.nr || ve.name)) || "Objekt")} onClose={onClose}/>
+        <div style={overlayBody()}>
+          {technikKarten.length === 0 ? (
+            <div style={{ fontSize: FS.m, color: t.muted, lineHeight: 1.5 }}>
+              Dieses Objekt hat noch keine Technik-Karte. Bitte zuerst am Objekt
+              (Liegenschaft) eine Technik-Karte anlegen.
+            </div>
+          ) : (
+            <div>
+              <div style={{ marginBottom: 12 }}>
+                <div style={feldLabel(t)}>Technik-Karte *</div>
+                <select value={String(karteId)} onChange={(e) => setKarteId(e.target.value)}
+                  style={feldInput(t)}>
+                  {technikKarten.map(k => (
+                    <option key={k.id} value={String(k.id)}>{k.name || "Technik"}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={feldLabel(t)}>Gerätetyp *</div>
+                <select value={typId} onChange={(e) => setTypId(e.target.value)}
+                  style={feldInput(t)}>
+                  <option value="">— Typ wählen —</option>
+                  {TECHNIK_KATEGORIEN.map(kat => (
+                    <optgroup key={kat.id} label={kat.label}>
+                      {kat.typen.map(ty => (
+                        <option key={ty.id} value={ty.id}>{ty.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <button onClick={onClose}
+              style={{ padding: "8px 14px", background: "transparent", color: t.sub,
+                border: `1px solid ${t.border}`, borderRadius: RAD.ms,
+                fontSize: FS.m, cursor: "pointer", fontFamily: "inherit" }}>Abbrechen</button>
+            {technikKarten.length > 0 ? (
+              <button onClick={() => { if (valid && onSave) onSave(karteId, typId); }}
+                disabled={!valid}
+                style={{ padding: "8px 14px", background: valid ? accent : t.border,
+                  color: valid ? getContrastColor(accent) : t.sub, border: "none",
+                  borderRadius: RAD.ms, fontSize: FS.m, fontWeight: FW.bold,
+                  cursor: valid ? "pointer" : "default", fontFamily: "inherit" }}>Anlegen</button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = null, onKontaktClick = null, ves = [], setVes = null, neuSignal = 0 }) {
   const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
+  // §12.8 Screen-Plus: Signal vom Technik-Screen-Header öffnet das
+  // Anlege-Modal (Ansicht selbst bleibt read-only).
+  const [neuOffen, setNeuOffen] = useState(false);
+  useEffect(() => {
+    if (!neuSignal) return;
+    setNeuOffen(true);
+  }, [neuSignal]);
+  const geraetNeu = (karteId, typId) => {
+    const def = TECHNIK_GERAET_TYPEN.find(x => x.id === typId);
+    const eintrag = { id: Date.now(), typ: typId,
+      typLabel: def ? def.label : "Gerät", icon: def ? def.icon : "⚙",
+      hausId: null, raumId: null, felder: [] };
+    if (setVes && ve) setVes(prev => prev.map(v => {
+      if (!v || v.id !== ve.id) return v;
+      const karten2 = (v.karten || []).map(k => (k && String(k.id) === String(karteId))
+        ? { ...k, technikGeraete: [ ...(Array.isArray(k.technikGeraete) ? k.technikGeraete : []), eintrag ] }
+        : k);
+      return { ...v, karten: karten2 };
+    }));
+    setNeuOffen(false);
+  };
+  const neuModal = neuOffen ? (
+    <TechnikGeraetNeuModal ve={ve} t={t} accent={accent}
+      onClose={() => setNeuOffen(false)} onSave={geraetNeu}/>
+  ) : null;
   // Geräte hängen an den TECHNIK-Karten; die Gebäude/TG-Karten (haeuser)
   // dienen der Standort-Anzeige je Gerät (GeraetStandort, g.hausId).
   const haeuser = karten.filter(k => k && (k.kategorie === "gebaeude" || k.kategorie === "tiefgarage"));
@@ -4058,16 +4150,20 @@ function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = 
     .filter(x => x.geraete.length > 0);
   if (mitGeraeten.length === 0) {
     return (
-      <div style={{ background: t.card, border: `1px solid ${t.border}`,
-        borderRadius: RAD.lg, padding: "16px 18px", fontSize: FS.m,
-        color: t.muted, lineHeight: 1.5 }}>
-        Noch keine technischen Anlagen hinterlegt. Geräte werden am Objekt
-        gepflegt (Liegenschaft → Technik-Karte des Gebäudes).
+      <div>
+        <div style={{ background: t.card, border: `1px solid ${t.border}`,
+          borderRadius: RAD.lg, padding: "16px 18px", fontSize: FS.m,
+          color: t.muted, lineHeight: 1.5 }}>
+          Noch keine technischen Anlagen hinterlegt. Geräte werden am Objekt
+          gepflegt (Liegenschaft → Technik-Karte des Gebäudes).
+        </div>
+        {neuModal}
       </div>
     );
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {neuModal}
       {mitGeraeten.map(({ karte, geraete }) => (
         <div key={karte.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {mitGeraeten.length > 1 && (
@@ -7534,6 +7630,12 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAns
   // ── Upload-Status ──────────────────────────────────────────────────────
   // uploadOffen: DokumentUploadModal sichtbar?
   const [uploadOffen, setUploadOffen] = useState(false);
+  // §12.8 Screen-Plus: Signal vom Dokumente-Screen-Header öffnet den
+  // Upload-Dialog (merged schaltet zuvor editMode an).
+  useEffect(() => {
+    if (!uploadSignal) return;
+    setUploadOffen(true);
+  }, [uploadSignal]);
 
   const dateienVon = (karte) => (karte && Array.isArray(karte.dateien)) ? karte.dateien : [];
 
@@ -7765,7 +7867,7 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAns
 // ── DokumenteAnsicht: Dokumente-Tab. Erste Karte = Checkliste; darunter je
 // angehaktem Dokument eine eigene Karte (Basisfelder + typspezifische), plus
 // frei ergänzbare eigene Karten. Verhalten exakt wie VerwaltungAnsicht.
-function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null }) {
+function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null, uploadSignal = 0 }) {
   const karten = (ve && Array.isArray(ve.dokumenteKarten)) ? ve.dokumenteKarten : [];
   // EIN Viewer-State für den ganzen Dokumente-Tab (Checkliste + Karten teilen ihn)
   const [viewerDatei, setViewerDatei] = useState(null);

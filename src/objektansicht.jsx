@@ -2953,9 +2953,14 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
 // Kopf mit Plus (§86.6) + FotoGalerie (Grid/Liste, Album-Filter). Ansehen über
 // den bestehenden DateiViewerModal (§86.1) inkl. Info-Zeile (Zuordnung/Album/
 // Datum + Quelle/Notiz — GPS bewusst NICHT, §93.2).
-function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
+function FotosAnsicht({ ve, setVes, t, accent, editMode = false, uploadSignal = 0 }) {
   const fotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
   const [uploadOffen, setUploadOffen] = useState(false);
+  // §12.8 Screen-Plus: Signal vom Fotos-Screen-Header öffnet den Upload-Dialog.
+  useEffect(() => {
+    if (!uploadSignal) return;
+    setUploadOffen(true);
+  }, [uploadSignal]);
   // Viewer-Zustand fürs Durchblättern: die beim Öffnen aktuelle (gefilterte)
   // Foto-Liste + Index. Das datei-Objekt für den Viewer wird daraus abgeleitet.
   const [viewer, setViewer] = useState(null); // { liste: foto[], index }
