@@ -484,17 +484,29 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
   // (Profil ist nur ein Spezialfall eines Personen-Kontakts). Objekte nimmt
   // die Objekte-Akzentfarbe. Beide kommen aus den Kachel-Settings, sodass der
   // FarbPicker für die Kacheln auch die Einstellungs-Sektionen umfärbt.
-  const objektAccent  = ((settings.kacheln || []).find(k => k.id === "objekte")  || {}).farbe || "#06B6D4";
-  const kontaktAccent = ((settings.kacheln || []).find(k => k.id === "kontakte") || {}).farbe || "#A855F7";
+  // Kachel-Bindung (Farbe + Icon aus EINER Quelle = Schnellzugriff-Kacheln).
+  // Achtung ID-Falle — Sektion "vorgaenge" hängt an Kachel "auftraege".
+  const kachelVon = (id) => (settings.kacheln || []).find(k => k.id === id) || {};
+  const kontaktAccent = kachelVon("kontakte").farbe || "#A855F7";
   // farbeVoll = die echte (nicht grau-gemappte) Sektionsfarbe. Wird für die
   // Auswahl-Hervorhebung (aktiver Kachel-Rahmen + Detail-Rahmen) genutzt, damit
   // die ausgewählte Sektion auch im "Weniger Farbe"-Modus farbig umrandet ist.
   // Der restliche Inhalt (Icon, Titel, Tint) nutzt weiter farbe (ggf. grau).
+  // SEKTION_ZU_KACHEL: welche Einstellungs-Sektion hängt an welcher Kachel.
+  const SEKTION_ZU_KACHEL = {
+    objekte: "objekte", kontakte: "kontakte", etv: "etv",
+    vorgaenge: "auftraege", kalender: "kalender", dokumente: "dokumente",
+  };
   let sortierteSektionen = SEKTIONEN.map(s => {
-    if (s.id === "profil")   return { ...s, farbe: kontaktAccent, farbeVoll: kontaktAccent };
-    if (s.id === "kontakte") return { ...s, farbe: kontaktAccent, farbeVoll: kontaktAccent };
-    if (s.id === "objekte")  return { ...s, farbe: objektAccent,  farbeVoll: objektAccent };
-    if (s.id === "daten")    return { ...s, farbe: systemAccent,  farbeVoll: systemAccent };
+    // SONDERFALL: Profil = Personen-Spezialfall → Kontakte-Farbe, eigenes Icon.
+    if (s.id === "profil") return { ...s, farbe: kontaktAccent, farbeVoll: kontaktAccent };
+    if (s.id === "daten")  return { ...s, farbe: systemAccent,  farbeVoll: systemAccent };
+    const kId = SEKTION_ZU_KACHEL[s.id];
+    if (kId) {
+      const k = kachelVon(kId);
+      const f = k.farbe || s.farbe;
+      return { ...s, farbe: f, farbeVoll: f, icon: k.icon || s.icon };
+    }
     return { ...s, farbeVoll: s.farbe };
   });
 
@@ -3042,7 +3054,7 @@ export default function App() {
             ves={vesSichtbar} kontakte={kontakteSichtbar}
             statusKontext="etv"
             setVes={setVes} setKontakte={setKontakte} t={t}
-            accent={(effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#10B981"}
+            accent={(effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#8B5CF6"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
             cardWidth={cardWidth} kartenSpalten={kartenSpalten}
             detailMinBreite={detailMinBreite} detailMin={detailMinBreiteEff} kartenMaxBreite={kartenMaxBreite} kartenMin={kartenMinBreiteEff} listeOpt={listeOpt} listenAnsicht={effectiveSettings.listenAnsicht} festeGridSpec={festeGridSpec}
@@ -3067,7 +3079,7 @@ export default function App() {
             emptyText="Keine Versammlungen für dieses Objekt."
             renderDetail={(veObj) => {
               // ETV-Welt (Konzept _03, Bau 12.07.): Versammlungsliste + Akte.
-              const etvAccent = (effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#10B981";
+              const etvAccent = (effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#8B5CF6";
               return (
                 <EtvBereichFuerObjekt ve={veObj} welt={vorgangsWelt}
                   onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
