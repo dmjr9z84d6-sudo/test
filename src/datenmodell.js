@@ -2887,6 +2887,9 @@ function neuerAuftrag(init) {
     freigegeben_von_id: null,
     status: "erfasst",           // §96.2-Kette; erfasst = 🔵 blau (Ball liegt bei mir)
     beschreibung: "",
+    ort: "",                     // „Wo genau?" — Freitext vom Erfassen (Begehung 18.07.)
+    notiz: "",                   // Notizen zum Punkt (Nachbearbeitung vor Vorgang)
+    gemeldet_von_id: null,       // wer hat gemeldet/aufgenommen (Kontakt, null = ich)
     erfasst_am: isoHeute(),
     beauftragt_am: null,
     frist: null,                 // optionales Zieldatum → treibt 🔴 überfällig
@@ -4519,12 +4522,18 @@ function weltAuftraegeBuendeln(welt, auftragIds, ziel) {
   if (!vorgang) return welt;
   // Lose Funde bekommen ihre Nummer bei der Zuordnung (Bennys Regel B):
   // erst mit Vorgang gibt es das Bezugszeichen.
+  // ziel.beauftragen (18.07.): { firma_kontakt_id } — „Direkt beauftragen":
+  // alle gebündelten Punkte gehen sofort an die Firma (status beauftragt).
+  const beauftragen = ziel.beauftragen && ziel.beauftragen.firma_kontakt_id
+    ? ziel.beauftragen : null;
   let ergebnis = neu;
   for (let i = 0; i < ids.length; i++) {
     ergebnis = Object.assign({}, ergebnis, {
       auftraege: ergebnis.auftraege.map((a) => a.id === ids[i]
         ? Object.assign({}, a, { vorgang_id: vorgangId,
-            nummer: a.nummer || auftragsNummerNeu(ergebnis, vorgangId) })
+            nummer: a.nummer || auftragsNummerNeu(ergebnis, vorgangId) },
+            beauftragen ? { firma_kontakt_id: beauftragen.firma_kontakt_id,
+              status: "beauftragt", beauftragt_am: isoHeute() } : {})
         : a),
     });
   }

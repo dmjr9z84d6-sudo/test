@@ -3425,9 +3425,42 @@ export default function App() {
               }}
               onErfasseAuftrag={(d) => {
                 const a = neuerAuftrag({ objekt_id: anlegenVe.id,
-                  beschreibung: d.beschreibung, status: "erfasst" });
+                  beschreibung: d.beschreibung, status: "erfasst",
+                  ort: d.ort || "", notiz: d.notiz || "",
+                  gemeldet_von_id: d.gemeldet_von_id || null });
                 setVorgangsWelt(prev => ({ ...prev,
                   auftraege: [...prev.auftraege, a] }));
+                // Fotos (Begehung 18.07.): in die Foto-Zentrale des Objekts
+                // (ve.fotos, §93-Struktur) + Referenzen an den Punkt — exakt
+                // der Weg-A-Pfad der Auftragsfotos (§5.10).
+                const files = Array.isArray(d.fotos) ? d.fotos : [];
+                if (files.length > 0) {
+                  const p2 = (n) => String(n).padStart(2, "0");
+                  const h = new Date();
+                  const heuteDE = p2(h.getDate()) + "." + p2(h.getMonth() + 1) + "." + h.getFullYear();
+                  const eintraege = [];
+                  let kette = Promise.resolve();
+                  files.forEach((f, i) => {
+                    kette = kette.then(() => dateiSpeichern(f).then(meta => {
+                      eintraege.push({
+                        id: "foto_" + Date.now().toString(36) + "_" + i + "_" + Math.random().toString(36).slice(2, 8),
+                        dateiRef: meta.id, name: meta.name, typ: meta.typ, groesse: meta.groesse,
+                        album: "sonstiges",
+                        zuordnung: { art: "gemeinschaft", hausId: null, einheitId: null, raumId: null },
+                        geraetId: null, aufgenommen: heuteDE, exifQuelle: "upload",
+                        gps: null, notiz: d.beschreibung || "Begehungsfoto",
+                        angelegt: new Date().toISOString(),
+                      });
+                    }));
+                  });
+                  kette.then(() => {
+                    if (eintraege.length === 0) return;
+                    setVes(prev => prev.map(v => v.id === anlegenVe.id
+                      ? { ...v, fotos: [...(Array.isArray(v.fotos) ? v.fotos : []), ...eintraege] }
+                      : v));
+                    setVorgangsWelt(prev => weltAuftragFotoRefs(prev, a.id, eintraege.map(e => e.id)));
+                  }).catch(() => {});
+                }
               }}/>
           ) : null;
 
