@@ -38,7 +38,7 @@ import {
   weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
   weltVorgangVonTagesordnung, weltNotizNeu,
   weltVorgangLoeschen, weltAuftragLoeschen, weltDemoEntfernen, zaehleDemoDaten,
-  timelineEintraege,
+  timelineEintraege, weltAuftragFotoRefs,
 } from "./datenmodell.js";
 
 // ── UI-Labels der Statusketten (reine Anzeige; ids siehe datenmodell §96.2) ──
@@ -1532,7 +1532,7 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
       {!auswahlModus && !edit ? (
         <div style={{ marginTop: 6, marginBottom: onWelt ? 6 : 0 }}>
           <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-            onFotoHinzu={onFotoHinzu}/>
+            onFotoHinzu={onFotoHinzu} onWelt={onWelt}/>
         </div>
       ) : null}
       {/* Buttons rechts ausgerichtet unten in EINER Reihe (Benny 18.07.). */}
@@ -2001,7 +2001,7 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
         </label>
       ) : null}
       <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-        onFotoHinzu={onFotoHinzu}/>
+        onFotoHinzu={onFotoHinzu} onWelt={onWelt}/>
       <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={brauchtAbnahme}
         rechnungErwartet={kategorieHatPhase(kategorieId, "rechnung")}
         firmen={firmen} kontakte={kontakte} kontakteObjekt={kontakteObjekt}
@@ -2014,20 +2014,27 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
 // Thumbnails der referenzierten ve.fotos + „+ Foto" (Kamera/Galerie). Die
 // Ablage (IndexedDB + ve.fotos-Eintrag) macht der Rumpf-Callback onFotoHinzu —
 // hier nur Auswahl und Anzeige. HEIC wird wie im Foto-Feature abgewiesen (§93.10).
-function FotoThumb({ foto, t }) {
+function FotoThumb({ foto, t, size = 46, onClick = null, ausgewaehlt = false, accent = "#888" }) {
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let aktiv = true;
-    dateiBlobUrl(foto.dateiRef).then((u) => { if (aktiv) setUrl(u); });
+    // dateiBlobUrl liefert { url, typ, name } — NICHT direkt als src verwenden
+    // (src="[object Object]" = kaputtes Bild, Lehre 18.07.).
+    dateiBlobUrl(foto.dateiRef).then((res) => { if (aktiv) setUrl(res && res.url ? res.url : null); });
     return () => { aktiv = false; };
   }, [foto.dateiRef]);
+  const rahmen = ausgewaehlt ? "2px solid " + accent : "1px solid " + t.border;
   return url ? (
     <img src={url} alt={foto.name || "Foto"} title={foto.notiz || foto.name || ""}
-      style={{ width: 46, height: 46, objectFit: "cover", borderRadius: RAD.sm,
-        border: "1px solid " + t.border, flexShrink: 0 }}/>
+      onClick={onClick || undefined}
+      style={{ width: size, height: size, objectFit: "cover", borderRadius: RAD.sm,
+        border: rahmen, flexShrink: 0, cursor: onClick ? "pointer" : "default",
+        boxSizing: "border-box" }}/>
   ) : (
-    <div style={{ width: 46, height: 46, borderRadius: RAD.sm, flexShrink: 0,
-      background: t.surface, border: "1px solid " + t.border }}/>
+    <div onClick={onClick || undefined}
+      style={{ width: size, height: size, borderRadius: RAD.sm, flexShrink: 0,
+      background: t.surface, border: rahmen, cursor: onClick ? "pointer" : "default",
+      boxSizing: "border-box" }}/>
   );
 }
 function istHeicDatei(f) {
@@ -2035,10 +2042,20 @@ function istHeicDatei(f) {
   const ty = ((f && f.type) || "").toLowerCase();
   return n.endsWith(".heic") || n.endsWith(".heif") || ty.indexOf("heic") >= 0 || ty.indexOf("heif") >= 0;
 }
-function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu }) {
+function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null }) {
   const [heicHinweis, setHeicHinweis] = useState(false);
+  // Quellen-Wahl (18.07.): „+ Foto" bietet Neu-Upload ODER Auswahl aus der
+  // Foto-Zentrale des Objekts (ve.fotos). Bibliothekswahl hängt NUR die
+  // Referenz an den Punkt (weltAuftragFotoRefs) — kein Duplikat, kein neues
+  // Blob (Zentrale-Prinzip §5.10). Muster: AnlagePickerModal-Quellen-Stufe.
+  const [quelleOffen, setQuelleOffen] = useState(false);
+  const [bibOffen, setBibOffen] = useState(false);
+  const [bibAuswahl, setBibAuswahl] = useState([]);
   const fotoIds = Array.isArray(auftrag.foto_ids) ? auftrag.foto_ids : [];
-  const fotos = ((ve && ve.fotos) || []).filter((f) => f && fotoIds.indexOf(f.id) >= 0);
+  const alleFotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
+  const fotos = alleFotos.filter((f) => f && fotoIds.indexOf(f.id) >= 0);
+  // Bibliothek = Fotos der Zentrale, die noch NICHT am Punkt hängen.
+  const bibliothek = alleFotos.filter((f) => f && fotoIds.indexOf(f.id) < 0);
   if (!onFotoHinzu && fotos.length === 0) return null;
   const waehle = () => {
     const input = document.createElement("input");
@@ -2057,6 +2074,20 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu }) {
     document.body.appendChild(input);
     input.click();
   };
+  const plusKlick = () => {
+    // Quellen-Wahl nur, wenn die Bibliothek überhaupt etwas hergibt und wir
+    // Referenzen schreiben können — sonst direkt der bisherige Upload-Weg.
+    if (onWelt && bibliothek.length > 0) { setQuelleOffen(true); return; }
+    waehle();
+  };
+  const bibUebernehmen = () => {
+    if (!onWelt || bibAuswahl.length === 0) { setBibOffen(false); return; }
+    const ids = bibAuswahl.slice();
+    onWelt((w) => weltAuftragFotoRefs(w, auftrag.id, ids));
+    setBibAuswahl([]); setBibOffen(false);
+  };
+  const bibToggle = (id) => setBibAuswahl((alt) =>
+    alt.indexOf(id) >= 0 ? alt.filter((x) => x !== id) : [...alt, id]);
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -2064,12 +2095,59 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu }) {
           <FotoThumb key={f.id} foto={f} t={t}/>
         ))}
         {onFotoHinzu ? (
-          <button onClick={waehle} style={flowKnopf(t, accent, false)}>+ Foto</button>
+          <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); plusKlick(); }}
+            style={flowKnopf(t, accent, false)}>+ Foto</button>
         ) : null}
       </div>
       {heicHinweis ? (
         <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
           HEIC-Bilder kann der Browser nicht anzeigen — bitte als JPEG aufnehmen/teilen (§93.10).
+        </div>
+      ) : null}
+      {quelleOffen ? (
+        <div style={overlayBackdrop()} onClick={() => setQuelleOffen(false)}>
+          <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+            <OverlayKopf t={t} titel="Foto hinzufügen" onClose={() => setQuelleOffen(false)}/>
+            <div style={overlayBody()}>
+              <button onClick={() => { setQuelleOffen(false); waehle(); }}
+                style={Object.assign({}, flowKnopf(t, accent, true), { width: "100%", marginBottom: 8 })}>
+                Neue Fotos (Kamera / Upload)
+              </button>
+              <button onClick={() => { setQuelleOffen(false); setBibAuswahl([]); setBibOffen(true); }}
+                style={Object.assign({}, flowKnopf(t, accent, false), { width: "100%" })}>
+                {"Aus AllesDa-Fotos wählen (" + bibliothek.length + ")"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {bibOffen ? (
+        <div style={overlayBackdrop()} onClick={() => setBibOffen(false)}>
+          <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+            <OverlayKopf t={t} titel="Aus AllesDa-Fotos" onClose={() => setBibOffen(false)}/>
+            <div style={overlayBody()}>
+              <div style={{ fontSize: FS.s, color: t.muted, marginBottom: 8 }}>
+                Fotos antippen, die zu diesem Punkt gehören.
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8,
+                maxHeight: "50dvh", overflowY: "auto" }}>
+                {bibliothek.map((f) => (
+                  <FotoThumb key={f.id} foto={f} t={t} size={72} accent={accent}
+                    ausgewaehlt={bibAuswahl.indexOf(f.id) >= 0}
+                    onClick={() => bibToggle(f.id)}/>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 12 }}>
+                <button onClick={() => setBibOffen(false)}
+                  style={flowKnopf(t, accent, false)}>Abbrechen</button>
+                <button onClick={bibUebernehmen} disabled={bibAuswahl.length === 0}
+                  style={Object.assign({}, flowKnopf(t, accent, bibAuswahl.length > 0),
+                    bibAuswahl.length === 0 ? { opacity: 0.5, cursor: "default" } : {})}>
+                  {bibAuswahl.length > 0 ? "Übernehmen (" + bibAuswahl.length + ")" : "Übernehmen"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
@@ -2536,6 +2614,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   const [erfasstZahl, setErfasstZahl] = useState(0);
   const [fehler, setFehler] = useState(false);
 
+  const [fotoHeicHinweis, setFotoHeicHinweis] = useState(false);
   const fotosWaehlen = () => {
     const input = document.createElement("input");
     input.type = "file"; input.accept = "image/*"; input.multiple = true;
@@ -2543,7 +2622,13 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
     input.onchange = (ev) => {
       const fl = ev.target.files ? Array.from(ev.target.files) : [];
       try { document.body.removeChild(input); } catch (err) {}
-      if (fl.length) setAuftragFotos((alt) => [...alt, ...fl]);
+      if (fl.length === 0) return;
+      // HEIC raus (§93.10, gleicher Filter wie AuftragFotoLeiste): Safari kann
+      // HEIC-Blobs nicht anzeigen — stilles Speichern erzeugt überall kaputte
+      // Thumbnails (Lehre 18.07.).
+      const ok = fl.filter((f) => !istHeicDatei(f));
+      setFotoHeicHinweis(ok.length < fl.length);
+      if (ok.length) setAuftragFotos((alt) => [...alt, ...ok]);
     };
     document.body.appendChild(input);
     input.click();
@@ -2719,6 +2804,11 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                 <button onClick={fotosWaehlen} style={knopfStil(accent, false, t)}>
                   + Foto</button>
               </div>
+              {fotoHeicHinweis ? (
+                <div style={{ fontSize: FS.xs, color: t.muted, marginTop: -4, marginBottom: 8 }}>
+                  HEIC-Bilder kann der Browser nicht anzeigen — bitte als JPEG aufnehmen/teilen (§93.10).
+                </div>
+              ) : null}
               <Inp t={t} accent={accent} label="Wo genau? (optional)"
                 value={auftragOrt} onChange={setAuftragOrt}
                 placeholder="z. B. Treppenhaus 2. OG, vor Wohnung 5"/>
