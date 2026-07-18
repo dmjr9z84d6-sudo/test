@@ -146,6 +146,26 @@ function overlayBody() {
   return { flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 14px 14px 14px" };
 }
 
+// ── KopfIconButton (§12.9 / §86.6) — runder Aktions-Button im Karten-Kopf ───
+// Kanonisches Muster für Karten-Aktionen (Bearbeiten/Drucken/Löschen …):
+// rund 36×36, RAD.pill, accent-Hintergrund — Muster-Quelle VEDetail/Kontakte.
+// Destruktive Aktionen: gefahr=true (rot umrandet), confirm=true nach erstem
+// Klick (rot gefüllt, zweiter Klick führt aus) — Zwei-Stufen wie AktionsButton.
+function KopfIconButton({ icon, title, onClick, t, accent, gefahr = false, confirm = false }) {
+  const bg = gefahr ? (confirm ? "#EF4444" : "transparent") : accent;
+  const fg = gefahr ? (confirm ? "#FFFFFF" : "#EF4444") : getContrastColor(accent);
+  return (
+    <button onClick={onClick} title={title} aria-label={title}
+      style={{ display: "flex", alignItems: "center", justifyContent: "center",
+        width: 36, height: 36, flexShrink: 0, background: bg,
+        border: gefahr && !confirm ? "1px solid #EF4444" : "none",
+        borderRadius: RAD.pill, cursor: "pointer",
+        boxShadow: gefahr ? "none" : `0 1px 2px ${accent}40` }}>
+      <I name={icon} size={16} color={fg}/>
+    </button>
+  );
+}
+
 function SegmentControl({ options, value, onChange, accent = ACCENT, t, voll = true }) {
   return (
     <div style={{ display: "inline-flex", gap: 4, background: t.surface,
@@ -3751,7 +3771,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
 // ╔═════════════════════════════════════════════════════════════════════════╗
 
 export {
-  overlayBackdrop, overlayPanel, OverlayKopf, overlayBody,
+  overlayBackdrop, overlayPanel, OverlayKopf, overlayBody, KopfIconButton,
   KopfPille,
   ScreenKopf,
   HeaderZurueck,

@@ -19,7 +19,7 @@ import React, { useState, useEffect } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute } from "./utils-basis.js";
 import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggle,
-  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody } from "./components.jsx";
+  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody, KopfIconButton } from "./components.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
 import { BausteinKarte, StatusPille } from "./vorgang.jsx";
 import { TERegisterAnsicht, alleEinheitenVonVe } from "./objektansicht.jsx";
@@ -379,7 +379,6 @@ function VersammlungZeile({ versammlung, welt, t, accent, onOeffnen }) {
 function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, t, accent }) {
   const [offen, setOffen] = useState("stand");
   const [editStamm, setEditStamm] = useState(false);
-  const [loeschStufe, setLoeschStufe] = useState(false);
   const [bilderEinbetten, setBilderEinbetten] = useState(false);   // Druck-Haken §4.7
   const [einzelstimmen, setEinzelstimmen] = useState(false);       // Druck-Haken Cockpit 14.07. (Default AUS)
   const tops = topsFuerVersammlung(welt, versammlung.id);
@@ -468,6 +467,10 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
       {/* Stammdaten-Karte */}
       <BausteinKarte t={t} accent={accent} titel="Stammdaten"
         offen={offen === "stamm"} onToggle={() => toggle("stamm")}
+        kopfAktion={!editStamm ? (
+          <KopfIconButton icon="pencil" title="Stammdaten bearbeiten" t={t} accent={accent}
+            onClick={() => { setOffen("stamm"); setEditStamm(true); }}/>
+        ) : null}
         sub={versammlung.datum ? datumDe(versammlung.datum) : "Termin offen"}>
         {!editStamm ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -499,10 +502,7 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
                 <div style={{ flex: 1, minWidth: 0, color: t.text, overflowWrap: "anywhere" }}>{z[1]}</div>
               </div>
             ))}
-            <div style={{ marginTop: 6 }}>
-              <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-                onClick={() => setEditStamm(true)} text="Bearbeiten"/>
-            </div>
+            {/* §12.9: Bearbeiten läuft über den Stift im Karten-Kopf. */}
           </div>
         ) : (
           <EtvStammEdit versammlung={versammlung} kontakte={kontakte} ve={ve}
@@ -618,6 +618,10 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
       {/* Protokoll-Pflichtangaben (§24 WEG, Ausbau-Konzept §3) */}
       <BausteinKarte t={t} accent={accent} titel="Protokoll"
         offen={offen === "protokoll"} onToggle={() => toggle("protokoll")}
+        kopfAktion={
+          <KopfIconButton icon="printer" title="Protokoll drucken" t={t} accent={accent}
+            onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}/>
+        }
         sub={versammlung.protokoll_beginn
           ? "Beginn " + versammlung.protokoll_beginn
             + (versammlung.protokoll_ende ? " · Ende " + versammlung.protokoll_ende : "")
@@ -673,46 +677,37 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
               kontextTitel={"ETV " + (versammlung.datum ? versammlung.datum.slice(0, 4) : "")}
               onAnlagen={(neu) => patch({ anlagen: neu })}/>
           </div>
+          {/* §12.9: Druck-Optionen gehören zum Protokoll — hier in der Karte;
+              der Druck selbst läuft über den Drucker-Button im Karten-Kopf. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <Toggle value={bilderEinbetten} color={accent} onChange={setBilderEinbetten}/>
+            <div style={{ fontSize: FS.s, color: t.text }}>
+              Bilder eingebettet drucken
+              <div style={{ fontSize: FS.xs, color: t.muted }}>
+                Bild-Anlagen als Abbildungen ins Protokoll; PDFs bleiben Verzeichnis-Einträge</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <Toggle value={einzelstimmen} color={accent} onChange={setEinzelstimmen}/>
+            <div style={{ fontSize: FS.s, color: t.text }}>
+              Einzelstimmen namentlich drucken
+              <div style={{ fontSize: FS.xs, color: t.muted }}>
+                Je Beschluss eine Tabelle, wer wie gestimmt hat (nur Cockpit-Abstimmungen)</div>
+            </div>
+          </div>
         </div>
       </BausteinKarte>
 
-      {/* Fuß-Aktionen: Protokoll (mit Bilder-Haken §4.7 + Einzelstimmen-Haken
-          Cockpit-Konzept 14.07. §4.3, Default AUS) · Archiv · Löschen */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-        <Toggle value={bilderEinbetten} color={accent} onChange={setBilderEinbetten}/>
-        <div style={{ fontSize: FS.s, color: t.text }}>
-          Bilder eingebettet drucken
-          <div style={{ fontSize: FS.xs, color: t.muted }}>
-            Bild-Anlagen als Abbildungen ins Protokoll; PDFs bleiben Verzeichnis-Einträge</div>
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-        <Toggle value={einzelstimmen} color={accent} onChange={setEinzelstimmen}/>
-        <div style={{ fontSize: FS.s, color: t.text }}>
-          Einzelstimmen namentlich drucken
-          <div style={{ fontSize: FS.xs, color: t.muted }}>
-            Je Beschluss eine Tabelle, wer wie gestimmt hat (nur Cockpit-Abstimmungen)</div>
-        </div>
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-        <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-          onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}
-          text="Protokoll drucken"/>
-        {versammlung.status === "abgeschlossen" ? (
+      {/* §12.9: Drucken + Löschen laufen über runde Icon-Buttons in den
+          Karten-/Akten-Köpfen. Hier verbleibt nur die Archiv-Statusaktion. */}
+      {versammlung.status === "abgeschlossen" ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
           <AktionsButton rolle={versammlung.archiviert ? "abbrechen" : "bestaetigen"}
             variante="breit" t={t} accent={accent}
             onClick={() => patch({ archiviert: !versammlung.archiviert })}
             text={versammlung.archiviert ? "Aus dem Archiv holen" : "Ins Archiv legen"}/>
-        ) : null}
-        {!loeschStufe ? (
-          <AktionsButton rolle="loeschen" variante="breit" t={t}
-            onClick={() => setLoeschStufe(true)} text="Versammlung löschen"/>
-        ) : (
-          <AktionsButton rolle="loeschen" variante="breit" t={t} confirm
-            onClick={() => onWelt((w) => weltVersammlungLoeschen(w, versammlung.id))}
-            text="Wirklich löschen? (Beschlüsse bleiben)"/>
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2077,6 +2072,9 @@ function druckeEtvProtokoll(versammlung, ve, welt, kontakte, optionen) {
 // ── Die ETV-AKTE: Kopf + TabLeiste (§97) + vier Tabs (§2b) ──────────────────
 function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, onZurueck }) {
   const [tab, setTab] = useState("uebersicht");
+  // §12.9: Versammlung löschen = runder Icon-Button im Akten-Kopf,
+  // Zwei-Stufen-Confirm; nach dem Löschen zurück zur Liste.
+  const [loeschConfirm, setLoeschConfirm] = useState(false);
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const tabs = [
     { id: "uebersicht", label: "Übersicht", icon: "home" },
@@ -2101,6 +2099,14 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
         </div>
         <StatusPille t={t} farbe={STATUS_FARBE[versammlung.status] || t.muted}
           text={ETV_STATUS_LABEL[versammlung.status] || versammlung.status}/>
+        <KopfIconButton icon="trash"
+          title={loeschConfirm ? "Wirklich löschen? (Beschlüsse bleiben)" : "Versammlung löschen"}
+          t={t} accent={accent} gefahr confirm={loeschConfirm}
+          onClick={() => {
+            if (!loeschConfirm) { setLoeschConfirm(true); return; }
+            onWelt((w) => weltVersammlungLoeschen(w, versammlung.id));
+            if (onZurueck) onZurueck();
+          }}/>
         <button onClick={onZurueck}
           style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
             padding: "5px 11px", borderRadius: RAD.pill, cursor: "pointer",
