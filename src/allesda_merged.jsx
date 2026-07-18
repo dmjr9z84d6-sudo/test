@@ -1,5 +1,30 @@
 import React, { useState, useRef, useEffect, createContext, useContext, Fragment } from "react";
 
+// ── FehlerGrenze (Error Boundary) — fängt Render-Fehler in Screen-Details ab,
+// damit ein einzelner kaputter Bereich nicht den ganzen Screen schwärzt.
+// Zeigt die Fehlermeldung sichtbar an (statt schwarzem Bildschirm).
+class FehlerGrenze extends React.Component {
+  constructor(props) { super(props); this.state = { fehler: null }; }
+  static getDerivedStateFromError(fehler) { return { fehler }; }
+  componentDidCatch(fehler, info) {
+    try { console.error("FehlerGrenze:", fehler && fehler.message, info && info.componentStack); } catch (e) {}
+  }
+  render() {
+    if (this.state.fehler) {
+      const t = this.props.t || {};
+      return React.createElement("div", { style: {
+        padding: 16, margin: 8, borderRadius: 12,
+        background: (t.card || "#1a0000"), border: "1px solid #EF4444",
+        color: (t.text || "#fff"), fontSize: 13, lineHeight: 1.5 } },
+        React.createElement("div", { style: { fontWeight: 700, color: "#EF4444", marginBottom: 6 } },
+          "Dieser Bereich konnte nicht geladen werden."),
+        React.createElement("div", { style: { color: (t.sub || "#aaa"), fontSize: 12, whiteSpace: "pre-wrap" } },
+          String(this.state.fehler && this.state.fehler.message || this.state.fehler)));
+    }
+    return this.props.children;
+  }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //
 //   ░█████╗░██╗░░░░░██╗░░░░░███████╗░██████╗██████╗░░█████╗░
@@ -3687,12 +3712,14 @@ export default function App() {
             renderDetail={(veObj) => (
               // ECHTE Quelle: Technik-Geräte der Standort-Karten des Objekts
               // (TechnikUebersichtAnsicht, read-only — gepflegt wird am Objekt).
+              <FehlerGrenze t={t}>
               <TechnikPflegeAnsicht ve={veObj} t={t}
                 accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
                 kontakte={kontakteSichtbar} setKontakte={setKontakte}
                 onKontaktClick={gotoKontakt} ves={vesSichtbar}
                 setVes={setVes}
                 editSignal={technikEditSignal} neuKarteSignal={technikNeuKarteSignal}/>
+              </FehlerGrenze>
             )}/>
         )}
         {!suchErg && screen === "dokumente" && (

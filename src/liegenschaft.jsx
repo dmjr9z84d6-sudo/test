@@ -4170,6 +4170,14 @@ function TechnikPflegeAnsicht({ ve, t, accent, kontakte = [], setKontakte = null
   const haeuser = karten.filter(k => k && (k.kategorie === "gebaeude" || k.kategorie === "tiefgarage"));
   const [editMode, setEditMode] = useState(false);
   const [aktiveEditId, setAktiveEditId] = useState(null);
+  // Akkordeon: eine Karte offen. Default = erste Technik-Karte aufgeklappt,
+  // damit die Geräte sofort sichtbar sind (nicht nur der kollabierte Kopf).
+  const [akkordeonOffen, setAkkordeonOffen] = useState(null);
+  useEffect(() => {
+    if (akkordeonOffen == null && technikKarten.length > 0) {
+      setAkkordeonOffen(technikKarten[0].id);
+    }
+  }, [technikKarten.length]);
 
   useEffect(() => { if (editSignal) setEditMode(true); }, [editSignal]);
 
@@ -4211,6 +4219,8 @@ function TechnikPflegeAnsicht({ ve, t, accent, kontakte = [], setKontakte = null
             haeuser={haeuser}
             kontakte={kontakte} setKontakte={setKontakte}
             onKontaktClick={onKontaktClick} ves={ves}
+            akkordeonOffen={akkordeonOffen}
+            onAkkordeonToggle={(id, offen) => setAkkordeonOffen(offen ? id : null)}
             lokalEditGesperrt={aktiveEditId !== null && aktiveEditId !== karte.id}
             onLokalEditChange={(aktiv) => setAktiveEditId(aktiv ? karte.id : null)}
             onUpdateKarte={(neuKarte) => patchKarten(ks => ks.map(k => k.id === karte.id ? neuKarte : k))}
