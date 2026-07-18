@@ -3,8 +3,9 @@ import { AMPEL_FARBEN, FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getCo
 import { parseDatumWert, dateiBlobUrl, dateiSpeichern, dateiLoeschen, fotoExifLesen } from "./utils-basis.js";
 import {
   FOTO_ALBEN, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
-  fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, teileVon
+  fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, sammlungFuerObjekt, teileVon
 } from "./datenmodell.js";
+import { vorgangAnzahlFuerObjekt } from "./vorgang.jsx";
 import {
   DESKTOP_MIN_WIDTH, EinheitOffenContext, I, scrollToCard, useHandlungsbedarf, useKontaktFarbe,
   useLoeschenErlaubt, useObjektTabs, useStatusLeiste, useWindowWidth, veKartenFeldWert
@@ -815,18 +816,197 @@ function legionellenStatusKontext(ve) {
 // Kontext-ID → Funktion (ve) => { punkt, status:{typ,text} }. VEKachel und
 // VEListenZeile kennen die Einzelfälle NICHT — sie lösen nur über die Registry
 // auf. Neue objektbezogene Kachel mit Status = EIN Eintrag hier + Prop
+// §102: Registry der kontextsensitiven Status-Quellen. EINE zentrale Tabelle
+// Kontext-ID → { infos:[…], standard }. Jede Info deklariert ihre Art selbst:
+//   art "ampel"   → Frist/Datum, zeigt Statusleiste UND Punkt (rot/gelb/grün)
+//   art "neutral" → Zahl/Text ohne Dringlichkeit, NUR Leiste, kein Punkt
+// VEKachel/VEListenZeile kennen die Einzelfälle NICHT — sie lösen nur über die
+// Registry auf. Neue objektbezogene Kachel = EIN Eintrag hier + Prop
 // statusKontext="…" am Screen-Aufruf (§76: einmal bauen, überall nutzen).
-// Kontrakt der Funktionen:
-//   punkt  → Farbstring (HANDLUNGSBEDARF_FARBEN) oder null (kein Punkt/neutral)
+// Kontrakt jeder Info-fn(ve): liefert { punkt, status:{typ,text} }
+//   punkt  → Farbstring (HANDLUNGSBEDARF_FARBEN) oder null (kein Punkt)
 //   status → { typ:"error"|"warn"|null, text:"…" } für die StatusLeiste
+// §102 Schritt 2: Info-Funktionen weiterer Kacheln. Gleicher Kontrakt wie
+// legionellenStatusKontext — (ve) => { punkt, status:{typ,text} }.
+// Neutral-Infos liefern punkt:null (Auflösung erzwingt das zusätzlich).
+function fotosAnzahlStatus(ve) {
+  const n = (ve && Array.isArray(ve.fotos)) ? ve.fotos.length : 0;
+  const text = n === 0 ? "Keine Fotos" : n === 1 ? "1 Foto" : n + " Fotos";
+  return { punkt: null, status: { typ: null, text: text } };
+}
+function fotosLetztesStatus(ve) {
+  const fotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
+  if (fotos.length === 0) return { punkt: null, status: { typ: null, text: "Keine Fotos" } };
+  // Jüngstes Foto: angelegt (ISO) ist immer gesetzt und sortierbar.
+  const sortiert = fotos.slice().sort((a, b) =>
+    String((b && b.angelegt) || "").localeCompare(String((a && a.angelegt) || "")));
+  const f = sortiert[0];
+  const name = fotoDateiname(ve, f, fotos);
+  return { punkt: null, status: { typ: null, text: "Letztes Foto: " + name } };
+}
+function etvStatusKontext(ve) {
+  const wert = veKartenFeldWert(ve, "etv", "Nächste ETV")
+    || (ve && ve.verwaltung && ve.verwaltung.naechsteETV) || "";
+  const d = parseDatumWert(wert);
+  if (!d || isNaN(d.getTime())) {
+    return { punkt: null, status: { typ: null, text: "Keine ETV geplant" } };
+  }
+  const heute = new Date(); heute.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - heute.getTime()) / 86400000);
+  const punkt = diff < 0 ? HANDLUNGSBEDARF_FARBEN.rot
+    : diff <= 30 ? HANDLUNGSBEDARF_FARBEN.gelb : HANDLUNGSBEDARF_FARBEN.gruen;
+  const typ = diff < 0 ? "error" : diff <= 30 ? "warn" : null;
+  return { punkt, status: { typ, text: "Nächste ETV: " + wert } };
+}
+function technikStatusKontext(ve) {
+  // Wartungs-/Technik-Fristen aus derselben SSoT wie der Handlungsbedarf
+  // (sammleTermine), aber NUR die Technik-Quelle. Muster wie
+  // objektHandlungsbedarfDetail: kommendes Vorkommen zählt, sonst überfällig.
+  const termine = sammleTermine([ve], [], 12, 24).filter(tm => tm && tm.typ === "technik");
+  if (termine.length === 0) {
+    return { punkt: null, status: { typ: null, text: "Keine Wartung fällig" } };
+  }
+  const kommend = termine.filter(x => x.diff >= 0).sort((a, b) => a.diff - b.diff);
+  if (kommend.length > 0) {
+    const n = kommend[0];
+    const tg = n.diff === 0 ? "heute" : n.diff === 1 ? "morgen" : "in " + n.diff + " Tagen";
+    const punkt = n.diff <= 30 ? HANDLUNGSBEDARF_FARBEN.gelb : HANDLUNGSBEDARF_FARBEN.gruen;
+    const typ = n.diff <= 30 ? "warn" : null;
+    return { punkt, status: { typ, text: (n.titel || "Wartung") + " " + tg } };
+  }
+  const vergangen = termine.slice().sort((a, b) => b.diff - a.diff);
+  const tage = Math.abs(vergangen[0].diff);
+  const tg = tage === 0 ? "heute fällig" : "seit " + tage + " Tagen überfällig";
+  return { punkt: HANDLUNGSBEDARF_FARBEN.rot,
+    status: { typ: "error", text: (vergangen[0].titel || "Wartung") + " — " + tg } };
+}
+// Vorgänge/Beschluss brauchen die Vorgangswelt — sie kommt als 2. Parameter
+// (daten.welt) über den StatusLeisteContext, nicht am ve (§102 Schritt 3).
+function vorgaengeOffeneStatus(ve, daten) {
+  const welt = daten && daten.welt;
+  if (!welt) return { punkt: null, status: { typ: null, text: "Keine Vorgangsdaten" } };
+  const n = vorgangAnzahlFuerObjekt(ve.id, welt);
+  if (n === 0) return { punkt: HANDLUNGSBEDARF_FARBEN.gruen,
+    status: { typ: null, text: "Keine offenen Vorgänge" } };
+  return { punkt: HANDLUNGSBEDARF_FARBEN.gelb,
+    status: { typ: "warn", text: n === 1 ? "1 offener Vorgang" : n + " offene Vorgänge" } };
+}
+function vorgaengeAeltesterStatus(ve, daten) {
+  const welt = daten && daten.welt;
+  if (!welt) return { punkt: null, status: { typ: null, text: "Keine Vorgangsdaten" } };
+  const offene = (welt.vorgaenge || []).filter(x =>
+    x && x.objekt_id === ve.id && x.status !== "geschlossen");
+  if (offene.length === 0) return { punkt: HANDLUNGSBEDARF_FARBEN.gruen,
+    status: { typ: null, text: "Keine offenen Vorgänge" } };
+  let aeltest = null;
+  offene.forEach(v => {
+    const d = parseDatumWert(v.angelegt_am);
+    if (d && (!aeltest || d.getTime() < aeltest.getTime())) aeltest = d;
+  });
+  if (!aeltest) return { punkt: HANDLUNGSBEDARF_FARBEN.gelb,
+    status: { typ: "warn", text: offene.length + " offen (ohne Datum)" } };
+  const heute = new Date(); heute.setHours(0, 0, 0, 0);
+  const tage = Math.max(0, Math.round((heute.getTime() - aeltest.getTime()) / 86400000));
+  const punkt = tage > 30 ? HANDLUNGSBEDARF_FARBEN.rot : HANDLUNGSBEDARF_FARBEN.gelb;
+  const typ = tage > 30 ? "error" : "warn";
+  return { punkt, status: { typ, text: "Ältester Vorgang offen seit " + tage + " Tagen" } };
+}
+function beschlussEintraegeStatus(ve, daten) {
+  const welt = daten && daten.welt;
+  if (!welt) return { punkt: null, status: { typ: null, text: "Keine Daten" } };
+  const n = sammlungFuerObjekt(welt, ve.id).length;
+  const text = n === 0 ? "Sammlung leer"
+    : n === 1 ? "1 Eintrag in der Sammlung" : n + " Einträge in der Sammlung";
+  return { punkt: null, status: { typ: null, text: text } };
+}
+function beschlussVertagteStatus(ve, daten) {
+  const welt = daten && daten.welt;
+  if (!welt) return { punkt: null, status: { typ: null, text: "Keine Daten" } };
+  const vIds = {};
+  (welt.versammlungen || []).forEach(v => { if (v && v.objekt_id === ve.id) vIds[v.id] = true; });
+  const n = (welt.tops || []).filter(t => t && t.vertagt && vIds[t.versammlung_id]).length;
+  if (n === 0) return { punkt: HANDLUNGSBEDARF_FARBEN.gruen,
+    status: { typ: null, text: "Keine vertagten TOPs" } };
+  return { punkt: HANDLUNGSBEDARF_FARBEN.gelb,
+    status: { typ: "warn", text: n === 1 ? "1 vertagter TOP" : n + " vertagte TOPs" } };
+}
+function finanzenWjStatus(ve) {
+  const wjWert = veKartenFeldWert(ve, "etv", "Wirtschaftsjahr") || "";
+  const ende = wjEndeDatum(wjWert, new Date());
+  const heute = new Date(); heute.setHours(0, 0, 0, 0);
+  const diff = Math.round((ende.getTime() - heute.getTime()) / 86400000);
+  const punkt = diff <= 30 ? HANDLUNGSBEDARF_FARBEN.gelb : HANDLUNGSBEDARF_FARBEN.gruen;
+  const typ = diff <= 30 ? "warn" : null;
+  return { punkt, status: { typ, text: "Wirtschaftsjahr endet: " + datumAnzeige(ende) } };
+}
+
 const STATUS_KONTEXTE = {
-  legionellen: legionellenStatusKontext,
+  legionellen: {
+    label: "Legionellen",
+    infos: [
+      { id: "naechste_pruefung", label: "Nächste Prüfung", art: "ampel",
+        fn: legionellenStatusKontext },
+    ],
+    standard: "naechste_pruefung",
+  },
+  fotos: {
+    label: "Fotos",
+    infos: [
+      { id: "anzahl",  label: "Anzahl Fotos",  art: "neutral", fn: fotosAnzahlStatus },
+      { id: "letztes", label: "Letztes Foto",  art: "neutral", fn: fotosLetztesStatus },
+    ],
+    standard: "letztes", // Anzahl ist im Fotos-Screen bereits als Badge sichtbar
+  },
+  etv: {
+    label: "Versammlungen (ETV)",
+    infos: [
+      { id: "naechste_etv", label: "Nächste ETV", art: "ampel", fn: etvStatusKontext },
+    ],
+    standard: "naechste_etv",
+  },
+  technik: {
+    label: "Technik",
+    infos: [
+      { id: "naechste_wartung", label: "Nächste Wartung", art: "ampel", fn: technikStatusKontext },
+    ],
+    standard: "naechste_wartung",
+  },
+  vorgaenge: {
+    label: "Vorgänge",
+    infos: [
+      { id: "offene",    label: "Offene Vorgänge",  art: "ampel", fn: vorgaengeOffeneStatus },
+      { id: "aeltester", label: "Ältester offener", art: "ampel", fn: vorgaengeAeltesterStatus },
+    ],
+    standard: "offene",
+  },
+  beschluss: {
+    label: "Beschluss-Sammlung",
+    infos: [
+      { id: "eintraege", label: "Einträge",      art: "neutral", fn: beschlussEintraegeStatus },
+      { id: "vertagte",  label: "Vertagte TOPs", art: "ampel",   fn: beschlussVertagteStatus },
+    ],
+    standard: "vertagte",
+  },
+  finanzen: {
+    label: "Finanzen",
+    infos: [
+      { id: "wj_ende", label: "WJ-Ende", art: "ampel", fn: finanzenWjStatus },
+    ],
+    standard: "wj_ende",
+  },
 };
 // Löst einen Kontext auf. Unbekannter/leerer Kontext → null (= Default-
-// Verhalten: objektweiter Handlungsbedarf bleibt aktiv).
-function statusKontextAufloesen(kontextId, ve) {
-  const fn = kontextId ? STATUS_KONTEXTE[kontextId] : null;
-  return fn ? fn(ve) : null;
+// Verhalten: objektweiter Handlungsbedarf bleibt aktiv). wahl = vom Anwender
+// gewählte Info-ID (aus settings.statusKontextWahl); fehlt/ungültig → standard.
+// Bei art "neutral" wird der Punkt hart auf null gezwungen (Leiste ja, Punkt aus).
+function statusKontextAufloesen(kontextId, ve, wahl, daten) {
+  const def = kontextId ? STATUS_KONTEXTE[kontextId] : null;
+  if (!def || !def.infos || def.infos.length === 0) return null;
+  const info = def.infos.find(i => i.id === wahl) || def.infos.find(i => i.id === def.standard) || def.infos[0];
+  if (!info || typeof info.fn !== "function") return null;
+  const res = info.fn(ve, daten) || { punkt: null, status: { typ: null, text: "" } };
+  if (info.art === "neutral") return { punkt: null, status: res.status };
+  return res;
 }
 
 // ── VEListenZeile (kompakte Listenansicht eines Objekts, DESIGN §35) ────────
@@ -844,7 +1024,7 @@ function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = fal
   // Status-Punkt: normal Gesamt-Handlungsbedarf (rot=muss, gelb=kann, grün=ok).
   // §102: bei gesetztem statusKontext liefert die Registry die Quelle (z. B.
   // Legionellen-Fälligkeit); punkt kann null sein (kein Punkt).
-  const legStatus = statusKontextAufloesen(statusKontext, ve);
+  const legStatus = statusKontextAufloesen(statusKontext, ve, (statusLeisteSettings.kontextWahl || {})[statusKontext], statusLeisteSettings.kontextDaten);
   const punkt = legStatus
     ? legStatus.punkt
     : (HANDLUNGSBEDARF_FARBEN[objektHandlungsbedarf(ve, hbCfg)] || HANDLUNGSBEDARF_FARBEN.gruen);
@@ -947,7 +1127,7 @@ function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, i
   // objektweite Handlungsbedarf wie bisher.
   let status = null;
   if (!ohneStatus && statusLeisteSettings.objekt) {
-    const kStatus = statusKontextAufloesen(statusKontext, ve);
+    const kStatus = statusKontextAufloesen(statusKontext, ve, (statusLeisteSettings.kontextWahl || {})[statusKontext], statusLeisteSettings.kontextDaten);
     if (kStatus) {
       status = kStatus.status;
     } else {
@@ -2848,7 +3028,7 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
 export {
   EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons, FotoGalerie, FotosAnsicht,
   HistorieAnsicht, LegionellenAnsicht, TERegisterAnsicht,
-  HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
+  HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, STATUS_KONTEXTE, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 };

@@ -2578,7 +2578,9 @@ export default function App() {
     }}>
     <StatusLeisteContext.Provider value={{
       objekt:  settings.statusLeisteObjekt  !== false,
-      kontakt: settings.statusLeisteKontakt !== false
+      kontakt: settings.statusLeisteKontakt !== false,
+      kontextWahl: settings.statusKontextWahl || {},
+      kontextDaten: { welt: vorgangsWelt }
     }}>
     <TerminBezeichnungenContext.Provider value={settings.terminBezeichnungen || []}>
     <ZeitPickerContext.Provider value={{
@@ -3038,6 +3040,7 @@ export default function App() {
         {!suchErg && screen === "etv" && (
           <ObjektListeMitDetail
             ves={vesSichtbar} kontakte={kontakteSichtbar}
+            statusKontext="etv"
             setVes={setVes} setKontakte={setKontakte} t={t}
             accent={(effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#10B981"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
@@ -3168,11 +3171,13 @@ export default function App() {
                 <VEListenZeile key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
                   auswahlAccentOverride={aAccent} extraBadge={aufBadge(v)}
+                  statusKontext="vorgaenge"
                   onClick={() => { setAuftragSprungId(null); setVorgangAkteId(null); setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id); }}/>
               ) : (
                 <VEKachel key={v.id} ve={v} t={t} accent={aAccent}
                   aktiv={auftragViewVEId === v.id} kbItem id={"auf-" + v.id}
                   auswahlAccentOverride={aAccent} extraBadge={aufBadge(v)}
+                  statusKontext="vorgaenge"
                   onClick={() => { setAuftragSprungId(null); setVorgangAkteId(null); setAuftragViewVEId(auftragViewVEId === v.id ? null : v.id); }}/>
               ))}
             </div>
@@ -3479,6 +3484,7 @@ export default function App() {
         {!suchErg && screen === "beschluss" && (
           <ObjektListeMitDetail
             ves={vesSichtbar} kontakte={kontakteSichtbar}
+            statusKontext="beschluss"
             setVes={setVes} setKontakte={setKontakte} t={t}
             accent={(effectiveSettings.kacheln.find(k => k.id === "beschluss") || {}).farbe || "#F59E0B"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
@@ -3514,6 +3520,7 @@ export default function App() {
         {!suchErg && screen === "technik" && (
           <ObjektListeMitDetail
             ves={vesSichtbar} kontakte={kontakteSichtbar}
+            statusKontext="technik"
             setVes={setVes} setKontakte={setKontakte} t={t}
             accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
@@ -3604,6 +3611,7 @@ export default function App() {
         {!suchErg && screen === "fotos" && (
           <ObjektListeMitDetail
             ves={vesSichtbar} kontakte={kontakteSichtbar}
+            statusKontext="fotos"
             setVes={setVes} setKontakte={setKontakte} t={t}
             accent={(effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
@@ -3881,6 +3889,7 @@ export default function App() {
         {!suchErg && screen === "finanzen" && (
           <ObjektListeMitDetail
             ves={vesSichtbar} kontakte={kontakteSichtbar}
+            statusKontext="finanzen"
             setVes={setVes} setKontakte={setKontakte} t={t}
             accent={(effectiveSettings.kacheln.find(k => k.id === "finanzen") || {}).farbe || "#22C55E"}
             gotoVE={gotoVE} gotoKontakt={gotoKontakt}
