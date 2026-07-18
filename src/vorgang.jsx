@@ -19,7 +19,7 @@ import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
 import { Avatar, HeaderZurueck, Inp, KontaktPicker, KontaktPickerMitAllen, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
-import { NeueKarteMenu } from "./liegenschaft.jsx";
+import { NeueKarteMenu, DateiViewerModal } from "./liegenschaft.jsx";
 import { KontaktDetailKarte, KontaktZeile, objektBezugInfo } from "./kontakte.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
 import { DESKTOP_MIN_WIDTH, I, useFristen, useVorlagen, useWindowWidth, useRollen, useFirmenRollen, useKontaktFarbe } from "./utils-icons.jsx";
@@ -863,7 +863,7 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle }) {
 // Übersicht: Stand-Karte (Phasen-Linie + nächster Schritt) oben, dann Daten
 // (inkl. Verlauf — Bennys Wahl D), dann Aufträge/Aufgaben/Notiz wie gehabt.
 // ═════════════════════════════════════════════════════════════════════════
-function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, zurueckKnopf = true }) {
+function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null, zurueckKnopf = true }) {
   const [tab, setTab] = useState("uebersicht");
   const kontakteObjekt = useObjektKontakte(kontakte, ve);
   const [tabZwang, setTabZwang] = useState({}); // Katalog erzwingt Tab vor erstem Inhalt
@@ -1202,7 +1202,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                     abnahmen={abnahmenAlle.filter((ab) => ab.auftrag_id === a.id)}
                     kontakte={kontakte} t={t} accent={accent}
                     onWelt={onWelt} DatumFeld={DatumFeld}
-                    ve={ve} onFotoHinzu={onFotoHinzu}/>
+                    ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}/>
                 ))}
                 {kannFlows && formBaustein === "auftraege" ? (
                   <AuftragNeuForm vorgangId={vorgang.id} kategorieId={vorgang.kategorie}
@@ -1438,7 +1438,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 // Vorgangsloser Auftrag (Begehungsfund): dieselbe Zeilen-Optik, ohne Klapp
 // (es gibt noch keinen Verlauf — nur der festgehaltene Fund).
 function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt = null, DatumFeld = null,
-  auswahlModus = false, ausgewaehlt = false, onAuswahl = null, ve = null, onFotoHinzu = null }) {
+  auswahlModus = false, ausgewaehlt = false, onAuswahl = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null }) {
   const [loeschConfirm, setLoeschConfirm] = useState(false);
   // Nachbearbeitung (Begehung 18.07.): Punkt VOR dem Vorgang vervollständigen —
   // Beschreibung, Wo genau, Notizen, Gemeldet von. Stift im Kartenkopf (§12.9).
@@ -1532,7 +1532,7 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
       {!auswahlModus && !edit ? (
         <div style={{ marginTop: 6, marginBottom: onWelt ? 6 : 0 }}>
           <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-            onFotoHinzu={onFotoHinzu} onWelt={onWelt}/>
+            onFotoHinzu={onFotoHinzu} onWelt={onWelt} onFotoEntfernen={onFotoEntfernen}/>
         </div>
       ) : null}
       {/* Buttons rechts ausgerichtet unten in EINER Reihe (Benny 18.07.). */}
@@ -1577,7 +1577,7 @@ const leerText = (t, text) => (
 // lose Aufträge (Begehungsfunde) dieses Objekts. Klapp-State lebt hier; der
 // Aufrufer instanziiert per key={veId} neu (React-Key-Lehre: kein Recycling
 // über Objekt-Wechsel hinweg).
-function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, offeneIdCtrl = null, onOeffneId = null }) {
+function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null, offeneIdCtrl = null, onOeffneId = null }) {
   // GESTEUERTER Modus (Feinschliff 11.07., Skizze Spalten 2/3): der Screen
   // (allesda_merged) hält die Akten-Auswahl und baut das Master-Detail
   // selbst — dieser Bereich ist dann NUR die Liste (Spalte 2). Ungesteuert
@@ -1671,7 +1671,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
       {lose.map((a) => (
         <LoseAuftragKarte key={a.id} auftrag={a} t={t} kontakte={kontakte}
           accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
-          ve={ve} onFotoHinzu={onFotoHinzu}
+          ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
           auswahlModus={buendelModus}
           ausgewaehlt={buendelIds.indexOf(a.id) >= 0}
           onAuswahl={() => setBuendelIds(buendelIds.indexOf(a.id) >= 0
@@ -1760,7 +1760,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const detail = offenerVorgang ? (
     <VorgangDetail vorgang={offenerVorgang} welt={welt} kontakte={kontakte}
       t={t} accent={accent} onZurueck={() => setOffeneId(null)}
-      onWelt={onWelt} DatumFeld={DatumFeld} ve={ve} onFotoHinzu={onFotoHinzu}/>
+      onWelt={onWelt} DatumFeld={DatumFeld} ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}/>
   ) : null;
   if (gesteuert) return liste;
   if (offenerVorgang && !istDesktop) return detail;
@@ -1829,7 +1829,7 @@ function VorgangsBereichFuerFirma({ firmaId, welt, kontakte, t, accent, onWelt =
   const detail = offenerVorgang ? (
     <VorgangDetail vorgang={offenerVorgang} welt={welt} kontakte={kontakte}
       t={t} accent={accent} onZurueck={() => setOffeneId(null)}
-      onWelt={onWelt} DatumFeld={DatumFeld} ve={null} onFotoHinzu={null}/>
+      onWelt={onWelt} DatumFeld={DatumFeld} ve={null} onFotoHinzu={null} onFotoEntfernen={null}/>
   ) : null;
   if (gesteuert) return liste;
   if (offenerVorgang && !istDesktop) return detail;
@@ -1922,7 +1922,7 @@ const flowZeileStil = (t) => ({ display: "flex", flexDirection: "column",
 // Ein Auftrag mit seinem nächsten Schritt: erfasst→Beauftragen (Form),
 // beauftragt→In Arbeit, in_arbeit/nachbesserung→Fertig gemeldet,
 // fertiggemeldet→Abnehmen (Form) bzw. Abhaken (ohne Abnahme-Phase).
-function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, kontakteObjekt = null, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null, abnahmen = [] }) {
+function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, kontakteObjekt = null, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null, onFotoEntfernen = null, abnahmen = [] }) {
   const firmaName = nameVon(kontakte, auftrag.firma_kontakt_id);
   // Firma als KONTAKT-Zeile (Benny 11.07., Objekt-Kontakte-Muster): Klick
   // klappt die echte KontaktDetailKarte auf — Telefon & Co. direkt greifbar.
@@ -2001,7 +2001,7 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
         </label>
       ) : null}
       <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-        onFotoHinzu={onFotoHinzu} onWelt={onWelt}/>
+        onFotoHinzu={onFotoHinzu} onWelt={onWelt} onFotoEntfernen={onFotoEntfernen}/>
       <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={brauchtAbnahme}
         rechnungErwartet={kategorieHatPhase(kategorieId, "rechnung")}
         firmen={firmen} kontakte={kontakte} kontakteObjekt={kontakteObjekt}
@@ -2042,7 +2042,7 @@ function istHeicDatei(f) {
   const ty = ((f && f.type) || "").toLowerCase();
   return n.endsWith(".heic") || n.endsWith(".heif") || ty.indexOf("heic") >= 0 || ty.indexOf("heif") >= 0;
 }
-function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null }) {
+function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null, onFotoEntfernen = null }) {
   const [heicHinweis, setHeicHinweis] = useState(false);
   // Quellen-Wahl (18.07.): „+ Foto" bietet Neu-Upload ODER Auswahl aus der
   // Foto-Zentrale des Objekts (ve.fotos). Bibliothekswahl hängt NUR die
@@ -2051,11 +2051,18 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null 
   const [quelleOffen, setQuelleOffen] = useState(false);
   const [bibOffen, setBibOffen] = useState(false);
   const [bibAuswahl, setBibAuswahl] = useState([]);
+  // Ansehen + Bearbeiten (18.07.): Foto antippen → Vollbild-Viewer; im
+  // Bearbeiten-Modus (Stift) erscheint an jedem Foto ein X → Wahl „nur vom
+  // Punkt lösen" ODER „ganz löschen" (onFotoEntfernen aus dem Rumpf).
+  const [bearbeiten, setBearbeiten] = useState(false);
+  const [viewer, setViewer] = useState(null);      // { index }
+  const [loeschFoto, setLoeschFoto] = useState(null);
   const fotoIds = Array.isArray(auftrag.foto_ids) ? auftrag.foto_ids : [];
   const alleFotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
   const fotos = alleFotos.filter((f) => f && fotoIds.indexOf(f.id) >= 0);
   // Bibliothek = Fotos der Zentrale, die noch NICHT am Punkt hängen.
   const bibliothek = alleFotos.filter((f) => f && fotoIds.indexOf(f.id) < 0);
+  const kannBearbeiten = !!onFotoEntfernen && fotos.length > 0;
   if (!onFotoHinzu && fotos.length === 0) return null;
   const waehle = () => {
     const input = document.createElement("input");
@@ -2088,17 +2095,59 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null 
   };
   const bibToggle = (id) => setBibAuswahl((alt) =>
     alt.indexOf(id) >= 0 ? alt.filter((x) => x !== id) : [...alt, id]);
+  const fotoAntippen = (idx) => { if (!bearbeiten) setViewer({ index: idx }); };
+  const loeschAusfuehren = (ganzWeg) => {
+    if (onFotoEntfernen && loeschFoto) onFotoEntfernen(auftrag, loeschFoto, ganzWeg);
+    setLoeschFoto(null);
+    // War es das letzte Foto, Bearbeiten-Modus schließen (nichts mehr zu tun).
+    if (fotos.length <= 1) setBearbeiten(false);
+  };
+  const viewerFoto = viewer ? fotos[viewer.index] : null;
+  const viewerDatei = viewerFoto ? {
+    id: viewerFoto.dateiRef,
+    name: viewerFoto.name || "Foto",
+    info: (fotos.length > 1 ? (viewer.index + 1) + "/" + fotos.length + " · " : "")
+      + (viewerFoto.notiz || ""),
+  } : null;
+  const blaettern = (schritt) => setViewer((v) => {
+    if (!v) return v;
+    const neu = v.index + schritt;
+    if (neu < 0 || neu >= fotos.length) return v;
+    return { index: neu };
+  });
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-        {fotos.map((f) => (
-          <FotoThumb key={f.id} foto={f} t={t}/>
+        {fotos.map((f, idx) => (
+          <div key={f.id} style={{ position: "relative", flexShrink: 0 }}>
+            <FotoThumb foto={f} t={t} onClick={() => fotoAntippen(idx)}/>
+            {bearbeiten ? (
+              <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); setLoeschFoto(f); }}
+                title="Foto entfernen" aria-label="Foto entfernen"
+                style={{ position: "absolute", top: -6, right: -6, width: 22, height: 22,
+                  borderRadius: RAD.pill, border: "none", background: "#EF4444",
+                  color: "#fff", cursor: "pointer", display: "flex", alignItems: "center",
+                  justifyContent: "center", fontSize: 15, fontWeight: FW.bold, lineHeight: 1,
+                  padding: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>×</button>
+            ) : null}
+          </div>
         ))}
-        {onFotoHinzu ? (
+        {onFotoHinzu && !bearbeiten ? (
           <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); plusKlick(); }}
             style={flowKnopf(t, accent, false)}>+ Foto</button>
         ) : null}
+        {kannBearbeiten ? (
+          <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); setBearbeiten((b) => !b); }}
+            style={flowKnopf(t, accent, bearbeiten)}>
+            {bearbeiten ? "Fertig" : "Fotos bearbeiten"}
+          </button>
+        ) : null}
       </div>
+      {bearbeiten ? (
+        <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
+          Auf das × tippen, um ein Foto vom Punkt zu entfernen.
+        </div>
+      ) : null}
       {heicHinweis ? (
         <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
           HEIC-Bilder kann der Browser nicht anzeigen — bitte als JPEG aufnehmen/teilen (§93.10).
@@ -2149,6 +2198,36 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null 
             </div>
           </div>
         </div>
+      ) : null}
+      {loeschFoto ? (
+        <div style={overlayBackdrop(210)} onClick={() => setLoeschFoto(null)}>
+          <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+            <OverlayKopf t={t} titel="Foto entfernen" icon="trash" onClose={() => setLoeschFoto(null)}/>
+            <div style={overlayBody()}>
+              <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 12, lineHeight: 1.5 }}>
+                Soll das Foto nur von diesem Punkt gelöst werden (es bleibt in den
+                Objekt-Fotos) oder ganz gelöscht werden?
+              </div>
+              <button onClick={() => loeschAusfuehren(false)}
+                style={Object.assign({}, flowKnopf(t, accent, false), { width: "100%", marginBottom: 8 })}>
+                Nur vom Punkt lösen
+              </button>
+              <button onClick={() => loeschAusfuehren(true)}
+                style={{ width: "100%", padding: "10px 14px", borderRadius: RAD.ms,
+                  border: "1px solid #EF4444", background: "none", color: "#EF4444",
+                  fontSize: FS.m, fontWeight: FW.bold, cursor: "pointer",
+                  fontFamily: "inherit" }}>
+                Ganz löschen (Datei entfernen)
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {viewerDatei ? (
+        <DateiViewerModal t={t} accent={accent} datei={viewerDatei}
+          onClose={() => setViewer(null)}
+          onZurueck={viewer.index > 0 ? () => blaettern(-1) : null}
+          onVor={viewer.index < fotos.length - 1 ? () => blaettern(1) : null}/>
       ) : null}
     </div>
   );

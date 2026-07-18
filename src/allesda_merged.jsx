@@ -143,7 +143,7 @@ import {
   datumDe, isoHeute, istDatumGueltig, istEmailGueltig, istIbanGueltig,
   istPlzGueltig, istSteuerNrGueltig, istTelefonGueltig, istUrlGueltig,
   joinPlzOrt, listeBreiteAus, matchScore, parseDatumWert, splitPlzOrt, zuIsoDatum,
-  dateiSpeichern
+  dateiSpeichern, dateiLoeschen
 } from "./utils-basis.js";
 
 import {
@@ -220,7 +220,7 @@ import {
   neueBeteiligung,
   neueNachricht,
   neuerAuftrag,
-  weltAuftragFotoRefs
+  weltAuftragFotoRefs, weltAuftragFotoRefEntfernen
 } from "./datenmodell.js";
 
 import {
@@ -3228,6 +3228,7 @@ export default function App() {
           // unten braucht den Foto-Callback ebenfalls — als const im
           // objekt-if war er dort unsichtbar (ReferenceError → Schwarz-Screen).
           let auftragFotoHinzu = null;
+          let auftragFotoEntfernen = null;
           if (auftragView === "objekt" && auftragViewVEId) {
             const vo = (vesSichtbar || []).find(v => v.id === auftragViewVEId);
             detailKopf = vo ? (vo.nr || "Objekt") : "";
@@ -3268,6 +3269,20 @@ export default function App() {
                 setVorgangsWelt(prev => weltAuftragFotoRefs(prev, auftrag.id, eintraege.map(e => e.id)));
               }).catch(() => {});
             };
+            // Foto vom Punkt entfernen (Begehung 18.07.): Referenz IMMER lösen
+            // (weltAuftragFotoRefEntfernen). „ganzWeg" zusätzlich: Foto aus der
+            // Objekt-Zentrale (ve.fotos) + Blob (dateiLoeschen) — die Wahl
+            // trifft der Nutzer im AuftragFotoLeiste-Dialog.
+            auftragFotoEntfernen = (auftrag, foto, ganzWeg) => {
+              if (!auftrag || !foto) return;
+              setVorgangsWelt(prev => weltAuftragFotoRefEntfernen(prev, auftrag.id, foto.id));
+              if (ganzWeg && vo) {
+                if (foto.dateiRef) dateiLoeschen(foto.dateiRef);
+                setVes(prev => prev.map(v => v.id === vo.id
+                  ? { ...v, fotos: (Array.isArray(v.fotos) ? v.fotos : []).filter(f => f.id !== foto.id) }
+                  : v));
+              }
+            };
             // Echte Quelle (§96): Vorgänge dieses Objekts + „Erfasst"-Ecke
             // (vorgangslose Begehungsfunde). key=veId → frischer Klapp-State
             // je Objekt (React-Key-Lehre).
@@ -3278,7 +3293,7 @@ export default function App() {
                 offeneIdCtrl={vorgangAkteId} onOeffneId={setVorgangAkteId}
                 onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
                 DatumFeld={DatumFeld}
-                ve={vo} onFotoHinzu={auftragFotoHinzu}/>
+                ve={vo} onFotoHinzu={auftragFotoHinzu} onFotoEntfernen={auftragFotoEntfernen}/>
             );
           } else if (auftragView === "firma" && auftragFirmaId) {
             const fk = firmen.find(f => f.id === auftragFirmaId);

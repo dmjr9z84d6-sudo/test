@@ -113,11 +113,14 @@ function overlayBackdrop(zIndex = 200) {
   // §12.9 Overlay-System: OBEN ausgerichtet (fester Kopf-Anker) statt vertikal
   // zentriert — bei vertikaler Zentrierung SPRINGT der Dialog, sobald sich die
   // Inhaltshöhe ändert (z. B. Tab-Wechsel Vorgang⇄Auftrag). Fester oberer
-  // Abstand (5dvh) hält den Dialog-Kopf an Ort; Inhalt wächst nach unten.
+  // Abstand hält den Dialog-Kopf an Ort; Inhalt wächst nach unten.
+  // Abstand safe-area-aware (Begehung 18.07.): auf iPhones mit Dynamic Island/
+  // Notch klebte der Kopf sonst unter der Statusleiste („zu weit oben").
   return { position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
     background: "rgba(0,0,0,0.5)", zIndex: zIndex, display: "flex",
     alignItems: "flex-start", justifyContent: "center",
-    padding: "5dvh 16px 16px", boxSizing: "border-box" };
+    padding: "max(7dvh, calc(env(safe-area-inset-top, 0px) + 16px)) 16px 16px",
+    boxSizing: "border-box" };
 }
 function overlayPanel(t) {
   return { background: t.bg, border: `1px solid ${t.border}`,

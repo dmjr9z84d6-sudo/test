@@ -4647,6 +4647,20 @@ function weltAuftragFotoRefs(welt, auftragId, fotoIds) {
   });
 }
 
+// Löst EINE Foto-Referenz vom Punkt (das Foto selbst bleibt in ve.fotos —
+// das „ganz löschen" macht der Rumpf-Callback zusätzlich mit setVes +
+// dateiLoeschen). Begehung 18.07.
+function weltAuftragFotoRefEntfernen(welt, auftragId, fotoId) {
+  const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
+  if (!a || !fotoId) return welt;
+  const alt = Array.isArray(a.foto_ids) ? a.foto_ids : [];
+  return Object.assign({}, welt, {
+    auftraege: _ersetzeIn(welt.auftraege, auftragId, {
+      foto_ids: alt.filter((x) => x !== fotoId),
+    }),
+  });
+}
+
 // ── Timeline (Benny 09.07.): die Chronik quer über alles ───────────────────
 // Jüngste Aktivität eines Vorgangs = das späteste Datum irgendeines seiner
 // Ereignisse (dieselben Quellen wie der Akten-Verlauf).
@@ -4729,7 +4743,7 @@ export {
   weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
   weltVorgangVonTagesordnung, weltNotizNeu,
   weltVorgangLoeschen, weltAuftragLoeschen, weltDemoEntfernen, zaehleDemoDaten,
-  vorgangLetzteAktivitaet, timelineEintraege, weltAuftragFotoRefs,
+  vorgangLetzteAktivitaet, timelineEintraege, weltAuftragFotoRefs, weltAuftragFotoRefEntfernen,
   _kontaktAnzeigename as kontaktAnzeigename, kontaktNameVonId,
   // ETV-Welt (Konzept _03, Bau 12.07.)
   ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL, TOP_BAUSTEINE,
