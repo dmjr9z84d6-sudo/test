@@ -811,6 +811,24 @@ function legionellenStatusKontext(ve) {
   return { punkt, status: { typ, text: "Nächste Prüfung: " + naechste } };
 }
 
+// §102: Registry der kontextsensitiven Status-Quellen. EINE zentrale Tabelle
+// Kontext-ID → Funktion (ve) => { punkt, status:{typ,text} }. VEKachel und
+// VEListenZeile kennen die Einzelfälle NICHT — sie lösen nur über die Registry
+// auf. Neue objektbezogene Kachel mit Status = EIN Eintrag hier + Prop
+// statusKontext="…" am Screen-Aufruf (§76: einmal bauen, überall nutzen).
+// Kontrakt der Funktionen:
+//   punkt  → Farbstring (HANDLUNGSBEDARF_FARBEN) oder null (kein Punkt/neutral)
+//   status → { typ:"error"|"warn"|null, text:"…" } für die StatusLeiste
+const STATUS_KONTEXTE = {
+  legionellen: legionellenStatusKontext,
+};
+// Löst einen Kontext auf. Unbekannter/leerer Kontext → null (= Default-
+// Verhalten: objektweiter Handlungsbedarf bleibt aktiv).
+function statusKontextAufloesen(kontextId, ve) {
+  const fn = kontextId ? STATUS_KONTEXTE[kontextId] : null;
+  return fn ? fn(ve) : null;
+}
+
 // ── VEListenZeile (kompakte Listenansicht eines Objekts, DESIGN §35) ────────
 // Eine schmale, scannbare Zeile statt der Kachel: Status-Punkt · WEG-Nr ·
 // Adresse · Einheiten-Zahl. Tippen klappt dasselbe Detail auf wie die Kachel.
@@ -824,9 +842,9 @@ function VEListenZeile({ ve, t, accent, onClick, aktiv = false, id, kbItem = fal
   const wohn = (ve.einheiten || []).filter(e => ["Wohneigentum","Teileigentum","Gewerbe"].includes(e.typ)).length;
   const sp = (ve.einheiten || []).filter(e => isStellplatzTyp(e.typ)).length;
   // Status-Punkt: normal Gesamt-Handlungsbedarf (rot=muss, gelb=kann, grün=ok).
-  // §102: im Legionellen-Kontext nur die Prüf-Fälligkeit (kein Punkt bei
-  // fehlendem Datum → legStatus.punkt kann null sein).
-  const legStatus = statusKontext === "legionellen" ? legionellenStatusKontext(ve) : null;
+  // §102: bei gesetztem statusKontext liefert die Registry die Quelle (z. B.
+  // Legionellen-Fälligkeit); punkt kann null sein (kein Punkt).
+  const legStatus = statusKontextAufloesen(statusKontext, ve);
   const punkt = legStatus
     ? legStatus.punkt
     : (HANDLUNGSBEDARF_FARBEN[objektHandlungsbedarf(ve, hbCfg)] || HANDLUNGSBEDARF_FARBEN.gruen);
@@ -924,13 +942,14 @@ function VEKachel({ ve, t, accent, onClick, ohneStatus = false, aktiv = false, i
   // Punkt in der Liste (eine Einstellung für beides). Gelb/Rot zeigen den
   // dringlichsten Auslöser als Text; Grün blendet die Leiste aus.
   // Rot → "error"-Farbe (#EF4444), Gelb → "warn"-Farbe (#F59E0B).
-  // §102: im Legionellen-Kontext zeigt die Leiste den nächsten Prüftermin
-  // (auch bei „ok" — Datum immer sichtbar), sonst den objektweiten
-  // Handlungsbedarf wie bisher.
+  // §102: bei gesetztem statusKontext liefert die Registry den Leisten-Status
+  // (z. B. Legionellen-Prüftermin, auch bei „ok" sichtbar), sonst der
+  // objektweite Handlungsbedarf wie bisher.
   let status = null;
   if (!ohneStatus && statusLeisteSettings.objekt) {
-    if (statusKontext === "legionellen") {
-      status = legionellenStatusKontext(ve).status;
+    const kStatus = statusKontextAufloesen(statusKontext, ve);
+    if (kStatus) {
+      status = kStatus.status;
     } else {
       const hb = objektHandlungsbedarfDetail(ve, hbCfg);
       if (hb.farbe === "rot") status = { typ: "error", text: hb.text };
