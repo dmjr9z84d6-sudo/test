@@ -383,7 +383,7 @@ import {
 // Liegenschaft-Kern (S5a) — ausgelagert nach liegenschaft.jsx. Der App-Rumpf
 // nutzt nur die Header-/Kachel-Komponenten; kein Rückimport in diese Datei.
 import {
-  DokumenteAnsicht, HeaderFilterDropdown, KategorieKacheln, SeitenleisteKacheln, TechnikUebersichtAnsicht,
+  DokumenteAnsicht, HeaderFilterDropdown, KategorieKacheln, SeitenleisteKacheln, TechnikUebersichtAnsicht, TechnikPflegeAnsicht,
   TechnikGeraetNeuModal, DokumentUploadModal, dokumentUploadAnVe
 } from "./liegenschaft.jsx";
 
@@ -1798,7 +1798,9 @@ export default function App() {
   // §12.8 Screen-Plus: die vier gehosteten Anlege-Dialoge (Objektwahl IM
   // Dialog, Vorgänge-Muster). Kein Vorschalt-Fenster, keine Signal-Props mehr.
   const [etvNeuOffen, setEtvNeuOffen] = useState(false);         // VersammlungNeuOverlay
-  const [technikNeuOffen, setTechnikNeuOffen] = useState(false); // TechnikGeraetNeuModal
+  const [technikEditSignal, setTechnikEditSignal] = useState(0);   // Stift → editMode
+  const [technikNeuKarteSignal, setTechnikNeuKarteSignal] = useState(0); // Plus → neue Karte
+  const [plusWahlTechnik, setPlusWahlTechnik] = useState(false);   // Technik-Plus ohne Objekt → Objektwahl
   const [dokNeuOffen, setDokNeuOffen] = useState(false);         // DokumentUploadModal
   const [fotoNeuOffen, setFotoNeuOffen] = useState(false);       // FotoUploadModal
   const [kommPlusHinweis, setKommPlusHinweis] = useState(false); // Kommunikation: Modul folgt
@@ -2415,11 +2417,12 @@ export default function App() {
           titelAktiv={titleAktiv}
           onTitelClick={() => { setFilterArt("alle"); setFilterObjektGruppe("alle"); setExpandedVEId(null); }}
           rechts={
-            (istMobileDetail || (hatOffen && objektNurDetail)) ? (
-              <HeaderZurueck onClick={() => setExpandedVEId(null)} t={t}/>
-            ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <HeaderPlus onClick={() => setNeuesObjektOffen(true)} accent={objektAccent} title="Neues Objekt" t={t}/>
-            )
+              {(istMobileDetail || (hatOffen && objektNurDetail)) ? (
+                <HeaderZurueck onClick={() => setExpandedVEId(null)} t={t}/>
+              ) : null}
+            </div>
           }/>
         {/* Filter-Pillen (Verwaltungsart + Gruppen) als EIGENE horizontal scrollbare
             Zeile unter dem Kopf — NICHT im ScreenKopf-mitte-Slot (der schwebt seit §89
@@ -2474,11 +2477,12 @@ export default function App() {
           titelAktiv={titleAktiv}
           onTitelClick={() => { setFilterKontaktart("alle"); setFilterKontaktGruppe("alle"); setAktivKontaktId(null); }}
           rechts={
-            (aktivKontaktId && kontaktNurDetail) ? (
-              <HeaderZurueck onClick={() => setAktivKontaktId(null)} t={t}/>
-            ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <HeaderPlus onClick={() => setNeuerKontaktOffen(true)} accent={kontaktAccent} title="Neuer Kontakt" t={t}/>
-            )
+              {(aktivKontaktId && kontaktNurDetail) ? (
+                <HeaderZurueck onClick={() => setAktivKontaktId(null)} t={t}/>
+              ) : null}
+            </div>
           }/>
         {/* Filter-Pillen (Kontaktart + Gruppen) als EIGENE horizontal scrollbare
             Zeile unter dem Kopf (§89-Konvention, siehe Objekte/Kalender). Nicht im
@@ -3086,14 +3090,18 @@ export default function App() {
             onClose={() => setEtvNeuOffen(false)}
             onFertig={(vid) => { setEtvNeuOffen(false); setEtvAkteId(vid); }}/>
         )}
-        {technikNeuOffen && (
-          <TechnikGeraetNeuModal t={t}
+        {/* Technik-Plus ohne offenes Objekt: erst Objektwahl, dann Akte öffnen
+            und neue Technik-Karte anlegen (TechnikPflegeAnsicht via Signal). */}
+        {plusWahlTechnik && (
+          <ObjektWahlOverlay ves={vesSichtbar} t={t}
             accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
-            ve={(vesSichtbar || []).find(v => v.id === technikViewVEId) || null}
-            setVes={setVes}
-            objektWahl={{ ves: vesSichtbar, aktivId: technikViewVEId,
-              onWaehle: (id) => setTechnikViewVEId(id || null) }}
-            onClose={() => setTechnikNeuOffen(false)}/>
+            titel="Objekt wählen — neue Technik"
+            onClose={() => setPlusWahlTechnik(false)}
+            onWaehle={(veObj) => {
+              setTechnikViewVEId(veObj.id);
+              setTechnikNeuKarteSignal(s => s + 1);
+              setPlusWahlTechnik(false);
+            }}/>
         )}
         {dokNeuOffen && (() => {
           const dokVe = (vesSichtbar || []).find(v => v.id === dokumenteViewVEId) || null;
@@ -3328,9 +3336,9 @@ export default function App() {
                   : ((hatAuswahl && (auftragNurDetail || !istDesk))
                     ? () => { setAuftragViewVEId(null); setAuftragFirmaId(null); }
                     : null);
-                // Plus IMMER sichtbar (Kalender-Prinzip) — nur im Mobil-Detail
-                // einer offenen Akte ausgeblendet (dort führt Zurück).
-                const plus = !akteOffenMobil;
+                // Plus IMMER sichtbar (Kalender-Prinzip) — auch im Mobil-Detail
+                // (18.07.: Plus + Zurück koexistieren, wie Kalender/Objekte/Kontakte).
+                const plus = true;
                 const plusClick = () => setAuftragNeuOffen(true);
                 if (!zurueck && !plus) return null;
                 return (
@@ -3648,7 +3656,19 @@ export default function App() {
             viewVEId={technikViewVEId} setViewVEId={setTechnikViewVEId}
             istDesktop={istDesktop}
             titel="Technik" anzahl={(vesSichtbar || []).length}
-            kopfPlus={{ title: "Neue Anlage", onClick: () => setTechnikNeuOffen(true) }}
+            kopfPlus={{ title: "Neue Technik", onClick: () => {
+              // Plus: bei offenem Objekt direkt neue Technik-Karte hier anlegen;
+              // ohne Objekt erst Objektwahl (Kalender-Prinzip).
+              if (technikViewVEId) { setTechnikNeuKarteSignal(s => s + 1); }
+              else { setPlusWahlTechnik(true); }
+            } }}
+            detailAktion={(veObj) => (
+              // §12.9: Stift schaltet die Technik-Pflege im Screen scharf
+              // (kein Sprung ins Objekt — Schnellzugriff pflegt direkt hier).
+              <KopfIconButton icon="pencil" title="Technik bearbeiten"
+                t={t} accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
+                onClick={() => setTechnikEditSignal(s => s + 1)}/>
+            )}
             legendeAn={legendeSichtbar(effectiveSettings)}
             onGotoStatusEinstellungen={() => {
               wechselScreen("einstellungen");
@@ -3667,10 +3687,12 @@ export default function App() {
             renderDetail={(veObj) => (
               // ECHTE Quelle: Technik-Geräte der Standort-Karten des Objekts
               // (TechnikUebersichtAnsicht, read-only — gepflegt wird am Objekt).
-              <TechnikUebersichtAnsicht ve={veObj} t={t}
+              <TechnikPflegeAnsicht ve={veObj} t={t}
                 accent={(effectiveSettings.kacheln.find(k => k.id === "technik") || {}).farbe || "#10B981"}
                 kontakte={kontakteSichtbar} setKontakte={setKontakte}
-                onKontaktClick={gotoKontakt} ves={vesSichtbar}/>
+                onKontaktClick={gotoKontakt} ves={vesSichtbar}
+                setVes={setVes}
+                editSignal={technikEditSignal} neuKarteSignal={technikNeuKarteSignal}/>
             )}/>
         )}
         {!suchErg && screen === "dokumente" && (

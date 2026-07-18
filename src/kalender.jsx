@@ -2734,22 +2734,27 @@ function KalenderScreen({ ves, kontakte, welt = null, t, accent, gotoVE, gotoKon
             onWaehle={(id) => { if (setKalView) setKalView(id); if (setKalViewVEId) setKalViewVEId(null); }}/>
         }
         rechts={
-          (kalNurDetail) ? (
-            <HeaderZurueck onClick={() => { setOffenTerminKey(null); if (setKalViewVEId) setKalViewVEId(null); }} t={t}/>
-          ) : (setVes && !dockAktiv) ? (
-            <HeaderPlus
-              onClick={() => {
-                // Bei offenem Objekt: objektspezifischen Anlege-Modus toggeln.
-                // Sonst: allgemeines Anlege-Formular.
-                if (kalView === "objekte" && kalViewVEId) {
-                  setObjektAnlegenVE(o => o === kalViewVEId ? null : kalViewVEId);
-                } else {
-                  setAnlegenOffen(o => !o);
-                }
-              }}
-              accent={kalFarbe} title="Neuer Termin" t={t}
-              icon={(anlegenOffen || (kalViewVEId && objektAnlegenVE === kalViewVEId)) ? "x" : "plus"}/>
-          ) : null
+          // §Plus-Buttons (18.07.): Plus bleibt AUCH im Mobil-Detail sichtbar
+          // (Kalender-Prinzip) — Zurück kommt daneben, ersetzt ihn nicht.
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {(setVes && !dockAktiv) ? (
+              <HeaderPlus
+                onClick={() => {
+                  // Bei offenem Objekt: objektspezifischen Anlege-Modus toggeln.
+                  // Sonst: allgemeines Anlege-Formular.
+                  if (kalView === "objekte" && kalViewVEId) {
+                    setObjektAnlegenVE(o => o === kalViewVEId ? null : kalViewVEId);
+                  } else {
+                    setAnlegenOffen(o => !o);
+                  }
+                }}
+                accent={kalFarbe} title="Neuer Termin" t={t}
+                icon={(anlegenOffen || (kalViewVEId && objektAnlegenVE === kalViewVEId)) ? "x" : "plus"}/>
+            ) : null}
+            {kalNurDetail ? (
+              <HeaderZurueck onClick={() => { setOffenTerminKey(null); if (setKalViewVEId) setKalViewVEId(null); }} t={t}/>
+            ) : null}
+          </div>
         }/>
       {/* Filter-Pillen (Verw./ETV/…) als EIGENE horizontal scrollbare Zeile unter
           dem Kopf — nur in der Timeline-Ansicht und nicht im Detail. Gehören NICHT

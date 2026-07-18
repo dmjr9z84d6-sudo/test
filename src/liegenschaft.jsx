@@ -4157,6 +4157,78 @@ function TechnikGeraetNeuModal({ ve, t, accent, onClose, onSave, objektWahl = nu
   );
 }
 
+// ── TechnikPflegeAnsicht (§12.9 / Schnellzugriff) ─ VOLLE Technik-Pflege im ──
+// Technik-Screen, ohne Sprung ins Objekt. Rendert dieselbe editierbare
+// TechnikKarte wie die Liegenschaft (Baustein — kein Zweitbau), schreibt über
+// setVes an ve.karten zurück. editSignal (vom Screen-Stift) schaltet den
+// Edit-Modus; neuKarteSignal (vom Screen-Plus) legt eine neue Technik-Karte an
+// und öffnet sie direkt bearbeitbar. Ist keine Technik-Karte vorhanden, legt
+// der Plus die erste an.
+function TechnikPflegeAnsicht({ ve, t, accent, kontakte = [], setKontakte = null, onKontaktClick = null, ves = [], setVes = null, editSignal = 0, neuKarteSignal = 0 }) {
+  const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
+  const technikKarten = karten.filter(k => k && k.kategorie === "technik");
+  const haeuser = karten.filter(k => k && (k.kategorie === "gebaeude" || k.kategorie === "tiefgarage"));
+  const [editMode, setEditMode] = useState(false);
+  const [aktiveEditId, setAktiveEditId] = useState(null);
+
+  useEffect(() => { if (editSignal) setEditMode(true); }, [editSignal]);
+
+  const patchKarten = (fn) => {
+    if (!setVes || !ve) return;
+    setVes(prev => prev.map(v => (v && v.id === ve.id)
+      ? { ...v, karten: fn(Array.isArray(v.karten) ? v.karten : []) } : v));
+  };
+  const neueTechnikKarte = () => {
+    const neueId = Date.now();
+    patchKarten(ks => [...ks, { id: neueId, name: "Technik", icon: "⚙",
+      fixed: false, kategorie: "technik",
+      stamm: [{ id: 1, name: "Heizart", value: "", type: "text" }],
+      einheiten: [], technikGeraete: [] }]);
+    setEditMode(true);
+    setAktiveEditId(neueId);
+  };
+  useEffect(() => { if (neuKarteSignal) neueTechnikKarte(); }, [neuKarteSignal]);
+
+  if (!ve) {
+    return (
+      <div style={{ fontSize: FS.m, color: t.muted, fontStyle: "italic",
+        padding: "8px 2px" }}>Kein Objekt gewählt.</div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {technikKarten.length === 0 ? (
+        <div style={{ background: t.card, border: `1px solid ${t.border}`,
+          borderRadius: RAD.lg, padding: "16px 18px", fontSize: FS.m,
+          color: t.muted, lineHeight: 1.5 }}>
+          Noch keine Technik-Karte. Über „+“ oben eine neue Technik-Karte
+          anlegen und Geräte hinzufügen.
+        </div>
+      ) : (
+        technikKarten.map((karte) => (
+          <TechnikKarte key={karte.id} karte={karte} t={t} accent={accent}
+            editMode={editMode}
+            haeuser={haeuser}
+            kontakte={kontakte} setKontakte={setKontakte}
+            onKontaktClick={onKontaktClick} ves={ves}
+            lokalEditGesperrt={aktiveEditId !== null && aktiveEditId !== karte.id}
+            onLokalEditChange={(aktiv) => setAktiveEditId(aktiv ? karte.id : null)}
+            onUpdateKarte={(neuKarte) => patchKarten(ks => ks.map(k => k.id === karte.id ? neuKarte : k))}
+            onRename={(neu) => patchKarten(ks => ks.map(k => k.id === karte.id ? { ...k, name: neu } : k))}
+            onRemove={() => patchKarten(ks => ks.filter(k => k.id !== karte.id))}/>
+        ))
+      )}
+      {editMode ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+          <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+            onClick={() => { setEditMode(false); setAktiveEditId(null); }}
+            text="Fertig"/>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = null, onKontaktClick = null, ves = [] }) {
   const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
   // Geräte hängen an den TECHNIK-Karten; die Gebäude/TG-Karten (haeuser)
@@ -8686,7 +8758,7 @@ export {
   DokumenteAnsicht,
   NeueKarteMenu,
   neueDokumentKarte,
-  TechnikUebersichtAnsicht, TechnikGeraetNeuModal, DokumentUploadModal, dokumentUploadAnVe,
+  TechnikUebersichtAnsicht, TechnikPflegeAnsicht, TechnikGeraetNeuModal, DokumentUploadModal, dokumentUploadAnVe,
   EinheitZeile,
   HeaderFilterDropdown,
   KARTEN_ICONS,
