@@ -19,7 +19,7 @@ import React, { useState, useEffect } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute } from "./utils-basis.js";
 import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggle,
-  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody, KopfIconButton } from "./components.jsx";
+  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody, KopfIconButton, KopfAktionsLeiste } from "./components.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
 import { BausteinKarte, StatusPille } from "./vorgang.jsx";
 import { TERegisterAnsicht, alleEinheitenVonVe } from "./objektansicht.jsx";
@@ -2107,24 +2107,24 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
         </div>
         <StatusPille t={t} farbe={STATUS_FARBE[versammlung.status] || t.muted}
           text={ETV_STATUS_LABEL[versammlung.status] || versammlung.status}/>
-        {/* §12.9: Akten-Aktionen im Kopf — Bearbeiten (ganze Übersicht),
-            Drucken, Löschen (accent-Vollton, rotes Icon, Zwei-Stufen). */}
+        {/* §12.10 Akten-Kopf-Aktionen: Ansicht [Drucken][Bearbeiten],
+            Bearbeiten [Löschen][X][Bestätigen]. Nur im Übersicht-Tab. */}
         {tab === "uebersicht" ? (
-          <KopfIconButton icon="pencil"
-            title={editModeGlobal ? "Bearbeiten beenden" : "Versammlung bearbeiten"}
-            t={t} accent={accent}
-            onClick={() => setEditModeGlobal(v => !v)}/>
-        ) : null}
-        <KopfIconButton icon="printer" title="Protokoll drucken" t={t} accent={accent}
-          onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}/>
-        <KopfIconButton icon="trash"
-          title={loeschConfirm ? "Wirklich löschen? (Beschlüsse bleiben)" : "Versammlung löschen"}
-          t={t} accent={accent} gefahrVoll confirm={loeschConfirm}
-          onClick={() => {
-            if (!loeschConfirm) { setLoeschConfirm(true); return; }
-            onWelt((w) => weltVersammlungLoeschen(w, versammlung.id));
-            if (onZurueck) onZurueck();
-          }}/>
+          <KopfAktionsLeiste t={t} accent={accent} editMode={editModeGlobal}
+            onEdit={() => setEditModeGlobal(true)}
+            onCancel={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
+            onConfirm={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
+            onPrint={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}
+            loeschConfirm={loeschConfirm}
+            onDelete={() => {
+              if (!loeschConfirm) { setLoeschConfirm(true); return; }
+              onWelt((w) => weltVersammlungLoeschen(w, versammlung.id));
+              if (onZurueck) onZurueck();
+            }}/>
+        ) : (
+          <KopfIconButton icon="printer" title="Protokoll drucken" t={t} accent={accent}
+            onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}/>
+        )}
         <button onClick={onZurueck}
           style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
             padding: "5px 11px", borderRadius: RAD.pill, cursor: "pointer",

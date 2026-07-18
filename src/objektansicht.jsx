@@ -12,7 +12,7 @@ import {
 } from "./utils-icons.jsx";
 import {
   Avatar, DATUM_MONATE_KURZ, DatumFeld, FeldKontaktKarte, LEGIONELLEN_BEFUNDE,
-  LEGIONELLEN_STATUS_FARBE, DetailKopf, ObjektDetailKopf, DetailRahmen, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges,
+  LEGIONELLEN_STATUS_FARBE, DetailKopf, ObjektDetailKopf, DetailRahmen, MasterDetailRahmen, MonatJahrPickerModal, VerwendungenBadges, KopfAktionsLeiste,
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenEffektiveNaechste, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
@@ -1578,39 +1578,12 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
       <ObjektDetailKopf t={t} accent={accent} ve={ve}
         onTitelClick={(headerOhneEditBtn && onBack) ? onBack : null}
         aktion={(!headerOhneEditBtn && !(einheitOffen && !editMode)) ? (
-          editMode ? (
-            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-              {loeschenErlaubt.objekte && setVes && (
-                <AktionsButton rolle="loeschen" onClick={handleObjektLoeschen}
-                  farbe={accent} confirm={loeschConfirm}
-                  label={loeschConfirm ? "Wirklich löschen?" : null}
-                  title={loeschConfirm ? "Nochmal klicken zum Löschen" : "Objekt löschen"}
-                  t={t} accent={accent}/>
-              )}
-              <button onClick={bearbeitenAbbrechen}
-                title="Abbrechen — Änderungen verwerfen" aria-label="Abbrechen"
-                style={{ display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
-                  borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
-                <I name="x" size={16} color="#EF4444"/>
-              </button>
-              <button onClick={bearbeitenFertig}
-                title="Fertig — Änderungen behalten" aria-label="Fertig"
-                style={{ display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
-                  borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
-                <I name="check" size={14} color="#FFFFFF"/>
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setEditMode(true)}
-              title="Bearbeiten" aria-label="Bearbeiten"
-              style={{ display: "flex", alignItems: "center", justifyContent: "center",
-                width: 36, height: 36, flexShrink: 0, background: accent, border: "none",
-                borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
-              <I name="pencil" size={14} color={getContrastColor(accent)}/>
-            </button>
-          )
+          <KopfAktionsLeiste t={t} accent={accent} editMode={editMode}
+            onEdit={() => setEditMode(true)}
+            onCancel={bearbeitenAbbrechen}
+            onConfirm={bearbeitenFertig}
+            loeschConfirm={loeschConfirm}
+            onDelete={(loeschenErlaubt.objekte && setVes) ? handleObjektLoeschen : null}/>
         ) : null}/>
 
       {/* Reiter — kanonische TabLeiste (§97). Horizontal scrollbar, aktiver

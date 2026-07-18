@@ -151,6 +151,52 @@ function overlayBody() {
 // rund 36×36, RAD.pill, accent-Hintergrund — Muster-Quelle VEDetail/Kontakte.
 // Destruktive Aktionen: gefahr=true (rot umrandet), confirm=true nach erstem
 // Klick (rot gefüllt, zweiter Klick führt aus) — Zwei-Stufen wie AktionsButton.
+// ── KopfAktionsLeiste (§12.10, VERBINDLICH) — kanonische Akten-Kopf-Aktionen ──
+// EIN Muster für alle Kacheln, oben rechts im Akten-Kopf:
+//   Ansicht:    [Drucken] [Bearbeiten]      (drucken links, bearbeiten rechts)
+//   Bearbeiten: [Löschen] [X Abbrechen] [Bestätigen]  (löschen links)
+// Löschen erscheint NUR im Bearbeiten-Modus, an der Stelle des Drucken-Buttons.
+// Alle Buttons rund 36×36, accent-Vollton. Löschen: rotes Icon, Zwei-Stufen
+// (loeschConfirm → rot gefüllt, weißes Icon). Nicht zutreffende Aktionen
+// (kein onPrint / kein onDelete) werden weggelassen.
+function KopfAktionsLeiste({ t, accent, editMode, onEdit, onCancel, onConfirm,
+  onDelete = null, onPrint = null, loeschConfirm = false }) {
+  const rund = { display: "flex", alignItems: "center", justifyContent: "center",
+    width: 36, height: 36, flexShrink: 0, borderRadius: RAD.pill, cursor: "pointer",
+    border: "none", background: accent, boxShadow: `0 1px 2px ${accent}40` };
+  if (editMode) {
+    return (
+      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        {onDelete ? (
+          <button onClick={onDelete}
+            title={loeschConfirm ? "Wirklich löschen?" : "Löschen"} aria-label="Löschen"
+            style={{ ...rund, background: loeschConfirm ? "#EF4444" : accent }}>
+            <I name="trash" size={16} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
+          </button>
+        ) : null}
+        <button onClick={onCancel} title="Abbrechen — Änderungen verwerfen" aria-label="Abbrechen" style={rund}>
+          <I name="x" size={16} color="#EF4444"/>
+        </button>
+        <button onClick={onConfirm} title="Fertig — Änderungen behalten" aria-label="Fertig" style={rund}>
+          <I name="check" size={14} color="#FFFFFF"/>
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+      {onPrint ? (
+        <button onClick={onPrint} title="Drucken" aria-label="Drucken" style={rund}>
+          <I name="printer" size={16} color={getContrastColor(accent)}/>
+        </button>
+      ) : null}
+      <button onClick={onEdit} title="Bearbeiten" aria-label="Bearbeiten" style={rund}>
+        <I name="pencil" size={14} color={getContrastColor(accent)}/>
+      </button>
+    </div>
+  );
+}
+
 function KopfIconButton({ icon, title, onClick, t, accent, gefahr = false, confirm = false, gefahrVoll = false }) {
   // gefahrVoll (§12.9): accent-Vollton, rotes Icon, KEIN Rand (wie X-Button).
   // Zwei-Stufen: confirm=true → rot gefüllt, weißes Icon (führt aus).
@@ -3785,7 +3831,7 @@ function MasterDetailRahmen({ master, detail = null, istDesktop = true,
 // ╔═════════════════════════════════════════════════════════════════════════╗
 
 export {
-  overlayBackdrop, overlayPanel, OverlayKopf, overlayBody, KopfIconButton,
+  overlayBackdrop, overlayPanel, OverlayKopf, overlayBody, KopfIconButton, KopfAktionsLeiste,
   KopfPille,
   ScreenKopf,
   HeaderZurueck,
