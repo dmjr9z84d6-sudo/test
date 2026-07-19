@@ -1800,7 +1800,8 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
         </div>
       ) : null}
       {zeigeLose && buendelModus && buendelZiel !== null ? (
-        <div style={flowZeileStil(t)}>
+        <div style={Object.assign({}, flowZeileStil(t),
+          { border: "1px solid " + accent })}>
           <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>
             {buendelIds.length === 1 ? "1 Punkt ausgewählt"
               : buendelIds.length + " Punkte ausgewählt"}
@@ -1819,18 +1820,15 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                   <option key={k.id} value={k.id}>{k.label}</option>
                 ))}
               </select>
-              {/* Direkt beauftragen (Benny 18.07.): Firma wählen → die
-                  gebündelten Punkte gehen SOFORT beauftragt raus. Ohne
-                  Firma: nur als Vorgang anlegen. */}
-              <label style={feldLabelStil(t)}>Direkt beauftragen an (optional)</label>
-              <select value={buendelFirmaId}
-                onChange={(e) => setBuendelFirmaId(e.target.value)}
-                style={selectStil(t, accent, !!buendelFirmaId)}>
-                <option value="">— nur Vorgang anlegen, noch nicht beauftragen —</option>
-                {(kontakte || []).filter((k) => k && k.typ === "firma").map((k) => (
-                  <option key={k.id} value={k.id}>{k.name || "Firma"}</option>
-                ))}
-              </select>
+              {/* Direkt beauftragen (Benny 18.07./19.07.): Firma über den
+                  Kontakte-Picker wählen (kein Dropdown) → die gebündelten
+                  Punkte gehen SOFORT beauftragt raus. Ohne Firma: nur als
+                  Vorgang anlegen. */}
+              <KontaktPicker value={buendelFirmaId || null}
+                onChange={(id) => setBuendelFirmaId(id || "")}
+                label="Direkt beauftragen an (optional)" nurFirmen
+                t={t} accent={accent}
+                kontakte={pickerListe(kontakte)}/>
               <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button onClick={() => setBuendelZiel(null)} style={flowKnopf(t, accent, false)}>Zurück</button>
                 <button onClick={buendle} style={flowKnopf(t, accent, true)}>
