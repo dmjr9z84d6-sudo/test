@@ -2624,7 +2624,7 @@ function EtvDruckMenue({ versammlung, ve, welt, kontakte, onWelt, t, accent, onC
   );
 }
 
-function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, onZurueck }) {
+function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, onZurueck, onKopfAktion = null }) {
   const [tab, setTab] = useState("uebersicht");
   // §12.9: Akten-Kopf trägt Bearbeiten (globaler editMode), Drucken, Löschen.
   const [loeschConfirm, setLoeschConfirm] = useState(false);
@@ -2644,9 +2644,40 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
     { id: "te", label: "TE", icon: "badge" },
     { id: "beschluesse", label: "Beschlüsse", icon: "check" },
   ];
+  // §12.10/§86.6 (Kopf-Aktion hochgehoben, 19.07.): Die runden Aktions-Buttons
+  // (Drucken/Bearbeiten bzw. Löschen/X/Haken) gehören auf Höhe der VE-Nummer in
+  // den DetailRahmen-Kopf (wie Objekte/Legionellen/Fotos), NICHT unter die rote
+  // Linie in den inneren Akten-Kopf. EtvBereichFuerObjekt reicht sie via
+  // onKopfAktion nach oben; allesda_merged setzt sie als detailAktion.
+  const kopfAktionNode = tab === "uebersicht" ? (
+    <KopfAktionsLeiste t={t} accent={accent} editMode={editModeGlobal}
+      onEdit={() => setEditModeGlobal(true)}
+      onCancel={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
+      onConfirm={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
+      onPrint={() => setDruckMenue(true)}
+      loeschConfirm={loeschConfirm}
+      onDelete={() => {
+        if (!loeschConfirm) { setLoeschConfirm(true); return; }
+        onWelt((w) => weltVersammlungLoeschen(w, versammlung.id));
+        if (onZurueck) onZurueck();
+      }}/>
+  ) : (
+    <KopfIconButton icon="printer" title="Drucken & Unterlagen" t={t} accent={accent}
+      onClick={() => setDruckMenue(true)}/>
+  );
+  // Node nach oben melden (seiteneffektfrei im Render via useEffect). Abhängig
+  // von den sichtbaren Zuständen — bei jeder relevanten Änderung neu melden,
+  // beim Verlassen (Unmount) zurücksetzen.
+  useEffect(() => {
+    if (onKopfAktion) onKopfAktion(kopfAktionNode);
+    return () => { if (onKopfAktion) onKopfAktion(null); };
+    // eslint-disable-next-line
+  }, [tab, editModeGlobal, loeschConfirm, accent, versammlung.id]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-      {/* Akten-Kopf (Vorgang-Muster §98.3: Titel groß + Sub + StatusPille) */}
+      {/* Akten-Kopf (Vorgang-Muster §98.3: Titel groß + Sub + StatusPille).
+          Runde Aktions-Buttons wandern in den DetailRahmen-Kopf (onKopfAktion,
+          §86.6) — hier bleiben nur Titel, Status-Pille und Zurück. */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text,
@@ -2661,24 +2692,6 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
         </div>
         <StatusPille t={t} farbe={STATUS_FARBE[versammlung.status] || t.muted}
           text={ETV_STATUS_LABEL[versammlung.status] || versammlung.status}/>
-        {/* §12.10 Akten-Kopf-Aktionen: Ansicht [Drucken][Bearbeiten],
-            Bearbeiten [Löschen][X][Bestätigen]. Nur im Übersicht-Tab. */}
-        {tab === "uebersicht" ? (
-          <KopfAktionsLeiste t={t} accent={accent} editMode={editModeGlobal}
-            onEdit={() => setEditModeGlobal(true)}
-            onCancel={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
-            onConfirm={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
-            onPrint={() => setDruckMenue(true)}
-            loeschConfirm={loeschConfirm}
-            onDelete={() => {
-              if (!loeschConfirm) { setLoeschConfirm(true); return; }
-              onWelt((w) => weltVersammlungLoeschen(w, versammlung.id));
-              if (onZurueck) onZurueck();
-            }}/>
-        ) : (
-          <KopfIconButton icon="printer" title="Drucken & Unterlagen" t={t} accent={accent}
-            onClick={() => setDruckMenue(true)}/>
-        )}
         <button onClick={onZurueck}
           style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
             padding: "5px 11px", borderRadius: RAD.pill, cursor: "pointer",
@@ -2725,7 +2738,7 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
 // ── EtvBereichFuerObjekt — der renderDetail-Inhalt der ETV-Kachel ───────────
 // Ohne offene Akte: Versammlungsliste (aktiv) + Archiv (KlappBereich) +
 // Neu-Anlegen. Mit offener Akte: EtvDetail (die vier Tabs).
-function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId }) {
+function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, akteId, setAkteId, onKopfAktion = null }) {
   const [archivOffen, setArchivOffen] = useState(false);
 
   // Auto-Hülle (§2.3/2.6): garantiert, dass IMMER eine offene ordentliche ETV
@@ -2754,7 +2767,7 @@ function EtvBereichFuerObjekt({ ve, onVePatch, welt, onWelt, kontakte, settings,
     return (
       <EtvDetail versammlung={akte} ve={ve} onVePatch={onVePatch} welt={welt} onWelt={onWelt}
         kontakte={kontakte} settings={settings} t={t} accent={accent}
-        onZurueck={() => setAkteId(null)}/>
+        onZurueck={() => setAkteId(null)} onKopfAktion={onKopfAktion}/>
     );
   }
   return (

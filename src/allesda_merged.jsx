@@ -1818,6 +1818,10 @@ export default function App() {
   // Master-Detail-Muster wie Kalender: Liste = Objekte, Detail = Override).
   const [etvViewVEId, setEtvViewVEId] = useState(null);
   const [etvAkteId, setEtvAkteId] = useState(null); // offene ETV-Akte (§2b)
+  // §86.6 (19.07.): Die offene ETV-Akte meldet ihre runden Kopf-Buttons hierher
+  // hoch, damit sie im DetailRahmen-Kopf (auf Höhe der VE-Nummer) sitzen — wie
+  // bei Objekten/Legionellen. EtvDetail liefert die fertige Node via onKopfAktion.
+  const [etvKopfAktion, setEtvKopfAktion] = useState(null);
   // Screen-Plus (Kalender-Prinzip): Objektwahl-Overlay für „Neu anlegen" ohne
   // offene Akte. Ziel steuert, welches Formular nach der Wahl startet.
   // §12.8 Screen-Plus: die vier gehosteten Anlege-Dialoge (Objektwahl IM
@@ -3204,6 +3208,7 @@ export default function App() {
               }, 450);
             }}
             emptyText="Keine Versammlungen für dieses Objekt."
+            detailAktion={() => (etvAkteId ? etvKopfAktion : null)}
             renderDetail={(veObj) => {
               // ETV-Welt (Konzept _03, Bau 12.07.): Versammlungsliste + Akte.
               const etvAccent = (effectiveSettings.kacheln.find(k => k.id === "etv") || {}).farbe || "#8B5CF6";
@@ -3213,7 +3218,8 @@ export default function App() {
                   onVePatch={(fn) => setVes(prev => prev.map(v => (v && v.id === veObj.id) ? fn(v) : v))}
                   kontakte={kontakteSichtbar} settings={effectiveSettings}
                   t={t} accent={etvAccent}
-                  akteId={etvAkteId} setAkteId={setEtvAkteId}/>
+                  akteId={etvAkteId} setAkteId={setEtvAkteId}
+                  onKopfAktion={setEtvKopfAktion}/>
               );
             }}/>
         )}
