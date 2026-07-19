@@ -258,6 +258,13 @@ const DEFAULT_SETTINGS = {
   // Pflegbar in Einstellungen → ETV; wird per "TOP hinzufügen" in die
   // Tagesordnung geholt (ordentlich/außerordentlich/Umlauf stellen sich
   // ihr Programm selbst zusammen).
+  // ETV · Versammlungsort-Anfrage (Benny 19.07.): E-Mail-Vorlage für die
+  // Verfügbarkeits-Anfrage an die Location. Platzhalter {objekt} {datum}
+  // {uhrzeit} {ort} {hv}. Vor dem Versand IMMER Vorschau (mailto-Weg).
+  etvOrtAnfrage: {
+    betreff: "Raumanfrage Eigentümerversammlung {objekt} — {datum}",
+    text: "Sehr geehrte Damen und Herren,\n\nfür die Eigentümerversammlung der WEG {objekt} möchten wir anfragen, ob Ihre Räumlichkeit ({ort}) am {datum} um {uhrzeit} Uhr verfügbar ist.\n\nÜber eine kurze Rückmeldung freuen wir uns.\n\nMit freundlichen Grüßen\n{hv}",
+  },
   etvStandardTops: [
     { id: "st1", titel: "Begrüßung und Feststellung der Beschlussfähigkeit", beschluss_noetig: false },
     { id: "st2", titel: "Genehmigung der Jahresabrechnung", beschluss_noetig: true },
@@ -2797,6 +2804,14 @@ function vorlagenVon(settings) {
     ? settings.vorgangsVorlagen : null;
   return v && v.length > 0 ? v : DEFAULT_SETTINGS.vorgangsVorlagen;
 }
+// ETV-Ort-Anfrage-Vorlage mit Default-Fallback (Muster vorlagenVon).
+function etvOrtAnfrageVon(settings) {
+  const v = settings && settings.etvOrtAnfrage;
+  return {
+    betreff: (v && v.betreff) || DEFAULT_SETTINGS.etvOrtAnfrage.betreff,
+    text: (v && v.text) || DEFAULT_SETTINGS.etvOrtAnfrage.text,
+  };
+}
 function vorlageFuerSchritt(vorlagen, schritt) {
   return (vorlagen || []).filter((v) => v.schritt === schritt)[0] || null;
 }
@@ -4785,7 +4800,7 @@ export {
   // ETV-Welt (Konzept _03, Bau 12.07.)
   ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL, TOP_BAUSTEINE,
   neueVersammlung, neuerTop, neueAnwesenheit,
-  ladungsfristInfo, einladungsStichtag, etvStammVomObjekt, etvSichtklasse,
+  ladungsfristInfo, einladungsStichtag, etvStammVomObjekt, etvSichtklasse, etvOrtAnfrageVon,
   offeneOrdentlicheEtv, garantiereOffeneEtv,
   anfechtungsfristBis, versammlungenFuerObjekt,
   topsFuerVersammlung, anwesenheitenFuer, beschlussfaehigkeitInfo,

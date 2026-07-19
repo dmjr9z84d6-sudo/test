@@ -19,7 +19,7 @@ import React, { useState, useEffect } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute } from "./utils-basis.js";
 import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggle,
-  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody, KopfIconButton, KopfAktionsLeiste } from "./components.jsx";
+  OverlayKopf, overlayBackdrop, overlayPanel, overlayBody, KopfIconButton, KopfAktionsLeiste, ZeitFeld } from "./components.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
 import { BausteinKarte, StatusPille } from "./vorgang.jsx";
 import { TERegisterAnsicht, alleEinheitenVonVe } from "./objektansicht.jsx";
@@ -31,7 +31,7 @@ import { bauePdf } from "./pdfbauer.js";
 import {
   ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL,
   TOP_BAUSTEINE, eigStatus, kontaktNameVonId, fotoDateiname,
-  ladungsfristInfo, einladungsStichtag, etvStammVomObjekt, etvSichtklasse,
+  ladungsfristInfo, einladungsStichtag, etvStammVomObjekt, etvSichtklasse, etvOrtAnfrageVon,
   offeneOrdentlicheEtv, garantiereOffeneEtv,
   versammlungenFuerObjekt, topsFuerVersammlung,
   anwesenheitenFuer, beschlussfaehigkeitInfo, etvNaechsterSchritt,
@@ -60,6 +60,49 @@ const meaZahl = (v) => {
   const m = String(v == null ? "" : v).replace(",", ".").match(/-?\d+(\.\d+)?/);
   return m ? parseFloat(m[0]) : 0;
 };
+
+// Erste E-Mail eines Kontakts (Person: emails[], Firma: email) — für die
+// Versammlungsort-Anfrage (Benny 19.07.).
+const kontaktEmailVon = (k) => {
+  if (!k) return "";
+  if (Array.isArray(k.emails) && k.emails[0] && k.emails[0].email) return k.emails[0].email;
+  return k.email || "";
+};
+
+// Eigentümer-Kontakte eines Objekts (aktive, unique) — kleine Picker-Auswahl
+// für Beirat (§29 WEG: nur Eigentümer) und Leiter/Protokoll (Benny 19.07.).
+function eigentuemerKontakteVonVe(ve, kontakte) {
+  const ids = {};
+  alleEinheitenVonVe(ve).forEach((e) => {
+    if (!e) return;
+    (e.eigentuemer || []).forEach((p) => {
+      if (p && eigStatus(p) === "aktiv" && p.kontaktId != null) ids[p.kontaktId] = true;
+    });
+  });
+  return (kontakte || []).filter((k) => k && ids[k.id]);
+}
+
+// Ort-Vorschläge fürs Stammdaten-Formular (Benny 19.07.): ① Location-Kontakt
+// aus dem Verwaltungs-Tab (ETV-Stammdaten → Versammlungsort), ② Objekt-Stamm-
+// Freitext, ③ frühere Versammlungsorte dieses Objekts. Unique, ohne Leere.
+function ortVorschlaegeFuer(ve, welt, kontakte) {
+  const stamm = etvStammVomObjekt(ve);
+  const aus = [];
+  const seen = {};
+  const add = (name, kontaktId) => {
+    const n = String(name || "").trim();
+    if (!n || seen[n.toLowerCase()]) return;
+    seen[n.toLowerCase()] = true;
+    aus.push({ name: n, kontaktId: kontaktId != null ? kontaktId : null });
+  };
+  (stamm.versammlungsort_kontaktIds || []).forEach((id) => {
+    const k = (kontakte || []).find((x) => x && x.id === id);
+    if (k) add(k.name || (((k.vorname || "") + " " + (k.nachname || "")).trim()), id);
+  });
+  add(stamm.versammlungsort, null);
+  versammlungenFuerObjekt(welt || {}, ve.id).forEach((v) => add(v && v.ort, null));
+  return aus;
+}
 const meaStr = (v) => String(Math.round(zahl(v) * 1000) / 1000).replace(".", ",");
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -242,8 +285,8 @@ function VersammlungNeuForm({ ve, welt, kontakte, t, accent, onAnlegen, onAbbrec
       {!istUmlauf ? (
         <>
           {datum ? <FristHinweis datum={datum} t={t} /> : null}
-          <Inp t={t} accent={accent} label="Uhrzeit" value={uhrzeit}
-            onChange={setUhrzeit} placeholder="z. B. 18:30"/>
+          <ZeitFeld t={t} accent={accent} label="Uhrzeit" value={uhrzeit}
+            onChange={setUhrzeit}/>
           <Inp t={t} accent={accent} label="Ort" value={ort}
             onChange={setOrt} placeholder="z. B. Gemeindesaal, Musterstr. 1"/>
           <DurchfuehrungWahl t={t} accent={accent} value={durch} onChange={setDurch}
@@ -385,7 +428,7 @@ function VersammlungZeile({ versammlung, welt, t, accent, onOeffnen }) {
 }
 
 // ── Tab 1 · ÜBERSICHT — errechneter Kopf + Stammdaten + Anwesenheit ─────────
-function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, t, accent, editModeGlobal = false,
+function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, t, accent, editModeGlobal = false, settings = null,
   bilderEinbetten = false, setBilderEinbetten = () => {}, einzelstimmen = false, setEinzelstimmen = () => {}, onUnterlageAnsehen = () => {} }) {
   // Karten unabhängig auf-/zuklappbar (Set statt Single) — Gesamtüberblick:
   // mehrere Karten können gleichzeitig offen bleiben. Default: Stand offen.
@@ -402,6 +445,16 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
   const frist = ladungsfristInfo(versammlung);
   const stamm = (ve && ve.etvStamm) || {};
   const bf = beschlussfaehigkeitInfo(anw, stamm.gesamtanteile, versammlung.stimmprinzip);
+  // Unterzeichner-Auswahl (Benny 19.07.): nur anwesende/vertretene Eigentümer —
+  // der GO-Beschluss zur Unterschrift fällt in der Versammlung. Leer → null
+  // (Picker zeigt dann alle; Haken „alle zeigen" bleibt als Fallback).
+  const unterzeichnerIds = {};
+  anw.forEach((a) => {
+    if (!a || (a.status !== "anwesend" && a.status !== "vertreten")) return;
+    (a.eigentuemer_kontakt_ids || []).forEach((id) => { unterzeichnerIds[id] = true; });
+  });
+  const unterzeichnerListe = (kontakte || []).filter((k) => k && unterzeichnerIds[k.id]);
+  const unterzeichnerAuswahl = unterzeichnerListe.length > 0 ? unterzeichnerListe : null;
   const schritte = etvNaechsterSchritt(versammlung, tops, anw);
   const abgestimmt = tops.filter((tp) => tp.beschluss_noetig && tp.beschluss_id).length;
   const abstNoetig = tops.filter((tp) => tp.beschluss_noetig).length;
@@ -547,6 +600,7 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
           </div>
         ) : (
           <EtvStammEdit versammlung={versammlung} kontakte={kontakte} ve={ve}
+            welt={welt} settings={settings}
             t={t} accent={accent}
             onSave={(p) => {
               patch(p);
@@ -689,7 +743,8 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
               textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
               Unterschriften (Leiter · ein Eigentümer · Beiratsvorsitz)</div>
             <KontaktPickerMitAllen t={t} accent={accent}
-              kontakteObjekt={null} kontakteAlle={kontakte}
+              kontakteObjekt={unterzeichnerAuswahl}
+              kontakteAlle={kontakte}
               label="Unterschreibender Eigentümer" value={versammlung.unterschrift_eigentuemer_kontakt_id || null}
               onChange={(id) => patch({ unterschrift_eigentuemer_kontakt_id: id || null })}/>
           </div>
@@ -757,18 +812,108 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
 }
 
 // Stammdaten-Bearbeitung (inline, Felder beim Öffnen frisch — §12.1-Muster).
-function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch }) {
+// ── Versammlungsort-Anfrage (Benny 19.07.) ──────────────────────────────────
+// Vorschau-Overlay: Empfänger (vom Location-Kontakt, sonst leer), Betreff und
+// Text aus der Einstellungs-Vorlage (Platzhalter ersetzt) — alles editierbar.
+// „E-Mail öffnen" startet die Mail-App via mailto (PWA ohne Mailserver).
+function LocationAnfrageOverlay({ ve, versammlung, ort, datum, uhrzeit, kontakte, settings, t, accent, onClose }) {
+  const vorlage = etvOrtAnfrageVon(settings);
+  const stamm = etvStammVomObjekt(ve);
+  const ortKontakt = (kontakte || []).find((k) =>
+    k && (stamm.versammlungsort_kontaktIds || []).indexOf(k.id) >= 0) || null;
+  const ersetze = (s) => String(s || "")
+    .split("{objekt}").join(((ve && ve.nr) ? ve.nr + " · " : "") + ((ve && ve.adresse) || (ve && ve.strasse) || ""))
+    .split("{datum}").join(datum ? datumDe(datum) : "—")
+    .split("{uhrzeit}").join(uhrzeit || "—")
+    .split("{ort}").join(ort || "—")
+    .split("{hv}").join((settings && settings.hvName) || "");
+  const [an, setAn] = useState(kontaktEmailVon(ortKontakt));
+  const [betreff, setBetreff] = useState(ersetze(vorlage.betreff));
+  const [text, setText] = useState(ersetze(vorlage.text));
+  const senden = () => {
+    const url = "mailto:" + an
+      + "?subject=" + encodeURIComponent(betreff)
+      + "&body=" + encodeURIComponent(text);
+    try { window.location.href = url; } catch (err) {}
+    onClose();
+  };
+  return (
+    <div style={overlayBackdrop(t)} onClick={onClose}>
+      <div style={overlayPanel(t)} onClick={(ev) => ev.stopPropagation()}>
+        <OverlayKopf t={t} icon="mail" titel="Anfrage an die Location" onClose={onClose}/>
+        <div style={overlayBody()}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: FS.xs, color: t.muted }}>
+              Vor dem Versand prüfen und anpassen — „E-Mail öffnen" übergibt
+              alles an dein Mail-Programm. Die Vorlage lässt sich in den
+              Einstellungen → ETV ändern.
+            </div>
+            <Inp t={t} accent={accent} label="An (E-Mail)" value={an}
+              onChange={setAn} placeholder="location@…"/>
+            {!an && !ortKontakt ? (
+              <div style={{ fontSize: FS.xs, color: t.muted }}>
+                Tipp: Location als Kontakt im Objekt-Tab Verwaltung →
+                ETV-Stammdaten → Versammlungsort verknüpfen — dann steht die
+                Adresse hier automatisch.
+              </div>
+            ) : null}
+            <Inp t={t} accent={accent} label="Betreff" value={betreff} onChange={setBetreff}/>
+            <div>
+              <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
+                Nachricht</div>
+              <textarea value={text} onChange={(ev) => setText(ev.target.value)}
+                rows={9}
+                style={{ width: "100%", boxSizing: "border-box", fontSize: 16,
+                  padding: "7px 9px", borderRadius: RAD.sm, resize: "vertical",
+                  border: "1px solid " + t.border, background: t.card,
+                  color: t.text, fontFamily: "inherit", lineHeight: 1.45 }}/>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                disabled={!an} onClick={senden} text="E-Mail öffnen"/>
+              <AktionsButton rolle="abbrechen" variante="breit" t={t}
+                onClick={onClose} text="Abbrechen"/>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EtvStammEdit({ versammlung, kontakte, ve, welt, settings, t, accent, onSave, onAbbruch }) {
   const istUmlauf = versammlung.versammlung_art === "umlauf";
+  // Vorbelegung (Benny 19.07.): Leiter/Protokollführer = Profil-Kontakt
+  // (Einstellungen → Mein Profil, settings.userKontaktId); Beirat aus der
+  // jüngsten ANDEREN Versammlung des Objekts. Alles überschreibbar — die
+  // Vorbelegung greift nur, solange die Versammlung selbst noch nichts hat.
+  const ich = (settings && settings.userKontaktId) || "";
+  const letzte = versammlungenFuerObjekt(welt || {}, ve.id)
+    .filter((v) => v && v.id !== versammlung.id && v.datum)
+    .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")))[0] || {};
   const [vArt, setVArt] = useState(versammlung.versammlung_art);
   const [datum, setDatum] = useState(versammlung.datum || "");
-  const [uhrzeit, setUhrzeit] = useState(versammlung.uhrzeit || "");
+  const [uhrzeit, setUhrzeit] = useState(versammlung.uhrzeit || letzte.uhrzeit || "");
   const [ort, setOrt] = useState(versammlung.ort || "");
   const [durch, setDurch] = useState(versammlung.art || "praesenz");
   const [ladung, setLadung] = useState(versammlung.ladung_versendet_am || "");
-  const [leiterId, setLeiterId] = useState(versammlung.leiter_kontakt_id || "");
-  const [protokollId, setProtokollId] = useState(versammlung.protokollfuehrer_kontakt_id || "");
-  const [beiratVorsitzId, setBeiratVorsitzId] = useState(versammlung.beirat_vorsitz_kontakt_id || "");
-  const [beiratIds, setBeiratIds] = useState(versammlung.beirat_mitglied_kontakt_ids || []);
+  const [leiterId, setLeiterId] = useState(versammlung.leiter_kontakt_id || ich || letzte.leiter_kontakt_id || "");
+  const [protokollId, setProtokollId] = useState(versammlung.protokollfuehrer_kontakt_id || ich || letzte.protokollfuehrer_kontakt_id || "");
+  const [beiratVorsitzId, setBeiratVorsitzId] = useState(versammlung.beirat_vorsitz_kontakt_id || letzte.beirat_vorsitz_kontakt_id || "");
+  const [beiratIds, setBeiratIds] = useState(
+    (versammlung.beirat_mitglied_kontakt_ids || []).length > 0
+      ? versammlung.beirat_mitglied_kontakt_ids
+      : (letzte.beirat_mitglied_kontakt_ids || []));
+  const [anfrageOffen, setAnfrageOffen] = useState(false);
+  // Kleine Picker-Auswahl (Benny 19.07., Baustein-Filter endlich genutzt):
+  // Beirat = nur Eigentümer (§29 WEG); Leiter/Protokoll = Profil + Eigentümer.
+  const eigentuemer = eigentuemerKontakteVonVe(ve, kontakte);
+  const ichKontakt = (kontakte || []).find((k) => k && k.id === ich) || null;
+  const leiterAuswahl = ichKontakt && eigentuemer.indexOf(ichKontakt) === -1
+    ? [ichKontakt].concat(eigentuemer) : eigentuemer;
+  const ortVorschlaege = ortVorschlaegeFuer(ve, welt, kontakte)
+    .filter((o) => o.name !== ort);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <SegmentControl t={t} accent={accent} value={vArt} onChange={setVArt}
@@ -778,8 +923,28 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
       {vArt !== "umlauf" && datum ? <FristHinweis datum={datum} t={t} /> : null}
       {vArt !== "umlauf" ? (
         <>
-          <Inp t={t} accent={accent} label="Uhrzeit" value={uhrzeit} onChange={setUhrzeit}/>
-          <Inp t={t} accent={accent} label="Ort" value={ort} onChange={setOrt}/>
+          <ZeitFeld t={t} accent={accent} label="Uhrzeit" value={uhrzeit} onChange={setUhrzeit}/>
+          <div>
+            <Inp t={t} accent={accent} label="Ort" value={ort} onChange={setOrt}/>
+            {ortVorschlaege.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                {ortVorschlaege.map((o, i) => (
+                  <button key={i} onClick={() => setOrt(o.name)}
+                    style={{ fontSize: FS.xs, fontWeight: FW.bold, padding: "5px 10px",
+                      borderRadius: RAD.pill, cursor: "pointer", fontFamily: "inherit",
+                      background: accent + "15", color: accent,
+                      border: "1px solid " + accent + "40" }}>
+                    {o.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div style={{ marginTop: 8 }}>
+              <AktionsButton rolle="abbrechen" variante="breit" t={t}
+                disabled={!ort} onClick={() => setAnfrageOffen(true)}
+                text="Anfrage an die Location (E-Mail)"/>
+            </div>
+          </div>
           <DurchfuehrungWahl t={t} accent={accent} value={durch} onChange={setDurch}
             hybridMoeglich={etvStammVomObjekt(ve).hybridMoeglich}/>
         </>
@@ -787,15 +952,21 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
       <DatumFeld t={t} accent={accent} iso label="Einladung versendet am"
         value={ladung} onChange={setLadung} defaultHeute={false}/>
       <KontaktPickerMitAllen t={t} accent={accent}
-        kontakteObjekt={null} kontakteAlle={kontakte}
+        kontakteObjekt={leiterAuswahl} kontakteAlle={kontakte}
         label="Versammlungsleiter" value={leiterId || null}
         onChange={(id) => setLeiterId(id || "")}/>
+      {!ich ? (
+        <div style={{ fontSize: FS.xs, color: t.muted, marginTop: -6 }}>
+          Tipp: Profil-Kontakt in den Einstellungen → Mein Profil festlegen —
+          dann sind Leiter und Protokollführer hier automatisch vorbelegt.
+        </div>
+      ) : null}
       <KontaktPickerMitAllen t={t} accent={accent}
-        kontakteObjekt={null} kontakteAlle={kontakte}
+        kontakteObjekt={leiterAuswahl} kontakteAlle={kontakte}
         label="Protokollführer" value={protokollId || null}
         onChange={(id) => setProtokollId(id || "")}/>
       <KontaktPickerMitAllen t={t} accent={accent}
-        kontakteObjekt={null} kontakteAlle={kontakte}
+        kontakteObjekt={eigentuemer} kontakteAlle={kontakte}
         label="Verwaltungsbeirat (Vorsitz)" value={beiratVorsitzId || null}
         onChange={(id) => setBeiratVorsitzId(id || "")}/>
       <div>
@@ -814,7 +985,7 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
           </div>
         ))}
         <KontaktPickerMitAllen t={t} accent={accent}
-          kontakteObjekt={null} kontakteAlle={kontakte}
+          kontakteObjekt={eigentuemer} kontakteAlle={kontakte}
           label="Mitglied hinzufügen" value={null}
           onChange={(id) => {
             if (id && beiratIds.indexOf(id) === -1 && id !== beiratVorsitzId) {
@@ -836,6 +1007,12 @@ function EtvStammEdit({ versammlung, kontakte, ve, t, accent, onSave, onAbbruch 
         <AktionsButton rolle="abbrechen" variante="breit" t={t}
           onClick={onAbbruch} text="Abbrechen"/>
       </div>
+      {anfrageOffen ? (
+        <LocationAnfrageOverlay ve={ve} versammlung={versammlung}
+          ort={ort} datum={datum} uhrzeit={uhrzeit}
+          kontakte={kontakte} settings={settings} t={t} accent={accent}
+          onClose={() => setAnfrageOffen(false)}/>
+      ) : null}
     </div>
   );
 }
@@ -2751,7 +2928,7 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
       {tab === "uebersicht" ? (
         <EtvUebersichtTab versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
           onWelt={onWelt} kontakte={kontakte} t={t} accent={accent}
-          editModeGlobal={editModeGlobal}
+          editModeGlobal={editModeGlobal} settings={settings}
           onUnterlageAnsehen={setUnterlageViewer}
           bilderEinbetten={bilderEinbetten} setBilderEinbetten={setBilderEinbetten}
           einzelstimmen={einzelstimmen} setEinzelstimmen={setEinzelstimmen}/>

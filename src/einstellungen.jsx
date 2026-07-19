@@ -3783,6 +3783,7 @@ function SektionEtv({ settings, setSettings, t, accent }) {
   const katalog = Array.isArray(settings.etvStandardTops) ? settings.etvStandardTops : [];
   const setKatalog = (liste) => setSettings(st => ({ ...st, etvStandardTops: liste }));
   return (
+    <>
     <EinstellKarte title="Standard-Tagesordnungspunkte" t={t} accent={accent}>
       <div style={{ fontSize: FS.s, color: t.muted, marginBottom: 10 }}>
         Dieser Katalog erscheint in jeder Versammlung unter „TOP hinzufügen".
@@ -3827,6 +3828,36 @@ function SektionEtv({ settings, setSettings, t, accent }) {
               border: "none", background: accent, color: getContrastColor(accent),
               cursor: "pointer", fontSize: FS.l, lineHeight: 1 }}>+</button>
         </div>
+      </div>
+    </EinstellKarte>
+    <SektionEtvOrtAnfrageKarte settings={settings} setSettings={setSettings} t={t} accent={accent}/>
+    </>
+  );
+}
+
+// ── Karte: E-Mail-Vorlage „Anfrage Versammlungsort" (Benny 19.07.) ──────────
+// Der Button im ETV-Stammdaten-Formular erzeugt aus dieser Vorlage die
+// Anfrage-Mail an die Location — mit Vorschau vor dem Versand (mailto).
+function SektionEtvOrtAnfrageKarte({ settings, setSettings, t, accent }) {
+  const v = settings.etvOrtAnfrage || DEFAULT_SETTINGS.etvOrtAnfrage;
+  const setV = (partial) => setSettings(st => ({ ...st,
+    etvOrtAnfrage: { ...(st.etvOrtAnfrage || DEFAULT_SETTINGS.etvOrtAnfrage), ...partial } }));
+  const eingabeStil = { width: "100%", padding: "9px 11px", borderRadius: RAD.md,
+    border: `1px solid ${t.border}`, background: t.surface, color: t.text,
+    fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
+  return (
+    <EinstellKarte title="Anfrage Versammlungsort (E-Mail-Vorlage)" t={t} accent={accent}>
+      <div style={{ fontSize: FS.s, color: t.muted, marginBottom: 10, lineHeight: 1.4 }}>
+        Vorlage für die Verfügbarkeits-Anfrage an die Location (Button im
+        ETV-Stammdaten-Formular). Vor dem Versand erscheint immer eine
+        Vorschau. Platzhalter: {"{objekt} {datum} {uhrzeit} {ort} {hv}"}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <input value={v.betreff || ""} onChange={e => setV({ betreff: e.target.value })}
+          placeholder="Betreff" style={eingabeStil}/>
+        <textarea value={v.text || ""} onChange={e => setV({ text: e.target.value })}
+          rows={7} placeholder="Nachrichtentext"
+          style={{ ...eingabeStil, resize: "vertical", lineHeight: 1.45 }}/>
       </div>
     </EinstellKarte>
   );
@@ -4003,7 +4034,7 @@ const SEKTIONEN = [
   { id: "kontakte",      icon: "users",    farbe: "#A855F7", title: "Kontakte",          sub: "Anzeige, Filter-Pillen, Gruppen" },
   { id: "statusleiste",  icon: "bell",     farbe: "#F97316", title: "Statusleiste",      sub: "Objekt- & Kontakt-Hinweise, Jahrestage" },
   { id: "vorgaenge",     icon: "clipboard", farbe: "#EF4444", title: "Vorgänge",          sub: "Fristen-Standards, Vorlagen (Textbausteine)" },
-  { id: "etv",           icon: "badge",    farbe: "#10B981", title: "ETV",               sub: "Standard-Tagesordnungspunkte" },
+  { id: "etv",           icon: "badge",    farbe: "#10B981", title: "ETV",               sub: "Standard-TOPs, Ort-Anfrage-Vorlage" },
   { id: "filter",        icon: "search",   farbe: "#F59E0B", title: "Filter-Optionen",   sub: "Großer Filter im Header" },
   { id: "kalender",      icon: "calendar", farbe: "#F59E0B", title: "Kalender",          sub: "Wochenstart, KW, Termin-Bezeichnungen" },
   { id: "dokumente",     icon: "document", farbe: "#0E7490", title: "Dokumente",         sub: "Dokument-Karten, Anzeige" },
