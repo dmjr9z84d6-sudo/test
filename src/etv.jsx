@@ -27,6 +27,7 @@ import { DateiViewerModal, gemeinschaftName, istEigentuemergemeinschaft, neueDok
 import { I } from "./utils-icons.jsx";
 import { dateiLaden, dateiLoeschen, dateiSpeichern } from "./utils-basis.js";
 import { druckeHtml } from "./listen-tools.jsx";
+import { bauePdf } from "./pdfbauer.js";
 import {
   ETV_ARTEN, ETV_DURCHFUEHRUNG, ETV_STATUS_KETTE, ETV_STATUS_LABEL,
   TOP_BAUSTEINE, eigStatus, kontaktNameVonId, fotoDateiname,
@@ -36,6 +37,7 @@ import {
   anwesenheitenFuer, beschlussfaehigkeitInfo, etvNaechsterSchritt,
   neueAnwesenheit, neueVersammlung,
   weltVersammlungPatch, weltVersammlungLoeschen,
+  weltVersammlungUnterlage, weltVersammlungUnterlageWeg, UNTERLAGE_ART_LABEL,
   weltTopNeu, weltTopPatch, weltTopLoeschen, weltTopVerschieben,
   weltTopAbstimmen, weltBeschlussPatch, weltAnwesenheitenSetzen, weltTopVertagen,
   MEHRHEITSTYPEN, berechneAbstimmung,
@@ -377,7 +379,7 @@ function VersammlungZeile({ versammlung, welt, t, accent, onOeffnen }) {
 
 // ── Tab 1 · ÜBERSICHT — errechneter Kopf + Stammdaten + Anwesenheit ─────────
 function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, t, accent, editModeGlobal = false,
-  bilderEinbetten = false, setBilderEinbetten = () => {}, einzelstimmen = false, setEinzelstimmen = () => {} }) {
+  bilderEinbetten = false, setBilderEinbetten = () => {}, einzelstimmen = false, setEinzelstimmen = () => {}, onUnterlageAnsehen = () => {} }) {
   // Karten unabhängig auf-/zuklappbar (Set statt Single) — Gesamtüberblick:
   // mehrere Karten können gleichzeitig offen bleiben. Default: Stand offen.
   const [offenSet, setOffenSet] = useState(() => ({ stand: true }));
@@ -701,6 +703,12 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
           </div>
         </div>
       </BausteinKarte>
+
+      {/* Unterlagen (§4.2, 19.07.): der ETV-Ordner — erzeugte PDFs
+          (Einladung, Tagesordnung, Protokoll), ansehen + im Bearbeiten löschen. */}
+      <EtvUnterlagenKarte versammlung={versammlung} onWelt={onWelt} t={t}
+        accent={accent} editModeGlobal={editModeGlobal}
+        onAnsehen={onUnterlageAnsehen}/>
 
       {/* §12.9: Drucken + Löschen laufen über runde Icon-Buttons in den
           Karten-/Akten-Köpfen. Hier verbleibt nur die Archiv-Statusaktion. */}
@@ -1212,18 +1220,40 @@ function AnlagenBlock({ anlagen, onAnlagen, ve, onVePatch, welt, kontextTitel, t
 function EtvTagesordnungTab({ versammlung, ve, onVePatch, welt, onWelt, settings, t, accent }) {
   const [offenId, setOffenId] = useState(null);
   const [addOffen, setAddOffen] = useState(false);
+  // Sortier-Modus (Druck&Ablage-Konzept 19.07. §1.2): „anpassen" = Nummern
+  // folgen der Reihenfolge (Planung), „behalten" = nur Behandlungsreihenfolge
+  // (in der Versammlung — TOP 9 bleibt TOP 9). Vorbelegung am Ladungs-Anker,
+  // manuell jederzeit umschaltbar (Bennys Entscheidung 19.07.).
+  const [sortModus, setSortModus] = useState(
+    versammlung.ladung_versendet_am ? "behalten" : "anpassen");
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const gesperrt = versammlung.status === "abgeschlossen";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {!gesperrt && tops.length > 1 ? (
+        <div>
+          <SegmentControl t={t} accent={accent} voll={false}
+            options={[{ id: "anpassen", label: "Nummern anpassen" },
+              { id: "behalten", label: "Nummern behalten" }]}
+            value={sortModus} onChange={setSortModus}/>
+          <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
+            {sortModus === "behalten"
+              ? "Verschieben ändert nur die Behandlungsreihenfolge — die TOP-Nummern bleiben (z. B. TOP vorziehen in der Versammlung)."
+              : "Verschieben nummeriert die TOPs neu — für die Planung vor dem Einladungsversand."}
+          </div>
+        </div>
+      ) : null}
       {tops.length === 0 ? (
         <div style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>
           Noch keine Tagesordnungspunkte — unten hinzufügen (Standard-Katalog,
           aus Vorgängen, oder frei).
         </div>
-      ) : tops.map((tp) => (
+      ) : tops.map((tp, idx) => (
         <TopKarte key={tp.id} top={tp} versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
           onWelt={onWelt} t={t} accent={accent} gesperrt={gesperrt}
+          sortModus={sortModus}
+          versetzt={tp.nummer && tp.nummer !== idx + 1
+            ? (tp.nummer > idx + 1 ? "vorgezogen" : "nachgestellt") : null}
           offen={offenId === tp.id}
           onToggle={() => setOffenId(offenId === tp.id ? null : tp.id)}/>
       ))}
@@ -1496,7 +1526,7 @@ function AbstimmCockpit({ top, versammlung, ve, welt, onWelt, t, accent, beschlu
   );
 }
 
-function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, offen, onToggle, gesperrt }) {
+function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, offen, onToggle, gesperrt, sortModus = "anpassen", versetzt = null }) {
   const [loeschStufe, setLoeschStufe] = useState(false);
   const [aufgabeText, setAufgabeText] = useState("");
   const beschluss = top.beschluss_id
@@ -1510,18 +1540,19 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
   const subText = ausgang ? ausgang.label : null;
   return (
     <BausteinKarte t={t} accent={accent}
-      titel={"TOP " + (top.nummer || "?") + " · " + (top.titel || "—")}
+      titel={"TOP " + (top.nummer || "?") + (versetzt ? " (" + versetzt + ")" : "")
+        + " · " + (top.titel || "—")}
       sub={subText} punktFarbe={ausgang ? ausgang.farbe : null}
       offen={offen} onToggle={onToggle}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {/* Reihenfolge + Kern */}
         {!gesperrt ? (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <button onClick={() => onWelt((w) => weltTopVerschieben(w, top.id, -1))}
+            <button onClick={() => onWelt((w) => weltTopVerschieben(w, top.id, -1, sortModus))}
               title="nach oben"
               style={{ width: 30, height: 30, borderRadius: RAD.pill, border: "1px solid " + t.border,
                 background: t.card, color: t.text, cursor: "pointer" }}>↑</button>
-            <button onClick={() => onWelt((w) => weltTopVerschieben(w, top.id, 1))}
+            <button onClick={() => onWelt((w) => weltTopVerschieben(w, top.id, 1, sortModus))}
               title="nach unten"
               style={{ width: 30, height: 30, borderRadius: RAD.pill, border: "1px solid " + t.border,
                 background: t.card, color: t.text, cursor: "pointer" }}>↓</button>
@@ -2074,6 +2105,525 @@ function druckeEtvProtokoll(versammlung, ve, welt, kontakte, optionen) {
 }
 
 // ── Die ETV-AKTE: Kopf + TabLeiste (§97) + vier Tabs (§2b) ──────────────────
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ PDF-DRUCKWERKE (Druck&Ablage-Konzept 19.07.): Tagesordnung + Einladung   ║
+// ║ als PDF über den PdfBauer — erzeugen legt IMMER im ETV-Ordner ab (§4.1). ║
+// ║ Protokoll bleibt (noch) auf dem HTML-Druckweg; Umzug = eigene Stufe §7.5.║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+// „zur ordentlichen Eigentümerversammlung" — Beugung nach Art.
+function einladungArtText(versammlung) {
+  const a = versammlung.versammlung_art;
+  if (a === "ausserordentlich") return "außerordentlichen Eigentümerversammlung";
+  if (a === "umlauf") return "Beschlussfassung im Umlaufverfahren";
+  return "ordentlichen Eigentümerversammlung";
+}
+function etvObjektText(ve) {
+  const teile = [];
+  if (ve && (ve.nr || ve.name)) teile.push(ve.nr || ve.name);
+  if (ve && ve.adresse && ve.adresse.strasse) {
+    teile.push(ve.adresse.strasse + (ve.adresse.plz || ve.adresse.ort
+      ? ", " + [ve.adresse.plz, ve.adresse.ort].filter(Boolean).join(" ") : ""));
+  }
+  return teile.join(" · ");
+}
+function etvTerminText(versammlung) {
+  return (versammlung.datum ? "am " + datumDe(versammlung.datum) : "Termin offen")
+    + (versammlung.uhrzeit ? " um " + versammlung.uhrzeit + " Uhr" : "")
+    + (versammlung.ort ? ", " + versammlung.ort : "");
+}
+function pdfDateiName(art, versammlung) {
+  const d = versammlung.datum || isoHeute();
+  return art.charAt(0).toUpperCase() + art.slice(1) + "_ETV_" + d + ".pdf";
+}
+
+// Empfänger der Einladung (§2.2): je Einheit EIN Brief (Standard, Miteigen-
+// tümer zusammen) oder je Eigentümer ein eigener. Einheiten ohne aktive
+// Eigentümer werden gemeldet und übersprungen. Muster: etvAnwesenheitZeilen.
+function einladungsEmpfaenger(ve, kontakte, modus) {
+  const raus = [];
+  const adresseVon = (p) => {
+    const k = p && p.kontaktId != null
+      ? (kontakte || []).find((x) => x && x.id === p.kontaktId) : null;
+    if (!k) return [];
+    const z = [];
+    if (k.strasse) z.push(k.strasse);
+    const po = [k.plz, k.ort].filter(Boolean).join(" ");
+    if (po) z.push(po);
+    return z;
+  };
+  alleEinheitenVonVe(ve).forEach((e) => {
+    if (!e) return;
+    const aktive = (e.eigentuemer || []).filter((p) => p && eigStatus(p) === "aktiv");
+    if (aktive.length === 0) { raus.push({ leer: true, einheit: e }); return; }
+    if (modus === "eigentuemer") {
+      aktive.forEach((p) => raus.push({ einheit: e,
+        namen: [p.name || "Eigentümer"], adresse: adresseVon(p) }));
+    } else {
+      const namen = istEigentuemergemeinschaft(e)
+        ? [gemeinschaftName(e)]
+        : aktive.map((p) => p.name || "").filter(Boolean);
+      raus.push({ einheit: e, namen: namen.length ? namen : ["Eigentümer"],
+        adresse: adresseVon(aktive[0]) });
+    }
+  });
+  return raus;
+}
+
+// Tagesordnung (§2.1): IMMER Nummernfolge (§1.4) — so wurde geladen.
+function baueTagesordnungBloecke(versammlung, ve, welt, optionen) {
+  const opt = optionen || {};
+  const tops = topsFuerVersammlung(welt, versammlung.id)
+    .slice().sort((a, b) => (a.nummer || 0) - (b.nummer || 0));
+  const bloecke = [];
+  if (!opt.ohneKopf) {
+    bloecke.push({ typ: "ueberschrift", text: "Tagesordnung" });
+    bloecke.push({ typ: "absatz", farbe: "grau",
+      text: einladungArtText(versammlung).replace(/^B/, "B") + " · " + etvObjektText(ve) });
+    bloecke.push({ typ: "absatz", farbe: "grau", text: etvTerminText(versammlung) });
+    bloecke.push({ typ: "zeile" });
+  } else {
+    bloecke.push({ typ: "ueberschrift", groesse: 12, text: "Tagesordnung" });
+  }
+  if (tops.length === 0) {
+    bloecke.push({ typ: "absatz", farbe: "grau", text: "Noch keine Tagesordnungspunkte." });
+  }
+  tops.forEach((tp) => {
+    bloecke.push({ typ: "punkt", label: "TOP " + (tp.nummer || "?"),
+      text: tp.titel || "—", textFett: true });
+    if (opt.mitWortlaut && tp.wortlaut) {
+      bloecke.push({ typ: "absatz", farbe: "grau", groesse: 9.5,
+        text: "Beschlussvorlage: " + tp.wortlaut });
+    }
+    bloecke.push({ typ: "abstand", hoehe: 2 });
+  });
+  return bloecke;
+}
+
+// Einladung (§2.2): Serienbrief — pro Empfänger Anschreiben + Tagesordnung,
+// dazwischen Seitenumbruch. Personalisiert: Adressfeld, Einheit-Nr., MEA.
+function baueEinladungBloecke(versammlung, ve, welt, kontakte, optionen) {
+  const opt = optionen || {};
+  const empfaenger = einladungsEmpfaenger(ve, kontakte, opt.modus || "einheit")
+    .filter((r) => !r.leer);
+  const absenderZeilen = String(opt.absender || "").split("\n")
+    .map((z) => z.trim()).filter(Boolean);
+  const bloecke = [];
+  empfaenger.forEach((r, i) => {
+    if (i > 0) bloecke.push({ typ: "seitenumbruch" });
+    if (absenderZeilen.length > 0) {
+      bloecke.push({ typ: "absatz", farbe: "grau", groesse: 8.5,
+        text: absenderZeilen.join(" · ") });
+      bloecke.push({ typ: "zeile" });
+    }
+    bloecke.push({ typ: "abstand", hoehe: 16 });
+    bloecke.push({ typ: "adressfeld", zeilen: [...r.namen, ...r.adresse] });
+    bloecke.push({ typ: "abstand", hoehe: 12 });
+    bloecke.push({ typ: "ueberschrift", groesse: 13,
+      text: "Einladung zur " + einladungArtText(versammlung) });
+    bloecke.push({ typ: "absatz", farbe: "grau", text: etvObjektText(ve) });
+    bloecke.push({ typ: "abstand", hoehe: 6 });
+    bloecke.push({ typ: "absatz", text: "Sehr geehrte Damen und Herren," });
+    bloecke.push({ typ: "absatz",
+      text: "hiermit laden wir Sie herzlich zur " + einladungArtText(versammlung)
+        + " ein. Die Versammlung findet statt " + etvTerminText(versammlung) + "." });
+    const einheitTeile = ["Ihre Einheit: " + (r.einheit.nr || r.einheit.bezeichnung || "—")];
+    if (r.einheit.mea) einheitTeile.push("Miteigentumsanteil: " + r.einheit.mea);
+    bloecke.push({ typ: "absatz", fett: true, text: einheitTeile.join(" · ") });
+    bloecke.push({ typ: "absatz",
+      text: "Die Tagesordnung finden Sie auf den folgenden Seiten. Sollten Sie "
+        + "nicht persönlich teilnehmen können, besteht die Möglichkeit, sich "
+        + "durch eine bevollmächtigte Person vertreten zu lassen." });
+    bloecke.push({ typ: "abstand", hoehe: 8 });
+    bloecke.push({ typ: "absatz", text: "Mit freundlichen Grüßen" });
+    if (absenderZeilen.length > 0) {
+      bloecke.push({ typ: "absatz", text: absenderZeilen[0] });
+    }
+    bloecke.push({ typ: "abstand", hoehe: 10 });
+    baueTagesordnungBloecke(versammlung, ve, welt,
+      { mitWortlaut: opt.mitWortlaut, ohneKopf: true }).forEach((b) => bloecke.push(b));
+  });
+  return bloecke;
+}
+
+// ── Unterlagen-Karte (§4.2): der ETV-Ordner in der Übersicht ────────────────
+// Protokoll als PDF (§2.3/§7.5): DIESELBE Datenlogik wie der HTML-Druck
+// (baueEtvProtokollHtml), gerendert als PdfBauer-Blöcke. TOPs in
+// BEHANDLUNGSREIHENFOLGE (§1.4 — so lief die Versammlung) mit
+// „(vorgezogen)"-Vermerk; das Deckblatt listet in Nummernfolge.
+function baueProtokollBloecke(versammlung, ve, welt, kontakte, optionen) {
+  const opt = optionen || {};
+  const bl = [];
+  const tops = topsFuerVersammlung(welt, versammlung.id);
+  const anw = anwesenheitenFuer(welt, versammlung.id);
+  const stamm = (ve && ve.etvStamm) || {};
+  const bf = beschlussfaehigkeitInfo(anw, stamm.gesamtanteile, versammlung.stimmprinzip);
+  const nachMea = (versammlung.stimmprinzip || "MEA") === "MEA";
+  const beschlussVon = (tp) => tp.beschluss_id
+    ? (welt.beschluesse || []).find((x) => x.id === tp.beschluss_id) || null : null;
+  const wLabel = { ja: "Ja", nein: "Nein", enthaltung: "Enthaltung" };
+  // Deckblatt: Nummernfolge (Nachschlagewerk), Ausgang als Wort.
+  bl.push({ typ: "ueberschrift", text: "Protokoll · " + artLabel(versammlung.versammlung_art) });
+  bl.push({ typ: "absatz", farbe: "grau", text: etvObjektText(ve) });
+  bl.push({ typ: "absatz", farbe: "grau", text: etvTerminText(versammlung) });
+  bl.push({ typ: "zeile" });
+  bl.push({ typ: "ueberschrift", groesse: 12, text: "Tagesordnung und Ausgang" });
+  tops.slice().sort((a, b) => (a.nummer || 0) - (b.nummer || 0)).forEach((tp) => {
+    const b = beschlussVon(tp);
+    const a = topAusgang(tp, b);
+    const nr = b && b.lfd_nummer != null ? " (Beschluss Nr. " + b.lfd_nummer + ")" : "";
+    bl.push({ typ: "punkt", label: "TOP " + (tp.nummer || "?"),
+      text: (tp.titel || "—") + nr + " — " + (a ? a.label : "—") });
+  });
+  bl.push({ typ: "seitenumbruch" });
+  // Kopf/Pflichtangaben (§24 WEG).
+  const kopfZeilen = [];
+  kopfZeilen.push("Art: " + artLabel(versammlung.versammlung_art)
+    + (versammlung.versammlung_art !== "umlauf"
+      ? " (" + (((ETV_DURCHFUEHRUNG.find((x) => x.id === versammlung.art) || {}).label) || "") + ")" : ""));
+  kopfZeilen.push((versammlung.versammlung_art === "umlauf" ? "Stichtag: " : "Termin: ")
+    + (versammlung.datum ? datumDe(versammlung.datum) : "—")
+    + (versammlung.uhrzeit ? " · " + versammlung.uhrzeit + " Uhr" : ""));
+  if (versammlung.protokoll_beginn) {
+    kopfZeilen.push("Beginn: " + versammlung.protokoll_beginn + " Uhr"
+      + (versammlung.protokoll_ende ? " · Ende: " + versammlung.protokoll_ende + " Uhr" : ""));
+  }
+  if (versammlung.ort) kopfZeilen.push("Ort: " + versammlung.ort);
+  kopfZeilen.push("Stimmprinzip: " + (versammlung.stimmprinzip || "MEA"));
+  if (versammlung.leiter_kontakt_id) {
+    kopfZeilen.push("Versammlungsleiter: " + kontaktNameVonId(kontakte, versammlung.leiter_kontakt_id));
+  }
+  if (versammlung.protokollfuehrer_kontakt_id) {
+    kopfZeilen.push("Protokollführer: " + kontaktNameVonId(kontakte, versammlung.protokollfuehrer_kontakt_id));
+  }
+  if (versammlung.beirat_vorsitz_kontakt_id) {
+    kopfZeilen.push("Verwaltungsbeirat (Vorsitz): "
+      + kontaktNameVonId(kontakte, versammlung.beirat_vorsitz_kontakt_id)
+      + ((versammlung.beirat_mitglied_kontakt_ids || []).length > 0
+        ? " · Mitglieder: " + (versammlung.beirat_mitglied_kontakt_ids || [])
+            .map((id) => kontaktNameVonId(kontakte, id)).join(", ")
+        : ""));
+  }
+  kopfZeilen.forEach((z) => bl.push({ typ: "absatz", text: z }));
+  if (versammlung.einladung_festgestellt) {
+    bl.push({ typ: "absatz", text: "Der Versammlungsleiter stellte fest, dass zu der "
+      + "Versammlung form- und fristgerecht eingeladen wurde." });
+  }
+  if (anw.length > 0) {
+    bl.push({ typ: "absatz", text: "Der Versammlungsleiter stellte die "
+      + "Beschlussfähigkeit fest (" + bf.text + ")." });
+  }
+  // TOPs in Behandlungsreihenfolge (§1.4) mit „vorgezogen"-Vermerk.
+  tops.forEach((tp, idx) => {
+    const b = beschlussVon(tp);
+    const versetzt = tp.nummer && tp.nummer !== idx + 1
+      ? (tp.nummer > idx + 1 ? " (vorgezogen)" : " (nachgestellt)") : "";
+    bl.push({ typ: "abstand", hoehe: 6 });
+    bl.push({ typ: "ueberschrift", groesse: 12,
+      text: "TOP " + (tp.nummer || "?") + versetzt + " · " + (tp.titel || "—") });
+    if (tp.text) bl.push({ typ: "absatz", text: tp.text });
+    if (tp.wortlaut) bl.push({ typ: "absatz", text: "Beschlussvorlage: " + tp.wortlaut });
+    if ((tp.anlagen || []).length > 0) {
+      bl.push({ typ: "absatz", farbe: "grau",
+        text: "Anlagen: " + tp.anlagen.map((a) => a.titel).join(", ") });
+    }
+    if (b && b.abstimmung) {
+      const ab = b.abstimmung;
+      if (ab.ja_kopf != null) {
+        bl.push({ typ: "absatz", fett: true,
+          text: "Abstimmung: Ja " + ab.ja_kopf + " Stimmen (" + meaStr(ab.ja_mea) + " MEA) · "
+            + "Nein " + ab.nein_kopf + " Stimmen (" + meaStr(ab.nein_mea) + " MEA) · "
+            + "Enthaltung " + ab.enth_kopf + " Stimmen (" + meaStr(ab.enth_mea) + " MEA) — "
+            + (b.ergebnis === "angenommen" ? "ANGENOMMEN" : "ABGELEHNT") });
+        const mt = MEHRHEITSTYPEN.find((m) => m.id === b.mehrheitstyp);
+        if (b.mehrheitstyp && b.mehrheitstyp !== "einfach" && mt) {
+          bl.push({ typ: "absatz", farbe: "grau",
+            text: "Erforderliche Mehrheit: " + mt.label
+              + (b.schwelle_erreicht
+                ? " — Kopf-Quote " + (b.schwelle_erreicht.kopf ? "erreicht" : "verfehlt")
+                  + ", MEA-Schwelle " + (b.schwelle_erreicht.mea ? "erreicht" : "verfehlt")
+                  + " (Ja-MEA " + meaStr(ab.ja_mea) + " von " + meaStr(b.gesamt_mea)
+                  + " Gesamt-MEA)"
+                : "") });
+        }
+        if (opt.einzelstimmen && b.stimmen && Object.keys(b.stimmen).length > 0) {
+          bl.push({ typ: "absatz", fett: true, groesse: 9.5, text: "Einzelstimmen:" });
+          Object.keys(b.stimmen).forEach((eid) => {
+            const az = anw.find((x) => String(x.einheit_id) === String(eid));
+            bl.push({ typ: "punkt", label: az ? az.einheit_nr : String(eid),
+              text: (az ? az.eigentuemer_namen : "—") + " — "
+                + (wLabel[b.stimmen[eid]] || "—") });
+          });
+        }
+      } else {
+        bl.push({ typ: "absatz", fett: true,
+          text: "Abstimmung (" + (versammlung.stimmprinzip || "MEA") + "): "
+            + "Ja " + meaStr(ab.ja) + " · Nein " + meaStr(ab.nein)
+            + " · Enthaltung " + meaStr(ab.enthaltung) + " — "
+            + (b.ergebnis === "angenommen" ? "ANGENOMMEN" : "ABGELEHNT") });
+      }
+      bl.push({ typ: "absatz", text: "Der Versammlungsleiter verkündete das Beschlussergebnis." });
+      if (b.anfechtungsfrist_bis) {
+        bl.push({ typ: "absatz", farbe: "grau",
+          text: "Anfechtungsfrist bis " + datumDe(b.anfechtungsfrist_bis) + " (§45 WEG)" });
+      }
+    } else if (tp.beschluss_noetig) {
+      bl.push({ typ: "absatz", farbe: "grau", text: "Abstimmung noch offen." });
+    }
+    if (tp.notiz) bl.push({ typ: "absatz", farbe: "grau", text: tp.notiz });
+  });
+  // Anwesenheitsliste + Weisungen.
+  if (anw.length > 0) {
+    bl.push({ typ: "abstand", hoehe: 8 });
+    bl.push({ typ: "ueberschrift", groesse: 12, text: "Anwesenheitsliste" });
+    anw.forEach((a) => {
+      bl.push({ typ: "punkt", label: a.einheit_nr || "—",
+        text: (a.eigentuemer_namen || "—") + " · "
+          + (nachMea ? meaStr(a.stimmgewicht) + " MEA" : "1 Stimme") + " · "
+          + (a.status === "anwesend" ? "anwesend"
+            : (a.status === "vertreten"
+              ? "vertreten durch " + (a.vertreten_durch || "—")
+                + (a.ist_verwaltervollmacht ? " (Verwalter-Vollmacht)" : "")
+              : "—")) });
+    });
+    bl.push({ typ: "absatz", fett: true, text: bf.text });
+    const mitWeisung = anw.filter((a) => a.status === "vertreten"
+      && a.weisungen && Object.keys(a.weisungen).length > 0);
+    if (mitWeisung.length > 0) {
+      bl.push({ typ: "ueberschrift", groesse: 12, text: "Vollmachten mit Weisung (§25 WEG)" });
+      mitWeisung.forEach((a) => {
+        const teile = Object.keys(a.weisungen).map((topId) => {
+          const tp = tops.find((x) => x.id === topId);
+          return "TOP " + (tp ? tp.nummer : "?") + " " + (wLabel[a.weisungen[topId]] || "");
+        }).join(" · ");
+        bl.push({ typ: "punkt", label: a.einheit_nr || "—",
+          text: (a.eigentuemer_namen || "—") + " — vertreten durch "
+            + (a.vertreten_durch || "—")
+            + (a.ist_verwaltervollmacht ? " [Verwalter-Vollmacht]" : "") + ": " + teile });
+      });
+    }
+  }
+  // Anlagenverzeichnis (Versammlung + TOPs) — nur Titel, wie HTML-Weg.
+  const verzeichnis = [];
+  (versammlung.anlagen || []).forEach((a) => verzeichnis.push({ a, zu: "" }));
+  tops.forEach((tp) => (tp.anlagen || []).forEach((a) =>
+    verzeichnis.push({ a, zu: " (zu TOP " + (tp.nummer || "?") + ")" })));
+  if (verzeichnis.length > 0) {
+    bl.push({ typ: "abstand", hoehe: 8 });
+    bl.push({ typ: "ueberschrift", groesse: 12, text: "Anlagenverzeichnis" });
+    verzeichnis.forEach((v, i) => {
+      bl.push({ typ: "punkt", label: "Anlage " + (i + 1),
+        text: (v.a.titel || "—") + v.zu });
+    });
+  }
+  // Unterschriften (§24 WEG).
+  bl.push({ typ: "abstand", hoehe: 10 });
+  bl.push({ typ: "ueberschrift", groesse: 12, text: "Unterschriften" });
+  const uZeile = (kid, rolle, am) => {
+    bl.push({ typ: "abstand", hoehe: 26 });
+    bl.push({ typ: "zeile" });
+    bl.push({ typ: "absatz",
+      text: (kid ? kontaktNameVonId(kontakte, kid) : "________________") + ", " + rolle
+        + (am ? " — unterschrieben am " + datumDe(am) : "") });
+  };
+  uZeile(versammlung.leiter_kontakt_id, "Versammlungsleiter", versammlung.unterschrift_leiter_am);
+  uZeile(versammlung.unterschrift_eigentuemer_kontakt_id, "Wohnungseigentümer",
+    versammlung.unterschrift_eigentuemer_am);
+  if (versammlung.beirat_vorsitz_kontakt_id) {
+    uZeile(versammlung.beirat_vorsitz_kontakt_id,
+      "Vorsitzender des Verwaltungsbeirats", versammlung.unterschrift_beirat_am);
+  }
+  return bl;
+}
+
+function EtvUnterlagenKarte({ versammlung, onWelt, t, accent, editModeGlobal, onAnsehen }) {
+  const [offen, setOffen] = useState(true);
+  const unterlagen = Array.isArray(versammlung.unterlagen) ? versammlung.unterlagen : [];
+  if (unterlagen.length === 0) return null;
+  return (
+    <BausteinKarte t={t} accent={accent} titel="Unterlagen"
+      offen={offen} onToggle={() => setOffen(!offen)}
+      sub={unterlagen.length === 1 ? "1 Dokument" : unterlagen.length + " Dokumente"}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {unterlagen.map((u) => (
+          <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div onClick={() => onAnsehen({ id: u.dateiRef, name: u.titel || "Unterlage" })}
+              style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+              <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text,
+                overflowWrap: "anywhere" }}>
+                {(UNTERLAGE_ART_LABEL[u.art] || "Dokument") + " · " + (u.titel || "—")}
+              </div>
+              <div style={{ fontSize: FS.xs, color: t.muted }}>
+                {(u.erzeugt_am ? datumDe(u.erzeugt_am.slice(0, 10))
+                  + " " + u.erzeugt_am.slice(11, 16) : "")
+                  + (u.hinweis ? " · " + u.hinweis : "")}
+              </div>
+            </div>
+            {editModeGlobal ? (
+              <button onClick={() => {
+                  if (u.dateiRef) dateiLoeschen(u.dateiRef);
+                  onWelt((w) => weltVersammlungUnterlageWeg(w, versammlung.id, u.id));
+                }}
+                title="Unterlage löschen" aria-label="Unterlage löschen"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 30, height: 30, flexShrink: 0, borderRadius: RAD.pill,
+                  border: "1px solid #EF4444", background: "none", cursor: "pointer" }}>
+                <I name="trash" size={13} color="#EF4444"/>
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </BausteinKarte>
+  );
+}
+
+// ── Druck-Menü (§5): DAS ETV-Menü im Akten-Kopf ─────────────────────────────
+// Drucker-Button öffnet dieses Menü: Tagesordnung + Einladung erzeugen PDFs
+// (immer abgelegt, dann Viewer), Protokoll druckt wie bisher (synchroner
+// window.print-Weg, §26.3). Einstellungen (Wortlaut-Haken, Empfänger-Modus,
+// Absender, Protokoll-Haken) wohnen hier.
+function EtvDruckMenue({ versammlung, ve, welt, kontakte, onWelt, t, accent, onClose,
+  bilderEinbetten, setBilderEinbetten, einzelstimmen, setEinzelstimmen, onAnsehen }) {
+  const [schritt, setSchritt] = useState("menue"); // menue | einladung
+  const [mitWortlaut, setMitWortlaut] = useState(true);
+  const [einlModus, setEinlModus] = useState("einheit"); // Standard je Einheit (Entscheidung 1)
+  const [absender, setAbsender] = useState(versammlung.einladung_absender || "");
+  const [laufend, setLaufend] = useState(false);
+  const [fehler, setFehler] = useState("");
+  const empfaenger = einladungsEmpfaenger(ve, kontakte, einlModus);
+  const briefe = empfaenger.filter((r) => !r.leer);
+  const leere = empfaenger.filter((r) => r.leer);
+  const erzeuge = (art) => {
+    if (laufend) return;
+    setLaufend(true); setFehler("");
+    const opt = { mitWortlaut, modus: einlModus, absender };
+    const bloecke = art === "tagesordnung"
+      ? baueTagesordnungBloecke(versammlung, ve, welt, opt)
+      : art === "protokoll"
+      ? baueProtokollBloecke(versammlung, ve, welt, kontakte, { einzelstimmen })
+      : baueEinladungBloecke(versammlung, ve, welt, kontakte, opt);
+    const hinweis = art === "einladung"
+      ? briefe.length + (briefe.length === 1 ? " Brief" : " Briefe")
+        + (einlModus === "einheit" ? ", je Einheit" : ", je Eigentümer")
+      : art === "protokoll"
+      ? (einzelstimmen ? "mit Einzelstimmen" : "")
+      : (mitWortlaut ? "mit Beschlussvorlagen" : "");
+    bauePdf(bloecke, { fusszeile: "AllesDa · " + etvObjektText(ve) })
+      .then((bytes) => {
+        const name = pdfDateiName(art, versammlung);
+        const file = new File([bytes], name, { type: "application/pdf" });
+        return dateiSpeichern(file).then((meta) => {
+          onWelt((w) => {
+            let neu = weltVersammlungUnterlage(w, versammlung.id,
+              { art, titel: name, dateiRef: meta.id, hinweis });
+            if (art === "einladung" && absender !== (versammlung.einladung_absender || "")) {
+              neu = weltVersammlungPatch(neu, versammlung.id, { einladung_absender: absender });
+            }
+            return neu;
+          });
+          setLaufend(false);
+          onAnsehen({ id: meta.id, name });
+          onClose();
+        });
+      })
+      .catch(() => { setLaufend(false); setFehler("PDF konnte nicht erzeugt werden."); });
+  };
+  return (
+    <div style={overlayBackdrop(210)} onClick={onClose}>
+      <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+        <OverlayKopf t={t} icon="printer"
+          titel={schritt === "einladung" ? "Einladung erzeugen" : "Drucken & Unterlagen"}
+          onClose={onClose}/>
+        <div style={overlayBody()}>
+          {schritt === "menue" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                onClick={() => erzeuge("tagesordnung")}
+                text={laufend ? "Erzeuge …" : "Tagesordnung (PDF)"}/>
+              <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                onClick={() => setSchritt("einladung")}
+                text="Einladung mit Anschreiben (PDF) …"/>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, fontSize: FS.s, color: t.sub }}>
+                  Beschlussvorlagen mitdrucken</div>
+                <Toggle value={mitWortlaut} color={accent} onChange={setMitWortlaut}/>
+              </div>
+              <div style={{ borderTop: "1px solid " + t.border, paddingTop: 10,
+                display: "flex", flexDirection: "column", gap: 8 }}>
+                <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                  onClick={() => erzeuge("protokoll")}
+                  text={laufend ? "Erzeuge …" : "Protokoll als PDF ablegen"}/>
+                <AktionsButton rolle="abbrechen" variante="breit" t={t} accent={accent}
+                  onClick={() => { druckeEtvProtokoll(versammlung, ve, welt, kontakte,
+                    { bilderEinbetten, einzelstimmen }); onClose(); }}
+                  text="Protokoll drucken (Papier)"/>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ flex: 1, fontSize: FS.s, color: t.sub }}>
+                    Bilder eingebettet drucken</div>
+                  <Toggle value={bilderEinbetten} color={accent} onChange={setBilderEinbetten}/>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ flex: 1, fontSize: FS.s, color: t.sub }}>
+                    Einzelstimmen namentlich drucken</div>
+                  <Toggle value={einzelstimmen} color={accent} onChange={setEinzelstimmen}/>
+                </div>
+              </div>
+              {fehler ? (
+                <div style={{ fontSize: FS.s, color: "#EF4444" }}>{fehler}</div>
+              ) : null}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div>
+                <label style={{ display: "block", fontSize: FS.xs, fontWeight: FW.bold,
+                  color: t.muted, marginBottom: 4 }}>Empfänger</label>
+                <SegmentControl t={t} accent={accent} voll={false}
+                  options={[{ id: "einheit", label: "Je Einheit ein Brief" },
+                    { id: "eigentuemer", label: "Je Eigentümer" }]}
+                  value={einlModus} onChange={setEinlModus}/>
+                <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
+                  {briefe.length === 1 ? "1 Brief wird erzeugt."
+                    : briefe.length + " Briefe werden erzeugt."}
+                </div>
+                {leere.length > 0 ? (
+                  <div style={{ fontSize: FS.xs, color: "#F59E0B", marginTop: 2 }}>
+                    {leere.map((r) => r.einheit.nr || r.einheit.bezeichnung || "Einheit")
+                      .join(", ") + (leere.length === 1
+                        ? " hat keinen aktiven Eigentümer und wird übersprungen."
+                        : " haben keinen aktiven Eigentümer und werden übersprungen.")}
+                  </div>
+                ) : null}
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: FS.xs, fontWeight: FW.bold,
+                  color: t.muted, marginBottom: 4 }}>
+                  Absender / Briefkopf (wird gemerkt)</label>
+                <textarea value={absender} onChange={(e) => setAbsender(e.target.value)}
+                  rows={3} placeholder={"Hausverwaltung Muster\nMusterstraße 1\n04109 Leipzig"}
+                  style={{ width: "100%", boxSizing: "border-box", fontSize: 16,
+                    fontFamily: "inherit", color: t.text, background: t.bg,
+                    border: "1px solid " + t.border, borderRadius: RAD.sm,
+                    padding: "8px 10px", resize: "vertical" }}/>
+              </div>
+              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                <AktionsButton rolle="abbrechen" variante="breit" t={t} accent={accent}
+                  onClick={() => setSchritt("menue")} text="Zurück"/>
+                <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                  onClick={() => erzeuge("einladung")}
+                  text={laufend ? "Erzeuge …" : "Einladung erzeugen"}/>
+              </div>
+              {fehler ? (
+                <div style={{ fontSize: FS.s, color: "#EF4444" }}>{fehler}</div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, settings, t, accent, onZurueck }) {
   const [tab, setTab] = useState("uebersicht");
   // §12.9: Akten-Kopf trägt Bearbeiten (globaler editMode), Drucken, Löschen.
@@ -2083,6 +2633,10 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
   // zeigt die Toggles und schreibt hierher zurück.
   const [bilderEinbetten, setBilderEinbetten] = useState(false);
   const [einzelstimmen, setEinzelstimmen] = useState(false);
+  // Druck-Menü (§5, 19.07.): der Drucker-Button öffnet DAS ETV-Menü —
+  // Druckwerke + Einstellungen. Viewer zeigt erzeugte/abgelegte PDFs.
+  const [druckMenue, setDruckMenue] = useState(false);
+  const [unterlageViewer, setUnterlageViewer] = useState(null); // {id, name}
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const tabs = [
     { id: "uebersicht", label: "Übersicht", icon: "home" },
@@ -2114,7 +2668,7 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
             onEdit={() => setEditModeGlobal(true)}
             onCancel={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
             onConfirm={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
-            onPrint={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}
+            onPrint={() => setDruckMenue(true)}
             loeschConfirm={loeschConfirm}
             onDelete={() => {
               if (!loeschConfirm) { setLoeschConfirm(true); return; }
@@ -2122,8 +2676,8 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
               if (onZurueck) onZurueck();
             }}/>
         ) : (
-          <KopfIconButton icon="printer" title="Protokoll drucken" t={t} accent={accent}
-            onClick={() => druckeEtvProtokoll(versammlung, ve, welt, kontakte, { bilderEinbetten, einzelstimmen })}/>
+          <KopfIconButton icon="printer" title="Drucken & Unterlagen" t={t} accent={accent}
+            onClick={() => setDruckMenue(true)}/>
         )}
         <button onClick={onZurueck}
           style={{ flexShrink: 0, fontSize: FS.xs, fontWeight: FW.bold,
@@ -2138,6 +2692,7 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
         <EtvUebersichtTab versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
           onWelt={onWelt} kontakte={kontakte} t={t} accent={accent}
           editModeGlobal={editModeGlobal}
+          onUnterlageAnsehen={setUnterlageViewer}
           bilderEinbetten={bilderEinbetten} setBilderEinbetten={setBilderEinbetten}
           einzelstimmen={einzelstimmen} setEinzelstimmen={setEinzelstimmen}/>
       ) : null}
@@ -2151,6 +2706,17 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
       {tab === "beschluesse" ? (
         <EtvBeschluesseTab versammlung={versammlung} welt={welt} onWelt={onWelt}
           t={t} accent={accent}/>
+      ) : null}
+      {druckMenue ? (
+        <EtvDruckMenue versammlung={versammlung} ve={ve} welt={welt} kontakte={kontakte}
+          onWelt={onWelt} t={t} accent={accent} onClose={() => setDruckMenue(false)}
+          bilderEinbetten={bilderEinbetten} setBilderEinbetten={setBilderEinbetten}
+          einzelstimmen={einzelstimmen} setEinzelstimmen={setEinzelstimmen}
+          onAnsehen={setUnterlageViewer}/>
+      ) : null}
+      {unterlageViewer ? (
+        <DateiViewerModal t={t} accent={accent} datei={unterlageViewer}
+          onClose={() => setUnterlageViewer(null)}/>
       ) : null}
     </div>
   );

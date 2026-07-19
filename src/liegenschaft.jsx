@@ -12,7 +12,8 @@ import {
   istAnonymesMitglied, istVermietet, istVertragspartei, laufenderEigWechsel, laufenderSevWechsel,
   leererHaushalt, neueBelegung, neuerRaum, neuerTeil, neuerZaehler, neuesHhMitglied, parseFlaeche,
   sevStatus, starteSevWechsel, summeRaumFlaechen, teileVon, verwendungenVon, vsBasisLabel,
-  vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wirtschaftsjahrZeitraum, personenTageAufschluesselung, neuerPersonenAbschnitt, tageInklusive, wendeKontaktZuweisungenAn, zaehlerArtLabel
+  vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wirtschaftsjahrZeitraum, personenTageAufschluesselung, neuerPersonenAbschnitt, tageInklusive, wendeKontaktZuweisungenAn, zaehlerArtLabel,
+  versammlungenFuerObjekt, UNTERLAGE_ART_LABEL
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
@@ -8026,7 +8027,73 @@ function DokumenteChecklist({ karten, setKarten, t, accent, editMode, onDateiAns
 // ── DokumenteAnsicht: Dokumente-Tab. Erste Karte = Checkliste; darunter je
 // angehaktem Dokument eine eigene Karte (Basisfelder + typspezifische), plus
 // frei ergänzbare eigene Karten. Verhalten exakt wie VerwaltungAnsicht.
-function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null }) {
+// ── ETV-Ordner-Karte (§4.3, 19.07.): Nur-Lese-Sicht auf die Unterlagen der
+// Versammlungen dieses Objekts. Karten-Klapp-Muster: ganzer Kopf klickbar,
+// kein Chevron. Erscheint nur, wenn mindestens eine Unterlage existiert.
+function EtvOrdnerKarte({ etvWelt, ve, t, accent, onDateiAnsehen }) {
+  const [offen, setOffen] = useState(false);
+  const versammlungen = versammlungenFuerObjekt(etvWelt, ve && ve.id)
+    .filter((v) => Array.isArray(v.unterlagen) && v.unterlagen.length > 0)
+    .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")));
+  if (versammlungen.length === 0) return null;
+  const gesamt = versammlungen.reduce((s, v) => s + v.unterlagen.length, 0);
+  return (
+    <div style={{ background: t.card, border: "1px solid " + t.border,
+      borderRadius: RAD.lg, marginBottom: 12, minWidth: 0 }}>
+      <div onClick={() => setOffen(!offen)}
+        style={{ padding: "11px 14px", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 8 }}>
+        <I name="calendar" size={15} color={accent}/>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
+            Eigentümerversammlungen</div>
+          <div style={{ fontSize: FS.xs, color: t.muted }}>
+            {gesamt === 1 ? "1 Unterlage" : gesamt + " Unterlagen"}
+            {" · " + (versammlungen.length === 1 ? "1 Versammlung"
+              : versammlungen.length + " Versammlungen")}</div>
+        </div>
+      </div>
+      {offen ? (
+        <div style={{ padding: "0 14px 12px 14px", display: "flex",
+          flexDirection: "column", gap: 10 }}>
+          {versammlungen.map((v) => (
+            <div key={v.id}>
+              <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+                textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
+                {(v.datum ? datumDe(v.datum) : "Termin offen")
+                  + (v.versammlung_art === "ausserordentlich" ? " · außerordentlich"
+                    : v.versammlung_art === "umlauf" ? " · Umlauf" : "")}
+              </div>
+              {v.unterlagen.map((u) => (
+                <div key={u.id}
+                  onClick={() => onDateiAnsehen({ id: u.dateiRef, name: u.titel || "Unterlage" })}
+                  style={{ display: "flex", alignItems: "center", gap: 8,
+                    padding: "5px 0", cursor: "pointer" }}>
+                  <I name="document" size={13} color={t.sub}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: FS.s, color: t.text, overflowWrap: "anywhere" }}>
+                      {(UNTERLAGE_ART_LABEL[u.art] || "Dokument") + " · " + (u.titel || "—")}
+                    </div>
+                    <div style={{ fontSize: FS.xs, color: t.muted }}>
+                      {(u.erzeugt_am ? datumDe(u.erzeugt_am.slice(0, 10))
+                        + " " + u.erzeugt_am.slice(11, 16) : "")
+                        + (u.hinweis ? " · " + u.hinweis : "")}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div style={{ fontSize: FS.xs, color: t.muted }}>
+            Erzeugen und Löschen läuft in der jeweiligen ETV-Akte (Drucker-Menü).
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null, etvWelt = null }) {
   const karten = (ve && Array.isArray(ve.dokumenteKarten)) ? ve.dokumenteKarten : [];
   // EIN Viewer-State für den ganzen Dokumente-Tab (Checkliste + Karten teilen ihn)
   const [viewerDatei, setViewerDatei] = useState(null);
@@ -8070,6 +8137,15 @@ function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMo
       {/* Checkliste der WEG-Unterlagen */}
       <DokumenteChecklist karten={karten} setKarten={setKarten} t={t} accent={accent}
         editMode={editMode} onDateiAnsehen={setViewerDatei}/>
+
+      {/* ETV-Ordner (Druck&Ablage-Konzept 19.07. §4.3): feste Karte
+          „Eigentümerversammlungen" — je Versammlung ein Abschnitt mit den
+          abgelegten Unterlagen als REFERENZ (Quelle: versammlung.unterlagen,
+          Arbeitsort bleibt die ETV-Akte — hier nur ansehen, kein Duplikat). */}
+      {etvWelt ? (
+        <EtvOrdnerKarte etvWelt={etvWelt} ve={ve} t={t} accent={accent}
+          onDateiAnsehen={setViewerDatei}/>
+      ) : null}
 
       {/* Dokument-Karten (aus der Checkliste + eigene) — nur wenn aktiviert
           oder im Bearbeiten-Modus (zum Verwalten eigener Karten). */}

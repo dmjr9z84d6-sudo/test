@@ -1290,11 +1290,11 @@ function ObjektListeMitDetail({ ves, kontakte, setVes, setKontakte, t, accent,
 // Dokumente-Inhalt, kein Zweitbau). Da der Hauptscreen keinen globalen
 // Bearbeiten-Schalter hat, hält dieser Wrapper einen EIGENEN lokalen editMode
 // + Bearbeiten-Toggle, damit Upload/Bearbeiten direkt hier möglich ist.
-function DokumenteScreenDetail({ ve, setVes, t, accent, kontakte, setKontakte, gotoKontakt, ves, editMode = false }) {
+function DokumenteScreenDetail({ ve, setVes, t, accent, kontakte, setKontakte, gotoKontakt, ves, editMode = false, etvWelt = null }) {
   return (
     <DokumenteAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
       kontakte={kontakte} setKontakte={setKontakte} editMode={editMode}
-      onKontaktClick={gotoKontakt} ves={ves}/>
+      onKontaktClick={gotoKontakt} ves={ves} etvWelt={etvWelt}/>
   );
 }
 
@@ -2407,6 +2407,7 @@ export default function App() {
             <VEDetail ve={offenVE} t={t} accent={objektAccent}
               kontakte={kontakte} setKontakte={setKontakte} ves={ves} setVes={setVes}
               cardId={"obj-" + offenVE.id}
+              etvWelt={vorgangsWelt}
               sprungZiel={veSprungZiel}
               externEditMode={objektDetailEditMode}
               setExternEditMode={setObjektDetailEditMode}
@@ -3824,6 +3825,7 @@ export default function App() {
                 accent={(effectiveSettings.kacheln.find(k => k.id === "dokumente") || {}).farbe || "#64748B"}
                 kontakte={kontakteSichtbar} setKontakte={setKontakte}
                 editMode={dokumenteEditMode}
+                etvWelt={vorgangsWelt}
                 gotoKontakt={gotoKontakt} ves={vesSichtbar}/>
             )}/>
         )}

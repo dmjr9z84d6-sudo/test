@@ -3068,6 +3068,12 @@ function neueVersammlung(init) {
     // Versammlungs-Anlagen (Ausbau-Konzept §4.6, 13.07.): Anhänge fürs Protokoll,
     // gleiche Referenz-Struktur wie TOP-Anlagen — {id, titel, quelle, refId, dateiRef}.
     anlagen: [],
+    // Unterlagen (Druck&Ablage-Konzept 19.07. §4.1): erzeugte PDFs — der
+    // „ETV-Ordner". {id, art: einladung|tagesordnung|protokoll|anlage,
+    // titel, dateiRef, erzeugt_am, hinweis}. Erzeugen legt IMMER ab,
+    // nichts wird überschrieben (jeder Stand dokumentiert).
+    unterlagen: [],
+    einladung_absender: "",         // Briefkopf-Freitext, wird gemerkt (§6 Vorstufe)
     demo: false,
   }, init || {});
 }
@@ -3503,6 +3509,27 @@ function _ersetzeEtvIn(liste, id, patch) {
 function weltVersammlungPatch(welt, id, patch) {
   return Object.assign({}, welt, { versammlungen: _ersetzeEtvIn(welt.versammlungen, id, patch) });
 }
+// Unterlagen (Druck&Ablage-Konzept 19.07. §4.1): Eintrag anhängen — der
+// eine Schreibweg für den ETV-Ordner. Erzeugt IMMER einen neuen Stand.
+const UNTERLAGE_ART_LABEL = { einladung: "Einladung", tagesordnung: "Tagesordnung",
+  protokoll: "Protokoll", anlage: "Anlage" };
+function weltVersammlungUnterlage(welt, versammlungId, eintrag) {
+  const v = (welt.versammlungen || []).find((x) => x.id === versammlungId);
+  if (!v || !eintrag) return welt;
+  const u = Object.assign({ id: vgId("unt"), erzeugt_am: new Date().toISOString(),
+    art: "anlage", titel: "Unterlage", dateiRef: null, hinweis: "" }, eintrag);
+  return weltVersammlungPatch(welt, versammlungId, {
+    unterlagen: [...(Array.isArray(v.unterlagen) ? v.unterlagen : []), u] });
+}
+// Entfernt NUR die Referenz — das Blob löscht der Rumpf (dateiLoeschen),
+// analog Foto-Muster (getrennte Zuständigkeit Welt/Dateispeicher).
+function weltVersammlungUnterlageWeg(welt, versammlungId, unterlageId) {
+  const v = (welt.versammlungen || []).find((x) => x.id === versammlungId);
+  if (!v) return welt;
+  return weltVersammlungPatch(welt, versammlungId, {
+    unterlagen: (Array.isArray(v.unterlagen) ? v.unterlagen : [])
+      .filter((u) => u.id !== unterlageId) });
+}
 function weltVersammlungLoeschen(welt, id) {
   const topIds = (welt.tops || []).filter((tp) => tp.versammlung_id === id).map((tp) => tp.id);
   return Object.assign({}, welt, {
@@ -3547,7 +3574,11 @@ function weltTopsNummerieren(welt, versammlungId) {
     tops: (welt.tops || []).map((tp) => map[tp.id] ? Object.assign({}, tp, map[tp.id]) : tp),
   });
 }
-function weltTopVerschieben(welt, id, richtung) {
+// Verschieben mit MODUS (Druck&Ablage-Konzept 19.07. §1): „anpassen" = Nummern
+// folgen der Reihenfolge (Planung, wie bisher); „behalten" = nur die
+// Behandlungsreihenfolge ändert sich, TOP 9 bleibt TOP 9 (in der Versammlung
+// vorgezogen — die Eigentümer haben die Nummern schwarz auf weiß).
+function weltTopVerschieben(welt, id, richtung, modus = "anpassen") {
   const tp = (welt.tops || []).find((x) => x.id === id);
   if (!tp) return welt;
   const geordnet = topsFuerVersammlung(welt, tp.versammlung_id);
@@ -3557,7 +3588,11 @@ function weltTopVerschieben(welt, id, richtung) {
   const neuOrd = geordnet.slice();
   const tmp = neuOrd[idx]; neuOrd[idx] = neuOrd[ziel]; neuOrd[ziel] = tmp;
   const map = {};
-  neuOrd.forEach((x, i) => { map[x.id] = { reihenfolge: i, nummer: i + 1 }; });
+  neuOrd.forEach((x, i) => {
+    map[x.id] = modus === "behalten"
+      ? { reihenfolge: i }
+      : { reihenfolge: i, nummer: i + 1 };
+  });
   return Object.assign({}, welt, {
     tops: (welt.tops || []).map((x) => map[x.id] ? Object.assign({}, x, map[x.id]) : x),
   });
@@ -4756,6 +4791,7 @@ export {
   topsFuerVersammlung, anwesenheitenFuer, beschlussfaehigkeitInfo,
   etvNaechsterSchritt,
   weltVersammlungNeu, weltVersammlungPatch, weltVersammlungLoeschen,
+  weltVersammlungUnterlage, weltVersammlungUnterlageWeg, UNTERLAGE_ART_LABEL,
   weltTopNeu, weltTopPatch, weltTopLoeschen, weltTopVerschieben,
   weltTopAbstimmen, weltBeschlussPatch, weltAnwesenheitenSetzen,
   // Abstimm-Cockpit (Konzept 14.07.):

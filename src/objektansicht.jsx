@@ -1410,7 +1410,7 @@ function FeldEinheitKarte({ ve, einheit, t, accent, onVEClick }) {
 
 // ── VEDetail (mit echtem Liegenschaft-Tab via LiegenschaftAnsicht) ──────────
 function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte, cardId, ves = [], setVes,
-  externEditMode, setExternEditMode, headerOhneEditBtn = false, sprungZiel = null }) {
+  externEditMode, setExternEditMode, headerOhneEditBtn = false, sprungZiel = null, etvWelt = null }) {
   const [tab, setTab] = useState("liegenschaft");
   // Sprungziel (z. B. aus dem Kalender): Tab direkt öffnen. Die betroffene
   // Karte wird unten via initialOffeneKarteId ans Karten-Akkordeon gereicht.
@@ -1627,7 +1627,7 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
       {tab === "dokumente" && (
         <DokumenteAnsicht ve={ve} setVes={setVes} t={t} accent={accent}
           kontakte={kontakte} setKontakte={setKontakte} editMode={editMode}
-          onKontaktClick={onKontaktClick} ves={ves}
+          onKontaktClick={onKontaktClick} ves={ves} etvWelt={etvWelt}
           sprungKarte={sprungZiel && sprungZiel.tab === "dokumente" ? { karteId: sprungZiel.karteId, nonce: sprungZiel.nonce } : null}/>
       )}
       {tab === "fotos" && (
