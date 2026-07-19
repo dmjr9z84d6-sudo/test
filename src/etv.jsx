@@ -517,6 +517,8 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
   });
   const unterzeichnerListe = (kontakte || []).filter((k) => k && unterzeichnerIds[k.id]);
   const unterzeichnerAuswahl = unterzeichnerListe.length > 0 ? unterzeichnerListe : null;
+  // 2-Stufen-Frage fürs Neu-Aufbauen der Anwesenheitsliste (plättet Erfassung).
+  const [anwNeuFrage, setAnwNeuFrage] = useState(false);
   const schritte = etvNaechsterSchritt(versammlung, tops, anw);
   const abgestimmt = tops.filter((tp) => tp.beschluss_noetig && tp.beschluss_id).length;
   const abstNoetig = tops.filter((tp) => tp.beschluss_noetig).length;
@@ -760,13 +762,33 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
                 ) : null}
               </div>
             ))}
-            <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: accent,
-              marginTop: 6, textAlign: "right" }}>
-              {bf.text}
+            {/* Summen-Anzeige (Benny 19.07.): groß + übersichtlich, unten
+                rechts — MEA-Summe prominent, Eigentümer-Zählung darunter. */}
+            <div style={{ marginTop: 10, textAlign: "right" }}>
+              <div style={{ fontSize: FS.xl, fontWeight: FW.heavy, color: accent }}>
+                {(versammlung.stimmprinzip || "MEA") === "MEA"
+                  ? String(bf.summe).replace(".", ",") + " / "
+                    + String(bf.gesamt).replace(".", ",") + " MEA"
+                  : bf.zeilen + " / " + bf.gesamt + " Stimmen"}
+              </div>
+              <div style={{ fontSize: FS.s, color: t.sub, marginTop: 2 }}>
+                {bf.zeilen + " von " + anw.length + " Eigentümern anwesend/vertreten"}
+              </div>
             </div>
+            {/* Neu-Erzeugen setzt die ERFASSUNG zurück (Status, Vertretungen,
+                Weisungen) — 2-Stufen-Bestätigung (§25.2). Nur nötig, wenn sich
+                Eigentümer/Einheiten geändert haben; MEA-Änderungen zieht der
+                Gewichts-Sync automatisch nach. */}
             <div style={{ marginTop: 4 }}>
-              <AktionsButton rolle="abbrechen" variante="breit" t={t}
-                onClick={anwErzeugen} text="Liste neu aus Eigentümern erzeugen"/>
+              {!anwNeuFrage ? (
+                <AktionsButton rolle="abbrechen" variante="breit" t={t}
+                  onClick={() => setAnwNeuFrage(true)}
+                  text="Liste aus Eigentümern neu aufbauen"/>
+              ) : (
+                <AktionsButton rolle="loeschen" variante="breit" t={t} confirm
+                  onClick={() => { anwErzeugen(); setAnwNeuFrage(false); }}
+                  text="Wirklich neu aufbauen? Erfasste Anwesenheit und Weisungen gehen verloren."/>
+              )}
             </div>
           </div>
         )}
