@@ -2887,6 +2887,8 @@ function neuerAuftrag(init) {
     freigegeben_von_id: null,
     status: "erfasst",           // §96.2-Kette; erfasst = 🔵 blau (Ball liegt bei mir)
     beschreibung: "",
+    einheit_id: null,            // „Wo?" — Einheit oder null = ganzes Objekt (Benny 18.07., wie Vorgang)
+    raum_id: null,               // „Raum" — Verfeinerung, null = kein bestimmter Raum
     ort: "",                     // „Wo genau?" — Freitext vom Erfassen (Begehung 18.07.)
     notiz: "",                   // Notizen zum Punkt (Nachbearbeitung vor Vorgang)
     gemeldet_von_id: null,       // wer hat gemeldet/aufgenommen (Kontakt, null = ich)

@@ -1444,6 +1444,8 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
   // Beschreibung, Wo genau, Notizen, Gemeldet von. Stift im Kartenkopf (§12.9).
   const [edit, setEdit] = useState(false);
   const [eBeschreibung, setEBeschreibung] = useState("");
+  const [eEinheit, setEEinheit] = useState("");
+  const [eRaum, setERaum] = useState("");
   const [eOrt, setEOrt] = useState("");
   const [eNotiz, setENotiz] = useState("");
   const [eGemeldet, setEGemeldet] = useState("");
@@ -1453,6 +1455,7 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
     ? (kontakte || []).find((k) => k && k.id === auftrag.gemeldet_von_id) : null;
   const editStart = () => {
     setEBeschreibung(auftrag.beschreibung || "");
+    setEEinheit(auftrag.einheit_id || ""); setERaum(auftrag.raum_id || "");
     setEOrt(auftrag.ort || ""); setENotiz(auftrag.notiz || "");
     setEGemeldet(auftrag.gemeldet_von_id || "");
     setEdit(true);
@@ -1462,15 +1465,28 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
     onWelt((w) => Object.assign({}, w, {
       auftraege: w.auftraege.map((a) => a.id === auftrag.id
         ? Object.assign({}, a, { beschreibung: eBeschreibung.trim() || a.beschreibung,
+            einheit_id: eEinheit || null, raum_id: eRaum || null,
             ort: eOrt.trim(), notiz: eNotiz.trim(),
             gemeldet_von_id: eGemeldet || null })
         : a),
     }));
     setEdit(false);
   };
+  // Wo-Label (Benny 18.07., wie VorgangDetail): Einheit + Raum + Freitext
+  // in EINEM 📍-Eintrag — keine drei getrennten Schnipsel.
+  const einheitenL = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  const einheitL = auftrag.einheit_id
+    ? (einheitenL.filter((e) => e.id === auftrag.einheit_id)[0] || null) : null;
+  const raumL = ve && auftrag.raum_id ? findeRaum(ve, auftrag.raum_id) : null;
+  const eRaeume = raeumeFuerWo(ve, eEinheit);
   const infoTeile = [];
   if (auftrag.erfasst_am) infoTeile.push("erfasst " + datumDe(auftrag.erfasst_am));
-  if (auftrag.ort) infoTeile.push("📍 " + auftrag.ort);
+  const woTeile = [
+    einheitL ? (einheitL.bezeichnung || einheitL.nr || einheitL.einheitLabel || "Einheit") : "",
+    raumL ? (raumL.name || raumL.bezeichnung || "Raum") : "",
+    auftrag.ort || "",
+  ].filter(Boolean);
+  if (woTeile.length > 0) infoTeile.push("📍 " + woTeile.join(" · "));
   if (gemeldetKontakt) infoTeile.push("gemeldet von " + (gemeldetKontakt.name || "Kontakt"));
   return (
     <div onClick={auswahlModus && onAuswahl ? onAuswahl : undefined}
@@ -1511,6 +1527,38 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
         <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
           <Inp t={t} accent={accent} label="Was ist Sache?" required
             value={eBeschreibung} onChange={setEBeschreibung}/>
+          {/* WO — dieselben Felder wie im Anlage-Dialog (Benny 18.07.):
+              Einheit-Wahl + Raum-Verfeinerung, „Wo genau?" bleibt Freitext. */}
+          {einheitenL.length > 0 ? (
+            <div>
+              <label style={feldLabelStil(t)}>Wo?</label>
+              <select value={eEinheit}
+                onChange={(e) => { setEEinheit(e.target.value); setERaum(""); }}
+                style={selectStil(t, accent, true)}>
+                <option value="">Ganzes Objekt / Gemeinschaft</option>
+                {einheitenL.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.bezeichnung || e.nr || e.einheitLabel || String(e.id)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {eRaeume.length > 0 ? (
+            <div>
+              <label style={feldLabelStil(t)}>Raum (optional)</label>
+              <select value={eRaum}
+                onChange={(e) => setERaum(e.target.value)}
+                style={selectStil(t, accent, !!eRaum)}>
+                <option value="">— kein bestimmter Raum —</option>
+                {eRaeume.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name || r.bezeichnung || "Raum"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <Inp t={t} accent={accent} label="Wo genau? (optional)"
             value={eOrt} onChange={setEOrt}
             placeholder="z. B. Treppenhaus 2. OG"/>
@@ -1518,6 +1566,14 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
           <textarea value={eNotiz} onChange={(e) => setENotiz(e.target.value)}
             rows={2} style={Object.assign({}, selectStil(t, accent, !!eNotiz),
               { resize: "vertical", minHeight: 48 })}/>
+          {/* FOTOS gehören ins Bearbeiten (Benny 18.07.): Leiste im
+              Lösch-Modus (X am Foto) + „+ Foto" — EIN Bearbeiten, der Stift. */}
+          <label style={feldLabelStil(t)}>Fotos</label>
+          <div style={{ marginBottom: 10 }}>
+            <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
+              onFotoHinzu={onFotoHinzu} onWelt={onWelt}
+              onFotoEntfernen={onFotoEntfernen} bearbeiten={true}/>
+          </div>
           <KontaktPickerMitAllen value={eGemeldet || null}
             onChange={(id) => setEGemeldet(id || "")}
             label="Gemeldet von (leer = ich / die Verwaltung)" t={t} accent={accent}
@@ -1532,7 +1588,8 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
       {!auswahlModus && !edit ? (
         <div style={{ marginTop: 6, marginBottom: onWelt ? 6 : 0 }}>
           <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-            onFotoHinzu={onFotoHinzu} onWelt={onWelt} onFotoEntfernen={onFotoEntfernen}/>
+            onFotoHinzu={onFotoHinzu} onWelt={onWelt}
+            onFotoEntfernen={onFotoEntfernen} bearbeiten={false}/>
         </div>
       ) : null}
       {/* Buttons rechts ausgerichtet unten in EINER Reihe (Benny 18.07.). */}
@@ -1599,18 +1656,34 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const [buendelFirmaId, setBuendelFirmaId] = useState("");   // Direkt beauftragen (18.07.)
   const alleVorgaenge = sortiereVorgaenge(
     welt.vorgaenge.filter((v) => v.objekt_id === veId), welt);
-  const vorgaenge = katTab === "alle" ? alleVorgaenge
-    : alleVorgaenge.filter((v) => vorgangKategorie(v.kategorie).id === katTab);
-  const offenerVorgang = offeneId
-    ? (alleVorgaenge.filter((v) => v.id === offeneId)[0] || null) : null;
   const lose = welt.auftraege.filter(
     (a) => !a.vorgang_id && a.objekt_id === veId && a.status !== "abgenommen");
   const offeneVorgaenge = alleVorgaenge.filter((v) => v.status !== "geschlossen");
   if (alleVorgaenge.length === 0 && lose.length === 0) {
     return leerText(t, "Keine Vorgänge.");
   }
-  const katOptionen = [{ id: "alle", label: "Alle", icon: "list" }].concat(
-    VORGANG_KATEGORIEN.map((k) => ({ id: k.id, label: k.kurz || k.label, icon: k.icon })));
+  // Tabs NUR mit Inhalt (Benny 18.07.): „Alle" | „Erfasst" (nur wenn lose
+  // Punkte da sind) | Kategorien mit mindestens einem Vorgang. Bietet die
+  // Leiste keine echte Wahl (höchstens EIN Inhalts-Tab neben „Alle" —
+  // dann zeigen beide dasselbe), verschwindet sie ganz.
+  const katMitInhalt = VORGANG_KATEGORIEN.filter((k) =>
+    alleVorgaenge.some((v) => vorgangKategorie(v.kategorie).id === k.id));
+  const katOptionen = [{ id: "alle", label: "Alle", icon: "list" }]
+    .concat(lose.length > 0 ? [{ id: "erfasst", label: "Erfasst", icon: "document" }] : [])
+    .concat(katMitInhalt.map((k) => ({ id: k.id, label: k.kurz || k.label, icon: k.icon })));
+  const zeigeTabs = katOptionen.length >= 3;
+  // Gewählter Tab kann Inhalt verlieren (z. B. alle Punkte gebündelt) —
+  // dann still zurück auf „Alle", kein toter Filter.
+  const katTabEff = zeigeTabs && katOptionen.some((o) => o.id === katTab)
+    ? katTab : "alle";
+  const vorgaenge = katTabEff === "alle" ? alleVorgaenge
+    : katTabEff === "erfasst" ? []
+    : alleVorgaenge.filter((v) => vorgangKategorie(v.kategorie).id === katTabEff);
+  // Erfasste Punkte NUR unter „Alle" und „Erfasst" (Benny 18.07.) — nicht
+  // mehr in jeder Kategorie.
+  const zeigeLose = katTabEff === "alle" || katTabEff === "erfasst";
+  const offenerVorgang = offeneId
+    ? (alleVorgaenge.filter((v) => v.id === offeneId)[0] || null) : null;
   const buendelReset = () => {
     setBuendelModus(false); setBuendelIds([]); setBuendelZiel(null);
     setBuendelTitel(""); setBuendelVorgangId(""); setBuendelFirmaId("");
@@ -1634,10 +1707,10 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   };
   const liste = (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {alleVorgaenge.length > 0 ? (
-        <TabLeiste tabs={katOptionen} aktiv={katTab} onWaehle={setKatTab} t={t} accent={accent}/>
+      {zeigeTabs ? (
+        <TabLeiste tabs={katOptionen} aktiv={katTabEff} onWaehle={setKatTab} t={t} accent={accent}/>
       ) : null}
-      {vorgaenge.length === 0 && alleVorgaenge.length > 0 ? (
+      {katTabEff !== "erfasst" && vorgaenge.length === 0 && alleVorgaenge.length > 0 ? (
         leerText(t, "Keine Vorgänge in dieser Kategorie.")
       ) : null}
       {vorgaenge.map((v) => (
@@ -1647,7 +1720,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
           ve={ve} onFotoHinzu={onFotoHinzu}
           onToggle={() => setOffeneId(offeneId === v.id ? null : v.id)}/>
       ))}
-      {lose.length > 0 ? (
+      {zeigeLose && lose.length > 0 ? (
         <div style={{ margin: "6px 2px 0 2px" }}>
           <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
             textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -1663,12 +1736,12 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
           ) : null}
         </div>
       ) : null}
-      {buendelModus ? (
+      {zeigeLose && buendelModus ? (
         <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px" }}>
           Funde antippen, die zusammengehören.
         </div>
       ) : null}
-      {lose.map((a) => (
+      {zeigeLose ? lose.map((a) => (
         <LoseAuftragKarte key={a.id} auftrag={a} t={t} kontakte={kontakte}
           accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
           ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
@@ -1676,8 +1749,8 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
           ausgewaehlt={buendelIds.indexOf(a.id) >= 0}
           onAuswahl={() => setBuendelIds(buendelIds.indexOf(a.id) >= 0
             ? buendelIds.filter((x) => x !== a.id) : [...buendelIds, a.id])}/>
-      ))}
-      {buendelModus ? (
+      )) : null}
+      {zeigeLose && buendelModus ? (
         <div style={flowZeileStil(t)}>
           <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>
             {buendelIds.length === 0 ? "Nichts ausgewählt"
@@ -2042,7 +2115,7 @@ function istHeicDatei(f) {
   const ty = ((f && f.type) || "").toLowerCase();
   return n.endsWith(".heic") || n.endsWith(".heif") || ty.indexOf("heic") >= 0 || ty.indexOf("heif") >= 0;
 }
-function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null, onFotoEntfernen = null }) {
+function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null, onFotoEntfernen = null, bearbeiten = null }) {
   const [heicHinweis, setHeicHinweis] = useState(false);
   // Quellen-Wahl (18.07.): „+ Foto" bietet Neu-Upload ODER Auswahl aus der
   // Foto-Zentrale des Objekts (ve.fotos). Bibliothekswahl hängt NUR die
@@ -2052,9 +2125,15 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null,
   const [bibOffen, setBibOffen] = useState(false);
   const [bibAuswahl, setBibAuswahl] = useState([]);
   // Ansehen + Bearbeiten (18.07.): Foto antippen → Vollbild-Viewer; im
-  // Bearbeiten-Modus (Stift) erscheint an jedem Foto ein X → Wahl „nur vom
-  // Punkt lösen" ODER „ganz löschen" (onFotoEntfernen aus dem Rumpf).
-  const [bearbeiten, setBearbeiten] = useState(false);
+  // Bearbeiten-Modus erscheint an jedem Foto ein X → Wahl „nur vom Punkt
+  // lösen" ODER „ganz löschen" (onFotoEntfernen aus dem Rumpf).
+  // GESTEUERT (Benny 18.07., „nur EIN Bearbeiten"): gibt der Aufrufer die
+  // bearbeiten-Prop (LoseAuftragKarte → Karten-Stift), gibt es KEINEN
+  // eigenen Schalter. Ohne Prop (Vorgang-Detail, dort existiert kein Stift)
+  // bleibt der interne „Fotos bearbeiten"-Schalter als einziger Zugang.
+  const [bearbInternal, setBearbInternal] = useState(false);
+  const gesteuertB = bearbeiten !== null;
+  const bearb = gesteuertB ? bearbeiten : bearbInternal;
   const [viewer, setViewer] = useState(null);      // { index }
   const [loeschFoto, setLoeschFoto] = useState(null);
   const fotoIds = Array.isArray(auftrag.foto_ids) ? auftrag.foto_ids : [];
@@ -2062,7 +2141,7 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null,
   const fotos = alleFotos.filter((f) => f && fotoIds.indexOf(f.id) >= 0);
   // Bibliothek = Fotos der Zentrale, die noch NICHT am Punkt hängen.
   const bibliothek = alleFotos.filter((f) => f && fotoIds.indexOf(f.id) < 0);
-  const kannBearbeiten = !!onFotoEntfernen && fotos.length > 0;
+  const kannBearbeiten = !gesteuertB && !!onFotoEntfernen && fotos.length > 0;
   if (!onFotoHinzu && fotos.length === 0) return null;
   const waehle = () => {
     const input = document.createElement("input");
@@ -2095,12 +2174,12 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null,
   };
   const bibToggle = (id) => setBibAuswahl((alt) =>
     alt.indexOf(id) >= 0 ? alt.filter((x) => x !== id) : [...alt, id]);
-  const fotoAntippen = (idx) => { if (!bearbeiten) setViewer({ index: idx }); };
+  const fotoAntippen = (idx) => { if (!bearb) setViewer({ index: idx }); };
   const loeschAusfuehren = (ganzWeg) => {
     if (onFotoEntfernen && loeschFoto) onFotoEntfernen(auftrag, loeschFoto, ganzWeg);
     setLoeschFoto(null);
-    // War es das letzte Foto, Bearbeiten-Modus schließen (nichts mehr zu tun).
-    if (fotos.length <= 1) setBearbeiten(false);
+    // War es das letzte Foto, internen Bearbeiten-Modus schließen.
+    if (!gesteuertB && fotos.length <= 1) setBearbInternal(false);
   };
   const viewerFoto = viewer ? fotos[viewer.index] : null;
   const viewerDatei = viewerFoto ? {
@@ -2121,7 +2200,7 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null,
         {fotos.map((f, idx) => (
           <div key={f.id} style={{ position: "relative", flexShrink: 0 }}>
             <FotoThumb foto={f} t={t} onClick={() => fotoAntippen(idx)}/>
-            {bearbeiten ? (
+            {bearb ? (
               <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); setLoeschFoto(f); }}
                 title="Foto entfernen" aria-label="Foto entfernen"
                 style={{ position: "absolute", top: -6, right: -6, width: 22, height: 22,
@@ -2132,18 +2211,18 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null,
             ) : null}
           </div>
         ))}
-        {onFotoHinzu && !bearbeiten ? (
+        {onFotoHinzu && !bearb ? (
           <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); plusKlick(); }}
             style={flowKnopf(t, accent, false)}>+ Foto</button>
         ) : null}
         {kannBearbeiten ? (
-          <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); setBearbeiten((b) => !b); }}
-            style={flowKnopf(t, accent, bearbeiten)}>
-            {bearbeiten ? "Fertig" : "Fotos bearbeiten"}
+          <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); setBearbInternal((b) => !b); }}
+            style={flowKnopf(t, accent, bearb)}>
+            {bearb ? "Fertig" : "Fotos bearbeiten"}
           </button>
         ) : null}
       </div>
-      {bearbeiten ? (
+      {bearb ? (
         <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
           Auf das × tippen, um ein Foto vom Punkt zu entfernen.
         </div>
@@ -2687,6 +2766,8 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   // Fotos direkt bei der Aufnahme — Fotos landen in der Foto-Zentrale des
   // Objekts, am Punkt hängen nur Referenzen).
   const [beschreibung, setBeschreibung] = useState("");
+  const [auftragEinheitId, setAuftragEinheitId] = useState("");
+  const [auftragRaumId, setAuftragRaumId] = useState("");
   const [auftragOrt, setAuftragOrt] = useState("");
   const [auftragNotiz, setAuftragNotiz] = useState("");
   const [auftragFotos, setAuftragFotos] = useState([]);   // File-Objekte bis zum Speichern
@@ -2714,6 +2795,9 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   };
 
   const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  // Räume für den Auftrag-Zweig (Benny 18.07.): dieselbe Wo?/Raum-Wahl wie
+  // beim Vorgang — ein Punkt sitzt genauso an Einheit/Raum.
+  const auftragRaeume = raeumeFuerWo(ve, auftragEinheitId);
 
   const legeVorgangAn = () => {
     if (!titel.trim()) { setFehler(true); return; }
@@ -2733,11 +2817,13 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
       onClose(); return;
     }
     onErfasseAuftrag({ beschreibung: beschreibung.trim(),
+      einheit_id: auftragEinheitId || null, raum_id: auftragRaumId || null,
       ort: auftragOrt.trim(), notiz: auftragNotiz.trim(),
       gemeldet_von_id: melderId || null,
       fotos: auftragFotos });
     if (weiter) {
-      setBeschreibung(""); setAuftragOrt(""); setAuftragNotiz("");
+      setBeschreibung(""); setAuftragEinheitId(""); setAuftragRaumId("");
+      setAuftragOrt(""); setAuftragNotiz("");
       setAuftragFotos([]); setFehler(false);
       setErfasstZahl(erfasstZahl + 1);
     } else {
@@ -2886,6 +2972,37 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
               {fotoHeicHinweis ? (
                 <div style={{ fontSize: FS.xs, color: t.muted, marginTop: -4, marginBottom: 8 }}>
                   HEIC-Bilder kann der Browser nicht anzeigen — bitte als JPEG aufnehmen/teilen (§93.10).
+                </div>
+              ) : null}
+              {/* WO — dieselbe Wahl wie beim Vorgang (Benny 18.07.). */}
+              {einheiten.length > 0 ? (
+                <div>
+                  <label style={feldLabelStil(t)}>Wo?</label>
+                  <select value={auftragEinheitId}
+                    onChange={(e) => { setAuftragEinheitId(e.target.value); setAuftragRaumId(""); }}
+                    style={selectStil(t, accent, true)}>
+                    <option value="">Ganzes Objekt / Gemeinschaft</option>
+                    {einheiten.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.bezeichnung || e.nr || e.einheitLabel || String(e.id)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {auftragRaeume.length > 0 ? (
+                <div>
+                  <label style={feldLabelStil(t)}>Raum (optional)</label>
+                  <select value={auftragRaumId}
+                    onChange={(e) => setAuftragRaumId(e.target.value)}
+                    style={selectStil(t, accent, !!auftragRaumId)}>
+                    <option value="">— kein bestimmter Raum —</option>
+                    {auftragRaeume.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name || r.bezeichnung || "Raum"}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               ) : null}
               <Inp t={t} accent={accent} label="Wo genau? (optional)"

@@ -3441,6 +3441,7 @@ export default function App() {
               onErfasseAuftrag={(d) => {
                 const a = neuerAuftrag({ objekt_id: anlegenVe.id,
                   beschreibung: d.beschreibung, status: "erfasst",
+                  einheit_id: d.einheit_id || null, raum_id: d.raum_id || null,
                   ort: d.ort || "", notiz: d.notiz || "",
                   gemeldet_von_id: d.gemeldet_von_id || null });
                 setVorgangsWelt(prev => ({ ...prev,
