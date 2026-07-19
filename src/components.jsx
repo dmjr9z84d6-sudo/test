@@ -1469,24 +1469,18 @@ function KontaktPickerMitAllen({ kontakteObjekt, kontakteAlle, t, accent, ...res
   const [alleZeigen, setAlleZeigen] = useState(false);
   const hatFilter = Array.isArray(kontakteObjekt)
     && kontakteObjekt.length !== (kontakteAlle || []).length;
+  // §Picker-Umbau (Benny 19.07.): der „alle zeigen"-Umschalter lebt IM
+  // aufgeklappten Picker (alleOption), nicht mehr als Checkbox unterm Feld.
   return (
-    <div>
-      <KontaktPicker t={t} accent={accent} {...rest}
-        kontakte={alleZeigen || !Array.isArray(kontakteObjekt) ? (kontakteAlle || []) : kontakteObjekt}/>
-      {hatFilter ? (
-        <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2,
-          fontSize: FS.s, color: t.sub, cursor: "pointer", userSelect: "none" }}>
-          <input type="checkbox" checked={alleZeigen}
-            onChange={e => setAlleZeigen(e.target.checked)}
-            style={{ accentColor: accent }}/>
-          Alle Kontakte durchsuchen (nicht nur die des Objekts)
-        </label>
-      ) : null}
-    </div>
+    <KontaktPicker t={t} accent={accent} {...rest}
+      kontakte={alleZeigen || !Array.isArray(kontakteObjekt) ? (kontakteAlle || []) : kontakteObjekt}
+      alleOption={hatFilter ? { aktiv: alleZeigen,
+        onToggle: () => setAlleZeigen(!alleZeigen),
+        label: "Alle Kontakte durchsuchen" } : null}/>
   );
 }
 
-function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = true, nurFirmen = false, kontakte = [], setKontakte, onCreate }) {
+function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = true, nurFirmen = false, kontakte = [], setKontakte, onCreate, alleOption = null }) {
   const [offen, setOffen] = useState(false);
   const [suche, setSuche] = useState("");
   // Inline-Schnellanlage: kompaktes Mini-Formular im Picker, damit User nicht
@@ -1652,6 +1646,25 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                 cursor: setKontakte ? "pointer" : "not-allowed",
                 fontSize: FS.s, color: setKontakte ? accent : t.muted, fontWeight: FW.bold, fontFamily: "inherit" }}>+ Neu anlegen</button>
             </div>
+            {/* §Picker-Umbau (19.07.): Umschalter Objekt-Kontakte ⇄ alle —
+                lebt IM Picker (vorher Checkbox unterm Feld). */}
+            {alleOption ? (
+              <button onClick={alleOption.onToggle}
+                style={{ display: "flex", alignItems: "center", gap: 7, width: "100%",
+                  padding: "7px 12px", background: alleOption.aktiv ? accent + "14" : "none",
+                  border: "none", borderBottom: `1px solid ${t.border}`,
+                  cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                <span style={{ width: 15, height: 15, flexShrink: 0, borderRadius: 4,
+                  border: `1.5px solid ${alleOption.aktiv ? accent : t.border}`,
+                  background: alleOption.aktiv ? accent : "transparent",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  {alleOption.aktiv ? <I name="check" size={10} color={getContrastColor(accent)}/> : null}
+                </span>
+                <span style={{ fontSize: FS.s, color: alleOption.aktiv ? accent : t.sub }}>
+                  {alleOption.label || "Alle Kontakte durchsuchen"}
+                </span>
+              </button>
+            ) : null}
             {/* Inline-Schnellanlage */}
             {neuOffen && setKontakte && (
               <div style={{ padding: "10px 12px", background: accent + "08",

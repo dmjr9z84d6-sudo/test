@@ -15,7 +15,7 @@
 //   TE            · Nachschlage-Backup = TERegisterAnsicht (§67, EIN Baustein)
 //   Beschlüsse    · gefasste dieser Versammlung + besondere (ist_besonders)
 // ═══════════════════════════════════════════════════════════════════════════
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute } from "./utils-basis.js";
 import { DatumFeld, Inp, KontaktPickerMitAllen, SegmentControl, TabLeiste, Toggle,
@@ -24,7 +24,7 @@ import { AktionsButton } from "./kontakte-modul.jsx";
 import { BausteinKarte, StatusPille } from "./vorgang.jsx";
 import { TERegisterAnsicht, alleEinheitenVonVe } from "./objektansicht.jsx";
 import { DateiViewerModal, gemeinschaftName, istEigentuemergemeinschaft, neueDokumentKarte } from "./liegenschaft.jsx";
-import { I } from "./utils-icons.jsx";
+import { I, useOutsideClick } from "./utils-icons.jsx";
 import { dateiLaden, dateiLoeschen, dateiSpeichern } from "./utils-basis.js";
 import { druckeHtml } from "./listen-tools.jsx";
 import { bauePdf } from "./pdfbauer.js";
@@ -102,6 +102,68 @@ function ortVorschlaegeFuer(ve, welt, kontakte) {
   add(stamm.versammlungsort, null);
   versammlungenFuerObjekt(welt || {}, ve.id).forEach((v) => add(v && v.ort, null));
   return aus;
+}
+
+// ── OrtFeld (Benny 19.07.) — Ort-Picker im ZeitFeld-Muster ──────────────────
+// Freitext-Eingabe + Picker-Button rechts: öffnet ein Popover mit den
+// bekannten Orten (Location-Kontakt, Objekt-Stamm, Versammlungs-Historie).
+// Popover schließt bei Außen-Klick (useOutsideClick, §2.7).
+function OrtFeld({ value, onChange, vorschlaege, t, accent, label = "Ort" }) {
+  const [offen, setOffen] = useState(false);
+  const boxRef = useRef(null);
+  useOutsideClick(boxRef, () => setOffen(false), offen);
+  const liste = (vorschlaege || []).filter((o) => o.name !== value);
+  return (
+    <div ref={boxRef} style={{ position: "relative" }}>
+      {label ? (
+        <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+          textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>{label}</div>
+      ) : null}
+      <div style={{ display: "flex", alignItems: "stretch", borderRadius: RAD.sm,
+        border: "1px solid " + t.border, background: t.card, overflow: "hidden" }}>
+        <input value={value || ""}
+          onChange={(ev) => onChange(ev.target.value)}
+          placeholder="z. B. Gemeindesaal, Musterstr. 1"
+          style={{ flex: 1, minWidth: 0, boxSizing: "border-box",
+            background: "transparent", border: "none", outline: "none",
+            padding: "7px 10px", fontSize: 16, fontFamily: "inherit",
+            color: t.text }}/>
+        <button onClick={() => setOffen(!offen)} type="button" title="Ort auswählen"
+          style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 3,
+            padding: "0 11px", cursor: "pointer", border: "none",
+            borderLeft: "1px solid " + t.border, background: accent + "14", color: accent }}>
+          <I name="building" size={16} color={accent}/>
+          <I name="chevD" size={11} color={accent}/>
+        </button>
+      </div>
+      {offen ? (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30,
+          marginTop: 4, background: t.card, border: "1px solid " + accent + "40",
+          borderRadius: RAD.sm, boxShadow: "0 10px 32px rgba(0,0,0,0.25)",
+          maxHeight: 220, overflowY: "auto" }}>
+          {liste.length === 0 ? (
+            <div style={{ padding: "9px 12px", fontSize: FS.s, color: t.muted,
+              fontStyle: "italic" }}>
+              Noch keine bekannten Orte — einfach eintippen; ab der nächsten
+              Versammlung steht der Ort hier zur Auswahl.
+            </div>
+          ) : liste.map((o, i) => (
+            <button key={i}
+              onClick={() => { onChange(o.name); setOffen(false); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%",
+                textAlign: "left", padding: "8px 12px", background: "none",
+                border: "none", borderBottom: i < liste.length - 1
+                  ? "1px solid " + t.border : "none",
+                cursor: "pointer", fontFamily: "inherit" }}>
+              <I name={o.kontaktId != null ? "users" : "building"} size={13} color={t.muted}/>
+              <span style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text,
+                overflowWrap: "anywhere" }}>{o.name}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 const meaStr = (v) => String(Math.round(zahl(v) * 1000) / 1000).replace(".", ",");
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -602,14 +664,13 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
           <EtvStammEdit versammlung={versammlung} kontakte={kontakte} ve={ve}
             welt={welt} settings={settings}
             t={t} accent={accent}
-            onSave={(p) => {
+            onPatch={(p) => {
               patch(p);
               if (p.datum) syncNaechsteEtvInsObjekt(
                 (welt.versammlungen || []).map((v) =>
                   (v && v.id === versammlung.id) ? Object.assign({}, v, p) : v),
                 versammlung.objekt_id, onVePatch);
-              setEditStamm(false); }}
-            onAbbruch={() => setEditStamm(false)}/>
+            }}/>
         )}
       </BausteinKarte>
 
@@ -882,79 +943,86 @@ function LocationAnfrageOverlay({ ve, versammlung, ort, datum, uhrzeit, kontakte
   );
 }
 
-function EtvStammEdit({ versammlung, kontakte, ve, welt, settings, t, accent, onSave, onAbbruch }) {
+function EtvStammEdit({ versammlung, kontakte, ve, welt, settings, t, accent, onPatch }) {
   const istUmlauf = versammlung.versammlung_art === "umlauf";
-  // Vorbelegung (Benny 19.07.): Leiter/Protokollführer = Profil-Kontakt
-  // (Einstellungen → Mein Profil, settings.userKontaktId); Beirat aus der
-  // jüngsten ANDEREN Versammlung des Objekts. Alles überschreibbar — die
-  // Vorbelegung greift nur, solange die Versammlung selbst noch nichts hat.
+  // §86.6-Edit-Muster (Benny 19.07., wie Objekte-Detail): KEINE eigenen
+  // Speichern/Abbrechen-Buttons mehr — die Felder patchen die Versammlung
+  // DIREKT; der Haken im Akten-Header behält, das X stellt den Snapshot
+  // wieder her (Snapshot/Restore lebt in EtvDetail).
+  const patch = onPatch || (() => {});
   const ich = (settings && settings.userKontaktId) || "";
   const letzte = versammlungenFuerObjekt(welt || {}, ve.id)
     .filter((v) => v && v.id !== versammlung.id && v.datum)
     .sort((a, b) => String(b.datum || "").localeCompare(String(a.datum || "")))[0] || {};
-  const [vArt, setVArt] = useState(versammlung.versammlung_art);
-  const [datum, setDatum] = useState(versammlung.datum || "");
-  const [uhrzeit, setUhrzeit] = useState(versammlung.uhrzeit || letzte.uhrzeit || "");
-  const [ort, setOrt] = useState(versammlung.ort || "");
-  const [durch, setDurch] = useState(versammlung.art || "praesenz");
-  const [ladung, setLadung] = useState(versammlung.ladung_versendet_am || "");
-  const [leiterId, setLeiterId] = useState(versammlung.leiter_kontakt_id || ich || letzte.leiter_kontakt_id || "");
-  const [protokollId, setProtokollId] = useState(versammlung.protokollfuehrer_kontakt_id || ich || letzte.protokollfuehrer_kontakt_id || "");
-  const [beiratVorsitzId, setBeiratVorsitzId] = useState(versammlung.beirat_vorsitz_kontakt_id || letzte.beirat_vorsitz_kontakt_id || "");
-  const [beiratIds, setBeiratIds] = useState(
-    (versammlung.beirat_mitglied_kontakt_ids || []).length > 0
-      ? versammlung.beirat_mitglied_kontakt_ids
-      : (letzte.beirat_mitglied_kontakt_ids || []));
+  // Vorbelegung (Benny 19.07.): Leiter/Protokollführer = Profil-Kontakt
+  // (Einstellungen → Mein Profil); Beirat + Uhrzeit aus der jüngsten anderen
+  // Versammlung. Einmalig beim Öffnen in LEERE Felder gepatcht — überschreibbar,
+  // und das Header-X nimmt auch die Vorbelegung wieder zurück (Snapshot).
+  useEffect(() => {
+    const p = {};
+    if (!versammlung.leiter_kontakt_id && (ich || letzte.leiter_kontakt_id)) {
+      p.leiter_kontakt_id = ich || letzte.leiter_kontakt_id;
+    }
+    if (!versammlung.protokollfuehrer_kontakt_id && (ich || letzte.protokollfuehrer_kontakt_id)) {
+      p.protokollfuehrer_kontakt_id = ich || letzte.protokollfuehrer_kontakt_id;
+    }
+    if (!versammlung.beirat_vorsitz_kontakt_id && letzte.beirat_vorsitz_kontakt_id) {
+      p.beirat_vorsitz_kontakt_id = letzte.beirat_vorsitz_kontakt_id;
+    }
+    if ((versammlung.beirat_mitglied_kontakt_ids || []).length === 0
+      && (letzte.beirat_mitglied_kontakt_ids || []).length > 0) {
+      p.beirat_mitglied_kontakt_ids = (letzte.beirat_mitglied_kontakt_ids || []).slice();
+    }
+    if (!versammlung.uhrzeit && !istUmlauf && letzte.uhrzeit) p.uhrzeit = letzte.uhrzeit;
+    if (Object.keys(p).length > 0) patch(p);
+    // eslint-disable-next-line
+  }, []);
   const [anfrageOffen, setAnfrageOffen] = useState(false);
+  const beiratIds = versammlung.beirat_mitglied_kontakt_ids || [];
   // Kleine Picker-Auswahl (Benny 19.07., Baustein-Filter endlich genutzt):
   // Beirat = nur Eigentümer (§29 WEG); Leiter/Protokoll = Profil + Eigentümer.
   const eigentuemer = eigentuemerKontakteVonVe(ve, kontakte);
   const ichKontakt = (kontakte || []).find((k) => k && k.id === ich) || null;
   const leiterAuswahl = ichKontakt && eigentuemer.indexOf(ichKontakt) === -1
     ? [ichKontakt].concat(eigentuemer) : eigentuemer;
-  const ortVorschlaege = ortVorschlaegeFuer(ve, welt, kontakte)
-    .filter((o) => o.name !== ort);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <SegmentControl t={t} accent={accent} value={vArt} onChange={setVArt}
+      <SegmentControl t={t} accent={accent} value={versammlung.versammlung_art}
+        onChange={(v) => patch(v === "umlauf"
+          ? { versammlung_art: v, uhrzeit: "", ort: "", art: "online" }
+          : { versammlung_art: v })}
         options={ETV_ARTEN.map((a) => ({ id: a.id, label: a.label }))}/>
-      <DatumFeld t={t} accent={accent} iso label={vArt === "umlauf" ? "Stichtag" : "Termin"}
-        value={datum} onChange={setDatum} defaultHeute={false}/>
-      {vArt !== "umlauf" && datum ? <FristHinweis datum={datum} t={t} /> : null}
-      {vArt !== "umlauf" ? (
+      <DatumFeld t={t} accent={accent} iso label={istUmlauf ? "Stichtag" : "Termin"}
+        value={versammlung.datum || ""} onChange={(v) => patch({ datum: v || null })}
+        defaultHeute={false}/>
+      {!istUmlauf && versammlung.datum ? <FristHinweis datum={versammlung.datum} t={t} /> : null}
+      {!istUmlauf ? (
         <>
-          <ZeitFeld t={t} accent={accent} label="Uhrzeit" value={uhrzeit} onChange={setUhrzeit}/>
+          <ZeitFeld t={t} accent={accent} label="Uhrzeit" value={versammlung.uhrzeit || ""}
+            onChange={(v) => patch({ uhrzeit: v })}/>
           <div>
-            <Inp t={t} accent={accent} label="Ort" value={ort} onChange={setOrt}/>
-            {ortVorschlaege.length > 0 ? (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                {ortVorschlaege.map((o, i) => (
-                  <button key={i} onClick={() => setOrt(o.name)}
-                    style={{ fontSize: FS.xs, fontWeight: FW.bold, padding: "5px 10px",
-                      borderRadius: RAD.pill, cursor: "pointer", fontFamily: "inherit",
-                      background: accent + "15", color: accent,
-                      border: "1px solid " + accent + "40" }}>
-                    {o.name}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <OrtFeld t={t} accent={accent} value={versammlung.ort || ""}
+              onChange={(v) => patch({ ort: v })}
+              vorschlaege={ortVorschlaegeFuer(ve, welt, kontakte)}/>
             <div style={{ marginTop: 8 }}>
-              <AktionsButton rolle="abbrechen" variante="breit" t={t}
-                disabled={!ort} onClick={() => setAnfrageOffen(true)}
+              <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                icon={false} disabled={!versammlung.ort}
+                onClick={() => setAnfrageOffen(true)}
                 text="Anfrage an die Location (E-Mail)"/>
             </div>
           </div>
-          <DurchfuehrungWahl t={t} accent={accent} value={durch} onChange={setDurch}
+          <DurchfuehrungWahl t={t} accent={accent} value={versammlung.art || "praesenz"}
+            onChange={(v) => patch({ art: v })}
             hybridMoeglich={etvStammVomObjekt(ve).hybridMoeglich}/>
         </>
       ) : null}
       <DatumFeld t={t} accent={accent} iso label="Einladung versendet am"
-        value={ladung} onChange={setLadung} defaultHeute={false}/>
+        value={versammlung.ladung_versendet_am || ""}
+        onChange={(v) => patch({ ladung_versendet_am: v || null })} defaultHeute={false}/>
       <KontaktPickerMitAllen t={t} accent={accent}
         kontakteObjekt={leiterAuswahl} kontakteAlle={kontakte}
-        label="Versammlungsleiter" value={leiterId || null}
-        onChange={(id) => setLeiterId(id || "")}/>
+        label="Versammlungsleiter" value={versammlung.leiter_kontakt_id || null}
+        onChange={(id) => patch({ leiter_kontakt_id: id || null })}/>
       {!ich ? (
         <div style={{ fontSize: FS.xs, color: t.muted, marginTop: -6 }}>
           Tipp: Profil-Kontakt in den Einstellungen → Mein Profil festlegen —
@@ -963,12 +1031,12 @@ function EtvStammEdit({ versammlung, kontakte, ve, welt, settings, t, accent, on
       ) : null}
       <KontaktPickerMitAllen t={t} accent={accent}
         kontakteObjekt={leiterAuswahl} kontakteAlle={kontakte}
-        label="Protokollführer" value={protokollId || null}
-        onChange={(id) => setProtokollId(id || "")}/>
+        label="Protokollführer" value={versammlung.protokollfuehrer_kontakt_id || null}
+        onChange={(id) => patch({ protokollfuehrer_kontakt_id: id || null })}/>
       <KontaktPickerMitAllen t={t} accent={accent}
         kontakteObjekt={eigentuemer} kontakteAlle={kontakte}
-        label="Verwaltungsbeirat (Vorsitz)" value={beiratVorsitzId || null}
-        onChange={(id) => setBeiratVorsitzId(id || "")}/>
+        label="Verwaltungsbeirat (Vorsitz)" value={versammlung.beirat_vorsitz_kontakt_id || null}
+        onChange={(id) => patch({ beirat_vorsitz_kontakt_id: id || null })}/>
       <div>
         <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
           textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
@@ -978,7 +1046,8 @@ function EtvStammEdit({ versammlung, kontakte, ve, welt, settings, t, accent, on
             padding: "3px 0" }}>
             <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text,
               overflowWrap: "anywhere" }}>{kontaktNameVonId(kontakte, id)}</div>
-            <button onClick={() => setBeiratIds(beiratIds.filter((x) => x !== id))}
+            <button onClick={() => patch({ beirat_mitglied_kontakt_ids:
+                beiratIds.filter((x) => x !== id) })}
               style={{ width: 26, height: 26, borderRadius: RAD.pill, flexShrink: 0,
                 border: "1px solid " + t.border, background: t.card, color: t.muted,
                 cursor: "pointer", lineHeight: 1 }}>×</button>
@@ -988,28 +1057,16 @@ function EtvStammEdit({ versammlung, kontakte, ve, welt, settings, t, accent, on
           kontakteObjekt={eigentuemer} kontakteAlle={kontakte}
           label="Mitglied hinzufügen" value={null}
           onChange={(id) => {
-            if (id && beiratIds.indexOf(id) === -1 && id !== beiratVorsitzId) {
-              setBeiratIds([...beiratIds, id]);
+            if (id && beiratIds.indexOf(id) === -1
+              && id !== versammlung.beirat_vorsitz_kontakt_id) {
+              patch({ beirat_mitglied_kontakt_ids: beiratIds.concat([id]) });
             }
           }}/>
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-          onClick={() => onSave({ versammlung_art: vArt, datum: datum || null,
-            uhrzeit: vArt === "umlauf" ? "" : uhrzeit, ort: vArt === "umlauf" ? "" : ort,
-            art: vArt === "umlauf" ? "online" : durch,
-            ladung_versendet_am: ladung || null,
-            leiter_kontakt_id: leiterId || null,
-            protokollfuehrer_kontakt_id: protokollId || null,
-            beirat_vorsitz_kontakt_id: beiratVorsitzId || null,
-            beirat_mitglied_kontakt_ids: beiratIds })}
-          text="Speichern"/>
-        <AktionsButton rolle="abbrechen" variante="breit" t={t}
-          onClick={onAbbruch} text="Abbrechen"/>
-      </div>
       {anfrageOffen ? (
         <LocationAnfrageOverlay ve={ve} versammlung={versammlung}
-          ort={ort} datum={datum} uhrzeit={uhrzeit}
+          ort={versammlung.ort || ""} datum={versammlung.datum || ""}
+          uhrzeit={versammlung.uhrzeit || ""}
           kontakte={kontakte} settings={settings} t={t} accent={accent}
           onClose={() => setAnfrageOffen(false)}/>
       ) : null}
@@ -2867,11 +2924,33 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
   // Tagesordnung-Tab (Benny 19.07.): eigener Bearbeiten-Stift im Header —
   // Edit-Modus zeigt Sortier-Umschalter + TOP-Hinzufügen (kein breiter Button).
   const [editTagesordnung, setEditTagesordnung] = useState(false);
+  // §86.6-Snapshot (Benny 19.07., Muster Objekte-Detail): Das Stammdaten-
+  // Formular patcht LIVE — der Haken behält, das X stellt die beim Edit-Start
+  // gesicherten Stamm-Felder wieder her (auch Vorbelegungen werden dann
+  // zurückgenommen, da der Snapshot VOR dem Vorbelegungs-Patch entsteht).
+  const stammSnap = useRef(null);
+  const STAMM_FELDER = ["versammlung_art", "datum", "uhrzeit", "ort", "art",
+    "ladung_versendet_am", "leiter_kontakt_id", "protokollfuehrer_kontakt_id",
+    "beirat_vorsitz_kontakt_id", "beirat_mitglied_kontakt_ids"];
+  const stammSichern = () => {
+    const s = {};
+    STAMM_FELDER.forEach((f) => {
+      const w = versammlung[f];
+      s[f] = Array.isArray(w) ? w.slice() : (w == null ? null : w);
+    });
+    stammSnap.current = s;
+  };
+  const stammZuruecksetzen = () => {
+    if (!stammSnap.current) return;
+    const s = stammSnap.current;
+    stammSnap.current = null;
+    onWelt((w) => weltVersammlungPatch(w, versammlung.id, s));
+  };
   const kopfAktionNode = tab === "uebersicht" ? (
     <KopfAktionsLeiste t={t} accent={accent} editMode={editModeGlobal}
-      onEdit={() => setEditModeGlobal(true)}
-      onCancel={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
-      onConfirm={() => { setEditModeGlobal(false); setLoeschConfirm(false); }}
+      onEdit={() => { stammSichern(); setEditModeGlobal(true); }}
+      onCancel={() => { stammZuruecksetzen(); setEditModeGlobal(false); setLoeschConfirm(false); }}
+      onConfirm={() => { stammSnap.current = null; setEditModeGlobal(false); setLoeschConfirm(false); }}
       onPrint={() => setDruckMenue(true)}
       loeschConfirm={loeschConfirm}
       onDelete={() => {
