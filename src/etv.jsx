@@ -53,6 +53,13 @@ const STATUS_FARBE = {
   protokolliert: "#8B5CF6", abgeschlossen: "#10B981",
 };
 const zahl = (v) => Number(String(v == null ? "" : v).replace(",", ".")) || 0;
+// MEA-Werte sind freie Texte an der Einheit — oft Brüche wie „143/1.000".
+// Number() ergäbe daraus NaN→0 (Bug 19.07.: Anwesenheit zählte 0 MEA).
+// Wie parseFlaeche (datenmodell.js): erste Zahl extrahieren, Komma→Punkt.
+const meaZahl = (v) => {
+  const m = String(v == null ? "" : v).replace(",", ".").match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : 0;
+};
 const meaStr = (v) => String(Math.round(zahl(v) * 1000) / 1000).replace(".", ",");
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -80,8 +87,8 @@ function etvAnwesenheitZeilen(ve, versammlungId, stimmprinzip) {
     rows.push(neueAnwesenheit({ versammlung_id: versammlungId,
       einheit_id: e.id != null ? e.id : null, einheit_nr: e.nr || "",
       eigentuemer_namen: namen, eigentuemer_kontakt_ids: ids,
-      stimmgewicht: nachMea ? zahl(e.mea) : 1,
-      mea_einheit: zahl(e.mea) }));  // echtes MEA IMMER (Cockpit-MEA-Spur, 14.07.)
+      stimmgewicht: nachMea ? meaZahl(e.mea) : 1,
+      mea_einheit: meaZahl(e.mea) }));  // echtes MEA IMMER (Cockpit-MEA-Spur, 14.07.; bruchfähig 14.08)
   });
   return rows;
 }
@@ -409,6 +416,33 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
     onWelt((w) => weltAnwesenheitenSetzen(w, versammlung.id,
       etvAnwesenheitZeilen(ve, versammlung.id, versammlung.stimmprinzip)));
   };
+  // Gewichts-Sync (14.08): Bestands-Zeilen (auch vor dem meaZahl-Fix erzeugte
+  // mit stimmgewicht 0) bekommen frische MEA aus den Einheiten — Status,
+  // Vertretung und Weisungen bleiben unangetastet (KEIN Neu-Erzeugen nötig).
+  // Idempotent (patcht nur bei Abweichung); eingefrorene Versammlungen tabu.
+  useEffect(() => {
+    if (anw.length === 0 || versammlung.status === "abgeschlossen") return;
+    const nachMea = (versammlung.stimmprinzip || "MEA") === "MEA";
+    const byId = {};
+    alleEinheitenVonVe(ve).forEach((e) => { if (e && e.id != null) byId[e.id] = e; });
+    const patches = [];
+    anw.forEach((a) => {
+      const e = a.einheit_id != null ? byId[a.einheit_id] : null;
+      if (!e) return;
+      const mea = meaZahl(e.mea);
+      const gew = nachMea ? mea : 1;
+      if (Number(a.stimmgewicht) !== gew || Number(a.mea_einheit) !== mea) {
+        patches.push({ id: a.id, stimmgewicht: gew, mea_einheit: mea });
+      }
+    });
+    if (patches.length === 0) return;
+    onWelt((w) => Object.assign({}, w, {
+      anwesenheiten: (w.anwesenheiten || []).map((a) => {
+        const p = patches.find((x) => x.id === a.id);
+        return p ? Object.assign({}, a, { stimmgewicht: p.stimmgewicht, mea_einheit: p.mea_einheit }) : a;
+      }) }));
+    // eslint-disable-next-line
+  }, [ve, anw.length, versammlung.id, versammlung.stimmprinzip, versammlung.status]);
   const anwPatch = (id, p) => {
     onWelt((w) => Object.assign({}, w, {
       anwesenheiten: (w.anwesenheiten || []).map((a) =>
@@ -474,13 +508,10 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
         </div>
       </BausteinKarte>
 
-      {/* Stammdaten-Karte */}
+      {/* Stammdaten-Karte — Bearbeiten läuft über den Header-Stift der Akte
+          (editModeGlobal, §86.6 19.07.): KEIN eigener Karten-Stift mehr. */}
       <BausteinKarte t={t} accent={accent} titel="Stammdaten"
         offen={istOffen("stamm")} onToggle={() => toggle("stamm")}
-        kopfAktion={!editStamm ? (
-          <KopfIconButton icon="pencil" title="Stammdaten bearbeiten" t={t} accent={accent}
-            onClick={() => { setOffenSet(s => ({ ...s, stamm: true })); setEditStamm(true); }}/>
-        ) : null}
         sub={versammlung.datum ? datumDe(versammlung.datum) : "Termin offen"}>
         {!editStamm ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -614,7 +645,8 @@ function EtvUebersichtTab({ versammlung, ve, onVePatch, welt, onWelt, kontakte, 
                 ) : null}
               </div>
             ))}
-            <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: accent, marginTop: 6 }}>
+            <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: accent,
+              marginTop: 6, textAlign: "right" }}>
               {bf.text}
             </div>
             <div style={{ marginTop: 4 }}>
@@ -1217,9 +1249,8 @@ function AnlagenBlock({ anlagen, onAnlagen, ve, onVePatch, welt, kontextTitel, t
 }
 
 // ── Tab 2 · TAGESORDNUNG — TOP-Karten, wachsen per Baustein-Katalog ─────────
-function EtvTagesordnungTab({ versammlung, ve, onVePatch, welt, onWelt, settings, t, accent }) {
+function EtvTagesordnungTab({ versammlung, ve, onVePatch, welt, onWelt, settings, t, accent, editMode = false }) {
   const [offenId, setOffenId] = useState(null);
-  const [addOffen, setAddOffen] = useState(false);
   // Sortier-Modus (Druck&Ablage-Konzept 19.07. §1.2): „anpassen" = Nummern
   // folgen der Reihenfolge (Planung), „behalten" = nur Behandlungsreihenfolge
   // (in der Versammlung — TOP 9 bleibt TOP 9). Vorbelegung am Ladungs-Anker,
@@ -1228,9 +1259,13 @@ function EtvTagesordnungTab({ versammlung, ve, onVePatch, welt, onWelt, settings
     versammlung.ladung_versendet_am ? "behalten" : "anpassen");
   const tops = topsFuerVersammlung(welt, versammlung.id);
   const gesperrt = versammlung.status === "abgeschlossen";
+  // §86.6 (Benny 19.07.): Anpassen/Sortieren/Anlegen laufen über den
+  // Bearbeiten-Stift im Akten-Header (editMode). Der breite „TOP hinzufügen"-
+  // Button ist entfallen; das Hinzufügen-Panel steht im Edit-Modus offen.
+  const bearbeitbar = !gesperrt && editMode;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {!gesperrt && tops.length > 1 ? (
+      {bearbeitbar && tops.length > 1 ? (
         <div>
           <SegmentControl t={t} accent={accent} voll={false}
             options={[{ id: "anpassen", label: "Nummern anpassen" },
@@ -1245,32 +1280,30 @@ function EtvTagesordnungTab({ versammlung, ve, onVePatch, welt, onWelt, settings
       ) : null}
       {tops.length === 0 ? (
         <div style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>
-          Noch keine Tagesordnungspunkte — unten hinzufügen (Standard-Katalog,
-          aus Vorgängen, oder frei).
+          {bearbeitbar
+            ? "Noch keine Tagesordnungspunkte — unten hinzufügen (Standard-Katalog, aus Vorgängen, oder frei)."
+            : "Noch keine Tagesordnungspunkte — über den Stift oben rechts hinzufügen."}
         </div>
       ) : tops.map((tp, idx) => (
         <TopKarte key={tp.id} top={tp} versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
           onWelt={onWelt} t={t} accent={accent} gesperrt={gesperrt}
+          strukturEdit={bearbeitbar}
           sortModus={sortModus}
           versetzt={tp.nummer && tp.nummer !== idx + 1
             ? (tp.nummer > idx + 1 ? "vorgezogen" : "nachgestellt") : null}
           offen={offenId === tp.id}
           onToggle={() => setOffenId(offenId === tp.id ? null : tp.id)}/>
       ))}
-      {!gesperrt ? (
-        !addOffen ? (
-          <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-            onClick={() => setAddOffen(true)} text="TOP hinzufügen"/>
-        ) : (
-          <TopHinzufuegen versammlung={versammlung} ve={ve} welt={welt}
-            onWelt={onWelt} settings={settings} t={t} accent={accent}
-            onFertig={() => setAddOffen(false)}/>
-        )
-      ) : (
+      {bearbeitbar ? (
+        <TopHinzufuegen versammlung={versammlung} ve={ve} welt={welt}
+          onWelt={onWelt} settings={settings} t={t} accent={accent}
+          onFertig={() => {}}/>
+      ) : null}
+      {gesperrt ? (
         <div style={{ fontSize: FS.xs, color: t.muted }}>
           Versammlung abgeschlossen — Tagesordnung ist eingefroren.
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1526,8 +1559,13 @@ function AbstimmCockpit({ top, versammlung, ve, welt, onWelt, t, accent, beschlu
   );
 }
 
-function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, offen, onToggle, gesperrt, sortModus = "anpassen", versetzt = null }) {
+function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, offen, onToggle, gesperrt, sortModus = "anpassen", versetzt = null, strukturEdit = true }) {
   const [loeschStufe, setLoeschStufe] = useState(false);
+  // §86.6 (Benny 19.07.): Struktur-Bearbeitung (Verschieben, Titel, Toggles,
+  // Bausteine, Löschen) läuft über den Bearbeiten-Stift im Akten-Header.
+  // Durchführung (Abstimm-Cockpit, Vertagen, Wortlaut, Anlagen, Protokoll)
+  // bleibt IMMER zugänglich, solange die Versammlung nicht abgeschlossen ist.
+  const struktur = !gesperrt && strukturEdit;
   const [aufgabeText, setAufgabeText] = useState("");
   const beschluss = top.beschluss_id
     ? (welt.beschluesse || []).find((b) => b.id === top.beschluss_id) || null : null;
@@ -1546,7 +1584,7 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
       offen={offen} onToggle={onToggle}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {/* Reihenfolge + Kern */}
-        {!gesperrt ? (
+        {struktur ? (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button onClick={() => onWelt((w) => weltTopVerschieben(w, top.id, -1, sortModus))}
               title="nach oben"
@@ -1564,7 +1602,7 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
         ) : null}
         {/* GO-Haken (Konzept §2 Nr. 6): Geschäftsordnungsbeschlüsse erhalten
             KEINE lfd. Nummer und erscheinen nicht in der Beschluss-Sammlung. */}
-        {!gesperrt && top.beschluss_noetig && !beschluss ? (
+        {struktur && top.beschluss_noetig && !beschluss ? (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ flex: 1, fontSize: FS.xs, color: t.muted }}>
               Geschäftsordnungsbeschluss (nicht in die Beschluss-Sammlung)</div>
@@ -1575,7 +1613,7 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
         {/* Mehrheitstyp (Cockpit-Konzept 14.07. §4.1): in der VORBEREITUNG
             wählen (§23 II WEG — erhöhtes Quorum gehört in die Einladung).
             Default „einfach"; Hinweistext nennt die Schwelle. */}
-        {!gesperrt && top.beschluss_noetig ? (
+        {struktur && top.beschluss_noetig ? (
           <div>
             <div style={{ fontSize: FS.xs, color: t.muted, marginBottom: 4 }}>
               Erforderliche Mehrheit</div>
@@ -1588,7 +1626,7 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
             </div>
           </div>
         ) : null}
-        {!gesperrt ? (
+        {struktur ? (
           <>
             <Inp t={t} accent={accent} label="Titel" value={top.titel || ""}
               onChange={(v) => patch({ titel: v })}/>
@@ -1781,7 +1819,7 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
         ) : null}
 
         {/* Baustein hinzufügen (der Katalog wächst den TOP — Vorgang-Muster) */}
-        {!gesperrt && fehlende.length > 0 ? (
+        {struktur && fehlende.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {fehlende.map((b) => (
               <button key={b.id} onClick={() => addBaustein(b.id)}
@@ -1796,7 +1834,7 @@ function TopKarte({ top, versammlung, ve, onVePatch, welt, onWelt, t, accent, of
         ) : null}
 
         {/* Löschen (2-Stufen, §25.2) */}
-        {!gesperrt ? (
+        {struktur ? (
           !loeschStufe ? (
             <div>
               <AktionsButton rolle="loeschen" variante="breit" t={t}
@@ -2649,6 +2687,9 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
   // den DetailRahmen-Kopf (wie Objekte/Legionellen/Fotos), NICHT unter die rote
   // Linie in den inneren Akten-Kopf. EtvBereichFuerObjekt reicht sie via
   // onKopfAktion nach oben; allesda_merged setzt sie als detailAktion.
+  // Tagesordnung-Tab (Benny 19.07.): eigener Bearbeiten-Stift im Header —
+  // Edit-Modus zeigt Sortier-Umschalter + TOP-Hinzufügen (kein breiter Button).
+  const [editTagesordnung, setEditTagesordnung] = useState(false);
   const kopfAktionNode = tab === "uebersicht" ? (
     <KopfAktionsLeiste t={t} accent={accent} editMode={editModeGlobal}
       onEdit={() => setEditModeGlobal(true)}
@@ -2661,6 +2702,12 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
         onWelt((w) => weltVersammlungLoeschen(w, versammlung.id));
         if (onZurueck) onZurueck();
       }}/>
+  ) : tab === "tagesordnung" && versammlung.status !== "abgeschlossen" ? (
+    <KopfAktionsLeiste t={t} accent={accent} editMode={editTagesordnung}
+      onEdit={() => setEditTagesordnung(true)}
+      onCancel={() => setEditTagesordnung(false)}
+      onConfirm={() => setEditTagesordnung(false)}
+      onPrint={() => setDruckMenue(true)}/>
   ) : (
     <KopfIconButton icon="printer" title="Drucken & Unterlagen" t={t} accent={accent}
       onClick={() => setDruckMenue(true)}/>
@@ -2672,7 +2719,7 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
     if (onKopfAktion) onKopfAktion(kopfAktionNode);
     return () => { if (onKopfAktion) onKopfAktion(null); };
     // eslint-disable-next-line
-  }, [tab, editModeGlobal, loeschConfirm, accent, versammlung.id]);
+  }, [tab, editModeGlobal, loeschConfirm, editTagesordnung, accent, versammlung.id, versammlung.status]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
       {/* Akten-Kopf (Vorgang-Muster §98.3: Titel groß + Sub + StatusPille).
@@ -2711,7 +2758,8 @@ function EtvDetail({ versammlung, ve, onVePatch, welt, onWelt, kontakte, setting
       ) : null}
       {tab === "tagesordnung" ? (
         <EtvTagesordnungTab versammlung={versammlung} ve={ve} onVePatch={onVePatch} welt={welt}
-          onWelt={onWelt} settings={settings} t={t} accent={accent}/>
+          onWelt={onWelt} settings={settings} t={t} accent={accent}
+          editMode={editTagesordnung}/>
       ) : null}
       {tab === "te" ? (
         <TERegisterAnsicht ve={ve} t={t} accent={accent}/>
