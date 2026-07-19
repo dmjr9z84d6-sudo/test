@@ -18,7 +18,7 @@
 import React, { useEffect, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
-import { Avatar, HeaderZurueck, Inp, KontaktPicker, KontaktPickerMitAllen, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
+import { Avatar, HeaderZurueck, Inp, KontaktPicker, KontaktPickerMitAllen, KopfIconButton, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu, DateiViewerModal } from "./liegenschaft.jsx";
 import { KontaktDetailKarte, KontaktZeile, objektBezugInfo } from "./kontakte.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
@@ -1435,13 +1435,16 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 }
 
 // ── LoseAuftragKarte ─────────────────────────────────────────────────────────
-// Vorgangsloser Auftrag (Begehungsfund): dieselbe Zeilen-Optik, ohne Klapp
-// (es gibt noch keinen Verlauf — nur der festgehaltene Fund).
+// Vorgangsloser Auftrag (Begehungsfund). Drei Zustände (Benny 19.07.):
+// 1) EINGEKLAPPT (Standard): schmal — Punkt · Titel · Status · Erfasst-Datum.
+// 2) AUFGEKLAPPT (Tap auf die Karte): alle Infos + Fotos in Galerie-Größe.
+// 3) BEARBEITEN: nur wenn der Bereichs-Stift (Header) aktiv ist, öffnet der
+//    Tap die Karte DIREKT im Formular (Abbrechen/Speichern in der Karte).
+// Auswahl für Bulk-Aktionen läuft über den runden +-Button oben rechts
+// (auswahlModus) — Body-Tap und Auswahl kollidieren nicht.
 function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt = null, DatumFeld = null,
   auswahlModus = false, ausgewaehlt = false, onAuswahl = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null }) {
-  const [loeschConfirm, setLoeschConfirm] = useState(false);
-  // Nachbearbeitung (Begehung 18.07.): Punkt VOR dem Vorgang vervollständigen —
-  // Beschreibung, Wo genau, Notizen, Gemeldet von. Stift im Kartenkopf (§12.9).
+  const [offen, setOffen] = useState(false);
   const [edit, setEdit] = useState(false);
   const [eBeschreibung, setEBeschreibung] = useState("");
   const [eEinheit, setEEinheit] = useState("");
@@ -1450,7 +1453,6 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
   const [eNotiz, setENotiz] = useState("");
   const [eGemeldet, setEGemeldet] = useState("");
   const farbe = ampelFarbeAuftrag(auftrag);
-  const firmen = (kontakte || []).filter((k) => k && k.typ === "firma");
   const gemeldetKontakt = auftrag.gemeldet_von_id
     ? (kontakte || []).find((k) => k && k.id === auftrag.gemeldet_von_id) : null;
   const editStart = () => {
@@ -1488,12 +1490,19 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
   ].filter(Boolean);
   if (woTeile.length > 0) infoTeile.push("📍 " + woTeile.join(" · "));
   if (gemeldetKontakt) infoTeile.push("gemeldet von " + (gemeldetKontakt.name || "Kontakt"));
+  // Tap auf die Karte: klappt auf/zu. Ist der Bereichs-Bearbeiten-Modus an,
+  // öffnet der Tap direkt das Formular (Zustand 3). Zuklappen beendet Edit.
+  const kartenTap = () => {
+    if (offen) { setOffen(false); setEdit(false); return; }
+    setOffen(true);
+    if (auswahlModus && onWelt) editStart();
+  };
   return (
-    <div onClick={auswahlModus && onAuswahl ? onAuswahl : undefined}
+    <div onClick={kartenTap}
       style={{ background: ausgewaehlt ? accent + "12" : t.card,
       border: "1px solid " + (ausgewaehlt ? accent : t.border),
       borderRadius: RAD.lg, padding: "12px 14px", minWidth: 0,
-      cursor: auswahlModus ? "pointer" : "default",
+      cursor: "pointer",
       boxSizing: "border-box", width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <AmpelPunkt farbe={farbe}/>
@@ -1501,17 +1510,29 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
           color: t.text, overflowWrap: "anywhere" }}>{auftrag.beschreibung || "Auftrag"}</div>
         <StatusPille t={t} farbe={AMPEL_FARBEN[farbe]}
           text={AUFTRAG_STATUS_LABEL[auftrag.status] || auftrag.status}/>
-        {onWelt && !auswahlModus && !edit ? (
-          <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); editStart(); }}
-            title="Punkt bearbeiten" aria-label="Punkt bearbeiten"
+        {auswahlModus && onAuswahl ? (
+          <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); onAuswahl(); }}
+            title={ausgewaehlt ? "Auswahl entfernen" : "Punkt auswählen"}
+            aria-label={ausgewaehlt ? "Auswahl entfernen" : "Punkt auswählen"}
             style={{ display: "flex", alignItems: "center", justifyContent: "center",
-              width: 30, height: 30, flexShrink: 0, background: accent, border: "none",
+              width: 30, height: 30, flexShrink: 0,
+              background: ausgewaehlt ? accent : "transparent",
+              border: "1px solid " + accent,
               borderRadius: RAD.pill, cursor: "pointer" }}>
-            <I name="pencil" size={13} color={getContrastColor(accent)}/>
+            <I name={ausgewaehlt ? "check" : "plus"} size={14}
+              color={ausgewaehlt ? getContrastColor(accent) : accent}/>
           </button>
         ) : null}
       </div>
-      {!edit ? (
+      {!edit && !offen ? (
+        // EINGEKLAPPT: schmal — nur das Erfasst-Datum, kein Foto, keine Details.
+        auftrag.erfasst_am ? (
+          <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4 }}>
+            {"erfasst " + datumDe(auftrag.erfasst_am)}
+          </div>
+        ) : null
+      ) : null}
+      {!edit && offen ? (
         <div>
           {infoTeile.length > 0 ? (
             <div style={{ fontSize: FS.s, color: t.muted, marginTop: 4 }}>
@@ -1523,7 +1544,8 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
               whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{auftrag.notiz}</div>
           ) : null}
         </div>
-      ) : (
+      ) : null}
+      {edit ? (
         <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
           <Inp t={t} accent={accent} label="Was ist Sache?" required
             value={eBeschreibung} onChange={setEBeschreibung}/>
@@ -1566,47 +1588,33 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
           <textarea value={eNotiz} onChange={(e) => setENotiz(e.target.value)}
             rows={2} style={Object.assign({}, selectStil(t, accent, !!eNotiz),
               { resize: "vertical", minHeight: 48 })}/>
-          {/* FOTOS gehören ins Bearbeiten (Benny 18.07.): Leiste im
-              Lösch-Modus (X am Foto) + „+ Foto" — EIN Bearbeiten, der Stift. */}
-          <label style={feldLabelStil(t)}>Fotos</label>
-          <div style={{ marginBottom: 10 }}>
-            <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-              onFotoHinzu={onFotoHinzu} onWelt={onWelt}
-              onFotoEntfernen={onFotoEntfernen} bearbeiten={true}/>
-          </div>
+          {/* Gemeldet von VOR den Fotos (Benny 19.07.): erst die Abfragen,
+              Fotos als letztes. */}
           <KontaktPickerMitAllen value={eGemeldet || null}
             onChange={(id) => setEGemeldet(id || "")}
             label="Gemeldet von (leer = ich / die Verwaltung)" t={t} accent={accent}
             kontakteObjekt={null}
             kontakteAlle={pickerListe(kontakte)}/>
+          <label style={feldLabelStil(t)}>Fotos</label>
+          <div style={{ marginBottom: 10 }}>
+            <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
+              onFotoHinzu={onFotoHinzu} onWelt={onWelt} thumbSize={120}
+              onFotoEntfernen={onFotoEntfernen} bearbeiten={true}/>
+          </div>
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-            <button onClick={() => setEdit(false)} style={flowKnopf(t, accent, false)}>Abbrechen</button>
-            <button onClick={editSpeichern} style={flowKnopf(t, accent, true)}>Speichern</button>
+            <button onClick={() => { setEdit(false); setOffen(false); }}
+              style={flowKnopf(t, accent, false)}>Abbrechen</button>
+            <button onClick={() => { editSpeichern(); setOffen(false); }}
+              style={flowKnopf(t, accent, true)}>Speichern</button>
           </div>
         </div>
-      )}
-      {!auswahlModus && !edit ? (
-        <div style={{ marginTop: 6, marginBottom: onWelt ? 6 : 0 }}>
-          <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-            onFotoHinzu={onFotoHinzu} onWelt={onWelt}
-            onFotoEntfernen={onFotoEntfernen} bearbeiten={false}/>
-        </div>
       ) : null}
-      {/* Buttons rechts ausgerichtet unten in EINER Reihe (Benny 18.07.). */}
-      {onWelt && !auswahlModus && !edit ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 6,
-          justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={false}
-            firmen={firmen} t={t} accent={accent}
-            onWelt={onWelt} DatumFeld={DatumFeld}/>
-          <AktionsButton rolle="loeschen" variante="breit" t={t} accent={accent}
-            confirm={loeschConfirm}
-            text={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
-            onClick={(e) => {
-              if (e && e.stopPropagation) e.stopPropagation();
-              if (!loeschConfirm) { setLoeschConfirm(true); return; }
-              onWelt((w) => weltAuftragLoeschen(w, auftrag.id));
-            }}/>
+      {/* Fotos in Galerie-Größe NUR aufgeklappt (Benny 19.07.). */}
+      {offen && !edit ? (
+        <div style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
+          <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
+            onFotoHinzu={onFotoHinzu} onWelt={onWelt} thumbSize={120}
+            onFotoEntfernen={onFotoEntfernen} bearbeiten={false}/>
         </div>
       ) : null}
     </div>
@@ -1654,6 +1662,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const [buendelKategorie, setBuendelKategorie] = useState("bewirtschaftung");
   const [buendelVorgangId, setBuendelVorgangId] = useState("");
   const [buendelFirmaId, setBuendelFirmaId] = useState("");   // Direkt beauftragen (18.07.)
+  const [loeschAlleConfirm, setLoeschAlleConfirm] = useState(false); // Bulk-Löschen 2-Stufen (19.07.)
   const alleVorgaenge = sortiereVorgaenge(
     welt.vorgaenge.filter((v) => v.objekt_id === veId), welt);
   const lose = welt.auftraege.filter(
@@ -1687,6 +1696,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const buendelReset = () => {
     setBuendelModus(false); setBuendelIds([]); setBuendelZiel(null);
     setBuendelTitel(""); setBuendelVorgangId(""); setBuendelFirmaId("");
+    setLoeschAlleConfirm(false);
   };
   const buendle = () => {
     if (buendelIds.length === 0 || !onWelt) return;
@@ -1722,56 +1732,79 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
       ))}
       {zeigeLose && lose.length > 0 ? (
         <div style={{ margin: "6px 2px 0 2px" }}>
-          <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
-            textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Erfasst — noch keinem Vorgang zugeordnet</div>
-          {/* Bündeln präsent UNTER der Überschrift (Benny 18.07.), nicht mehr
-              als kleiner Knopf an der Seite. */}
-          {onWelt && lose.length > 1 && !buendelModus ? (
-            <div style={{ marginTop: 6 }}>
-              <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-                onClick={() => setBuendelModus(true)}
-                text={"Punkte bündeln / beauftragen (" + lose.length + ")"}/>
+          {/* EIN Bearbeiten für den ganzen Bereich (Benny 19.07., §86.6):
+              Read-only = nur der runde Stift. Modus an = Aktions-Reihe in
+              EINER Zeile: Beauftragen (n) · + zum Vorgang (n) · 🗑 (Zwei-
+              Stufen) · ✕ · ✓ — Auswahl je Karte über den +-Knopf. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: t.muted,
+              textTransform: "uppercase", letterSpacing: 0.5, flex: 1, minWidth: 120 }}>
+              Erfasst — noch keinem Vorgang zugeordnet</div>
+            {onWelt && !buendelModus ? (
+              <KopfIconButton icon="pencil" title="Punkte bearbeiten"
+                t={t} accent={accent} onClick={() => setBuendelModus(true)}/>
+            ) : null}
+            {onWelt && buendelModus ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                  disabled={buendelIds.length === 0}
+                  onClick={() => { setLoeschAlleConfirm(false); setBuendelZiel("neu"); }}
+                  text={"Beauftragen (" + buendelIds.length + ")"}/>
+                {offeneVorgaenge.length > 0 ? (
+                  <AktionsButton rolle="abbrechen" variante="breit" t={t} accent={accent}
+                    disabled={buendelIds.length === 0}
+                    onClick={() => { setLoeschAlleConfirm(false); setBuendelZiel("bestehend"); }}
+                    text={"+ zum Vorgang (" + buendelIds.length + ")"}/>
+                ) : null}
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <KopfIconButton icon="trash" gefahrVoll confirm={loeschAlleConfirm}
+                    title={loeschAlleConfirm
+                      ? ("Wirklich " + buendelIds.length + " löschen?") : "Auswahl löschen"}
+                    t={t} accent={accent}
+                    onClick={() => {
+                      if (buendelIds.length === 0) return;
+                      if (!loeschAlleConfirm) { setLoeschAlleConfirm(true); setBuendelZiel(null); return; }
+                      const ids = buendelIds.slice();
+                      onWelt((w) => ids.reduce((acc, id) => weltAuftragLoeschen(acc, id), w));
+                      buendelReset();
+                    }}/>
+                  {buendelIds.length > 0 ? (
+                    <div style={{ position: "absolute", top: -5, right: -5, minWidth: 17,
+                      height: 17, padding: "0 4px", borderRadius: RAD.pill,
+                      background: "#EF4444", color: "#FFFFFF", fontSize: 11,
+                      fontWeight: FW.bold, display: "flex", alignItems: "center",
+                      justifyContent: "center", boxSizing: "border-box",
+                      pointerEvents: "none" }}>{buendelIds.length}</div>
+                  ) : null}
+                </div>
+                <KopfIconButton icon="x" title="Bearbeiten beenden — Auswahl verwerfen"
+                  t={t} accent={accent} onClick={buendelReset}/>
+                <KopfIconButton icon="check" title="Fertig"
+                  t={t} accent={accent} onClick={buendelReset}/>
+              </div>
+            ) : null}
+          </div>
+          {buendelModus && loeschAlleConfirm ? (
+            <div style={{ fontSize: FS.s, color: "#EF4444", marginTop: 6 }}>
+              {"Nochmal auf den Papierkorb tippen, um "
+                + (buendelIds.length === 1 ? "1 Punkt" : buendelIds.length + " Punkte")
+                + " endgültig zu löschen."}
             </div>
           ) : null}
         </div>
       ) : null}
-      {zeigeLose && buendelModus ? (
+      {zeigeLose && buendelModus && buendelZiel === null && !loeschAlleConfirm ? (
         <div style={{ fontSize: FS.s, color: t.muted, margin: "0 2px" }}>
-          Funde antippen, die zusammengehören.
+          Punkte mit + auswählen, dann oben eine Aktion wählen. Tippen auf die
+          Karte öffnet den Punkt zum Bearbeiten.
         </div>
       ) : null}
-      {zeigeLose ? lose.map((a) => (
-        <LoseAuftragKarte key={a.id} auftrag={a} t={t} kontakte={kontakte}
-          accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
-          ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
-          auswahlModus={buendelModus}
-          ausgewaehlt={buendelIds.indexOf(a.id) >= 0}
-          onAuswahl={() => setBuendelIds(buendelIds.indexOf(a.id) >= 0
-            ? buendelIds.filter((x) => x !== a.id) : [...buendelIds, a.id])}/>
-      )) : null}
-      {zeigeLose && buendelModus ? (
+      {zeigeLose && buendelModus && buendelZiel !== null ? (
         <div style={flowZeileStil(t)}>
           <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>
-            {buendelIds.length === 0 ? "Nichts ausgewählt"
-              : buendelIds.length === 1 ? "1 Fund ausgewählt"
-              : buendelIds.length + " Funde ausgewählt"}
+            {buendelIds.length === 1 ? "1 Punkt ausgewählt"
+              : buendelIds.length + " Punkte ausgewählt"}
           </div>
-          {buendelZiel === null ? (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button onClick={buendelReset} style={flowKnopf(t, accent, false)}>Abbrechen</button>
-              <button onClick={() => setBuendelZiel("neu")}
-                disabled={buendelIds.length === 0}
-                style={Object.assign({}, flowKnopf(t, accent, true),
-                  buendelIds.length === 0 ? { opacity: 0.5 } : {})}>Neuer Vorgang</button>
-              {offeneVorgaenge.length > 0 ? (
-                <button onClick={() => setBuendelZiel("bestehend")}
-                  disabled={buendelIds.length === 0}
-                  style={Object.assign({}, flowKnopf(t, accent, false),
-                    buendelIds.length === 0 ? { opacity: 0.5 } : {})}>Zu bestehendem Vorgang</button>
-              ) : null}
-            </div>
-          ) : null}
           {buendelZiel === "neu" ? (
             <div>
               <input value={buendelTitel}
@@ -1787,13 +1820,13 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                 ))}
               </select>
               {/* Direkt beauftragen (Benny 18.07.): Firma wählen → die
-                  gebündelten Punkte gehen SOFORT beauftragt raus (z. B. drei
-                  Punkte an den Hausmeister). Ohne Firma: nur bündeln. */}
+                  gebündelten Punkte gehen SOFORT beauftragt raus. Ohne
+                  Firma: nur als Vorgang anlegen. */}
               <label style={feldLabelStil(t)}>Direkt beauftragen an (optional)</label>
               <select value={buendelFirmaId}
                 onChange={(e) => setBuendelFirmaId(e.target.value)}
                 style={selectStil(t, accent, !!buendelFirmaId)}>
-                <option value="">— nur bündeln, noch nicht beauftragen —</option>
+                <option value="">— nur Vorgang anlegen, noch nicht beauftragen —</option>
                 {(kontakte || []).filter((k) => k && k.typ === "firma").map((k) => (
                   <option key={k.id} value={k.id}>{k.name || "Firma"}</option>
                 ))}
@@ -1801,7 +1834,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
               <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button onClick={() => setBuendelZiel(null)} style={flowKnopf(t, accent, false)}>Zurück</button>
                 <button onClick={buendle} style={flowKnopf(t, accent, true)}>
-                  {buendelFirmaId ? "Bündeln + beauftragen" : "Bündeln"}</button>
+                  {buendelFirmaId ? "Anlegen + beauftragen" : "Vorgang anlegen"}</button>
               </div>
             </div>
           ) : null}
@@ -1823,6 +1856,16 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
           ) : null}
         </div>
       ) : null}
+      {zeigeLose ? lose.map((a) => (
+        <LoseAuftragKarte key={a.id} auftrag={a} t={t} kontakte={kontakte}
+          accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}
+          ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
+          auswahlModus={buendelModus}
+          ausgewaehlt={buendelIds.indexOf(a.id) >= 0}
+          onAuswahl={() => { setLoeschAlleConfirm(false);
+            setBuendelIds(buendelIds.indexOf(a.id) >= 0
+              ? buendelIds.filter((x) => x !== a.id) : [...buendelIds, a.id]); }}/>
+      )) : null}
     </div>
   );
 
@@ -2115,7 +2158,7 @@ function istHeicDatei(f) {
   const ty = ((f && f.type) || "").toLowerCase();
   return n.endsWith(".heic") || n.endsWith(".heif") || ty.indexOf("heic") >= 0 || ty.indexOf("heif") >= 0;
 }
-function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null, onFotoEntfernen = null, bearbeiten = null }) {
+function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null, onFotoEntfernen = null, bearbeiten = null, thumbSize = 46 }) {
   const [heicHinweis, setHeicHinweis] = useState(false);
   // Quellen-Wahl (18.07.): „+ Foto" bietet Neu-Upload ODER Auswahl aus der
   // Foto-Zentrale des Objekts (ve.fotos). Bibliothekswahl hängt NUR die
@@ -2199,7 +2242,7 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null,
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         {fotos.map((f, idx) => (
           <div key={f.id} style={{ position: "relative", flexShrink: 0 }}>
-            <FotoThumb foto={f} t={t} onClick={() => fotoAntippen(idx)}/>
+            <FotoThumb foto={f} t={t} size={thumbSize} onClick={() => fotoAntippen(idx)}/>
             {bearb ? (
               <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); setLoeschFoto(f); }}
                 title="Foto entfernen" aria-label="Foto entfernen"
