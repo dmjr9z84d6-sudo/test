@@ -1618,6 +1618,11 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
   auswahlModus = false, ausgewaehlt = false, onAuswahl = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null }) {
   const [offen, setOffen] = useState(false);
   const [edit, setEdit] = useState(false);
+  // BUG-FIX (Benny 20.07.): endet der Bereichs-Bearbeiten-Modus, während die
+  // Karte im Formular offen ist, blieb das Formular stehen — im Lese-Modus
+  // waren die Felder bearbeitbar. Modus aus → Formular zwingend zu, die
+  // aufgeklappte Karte fällt auf die read-only-Ansicht zurück.
+  useEffect(() => { if (!auswahlModus) setEdit(false); }, [auswahlModus]);
   const farbe = ampelFarbeAuftrag(auftrag);
   const gemeldetKontakt = auftrag.gemeldet_von_id
     ? (kontakte || []).find((k) => k && k.id === auftrag.gemeldet_von_id) : null;
@@ -1835,12 +1840,12 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
             {onWelt && buendelModus ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-                  disabled={buendelIds.length === 0}
+                  disabled={buendelIds.length === 0} icon={false}
                   onClick={() => { setLoeschAlleConfirm(false); setBuendelZiel("neu"); }}
                   text={"Beauftragen (" + buendelIds.length + ")"}/>
                 {offeneVorgaenge.length > 0 ? (
-                  <AktionsButton rolle="abbrechen" variante="breit" t={t} accent={accent}
-                    disabled={buendelIds.length === 0}
+                  <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
+                    disabled={buendelIds.length === 0} icon={false}
                     onClick={() => { setLoeschAlleConfirm(false); setBuendelZiel("bestehend"); }}
                     text={"+ zum Vorgang (" + buendelIds.length + ")"}/>
                 ) : null}
