@@ -37,7 +37,7 @@ import {
   weltWiedervorlageAufheben, weltVorgangSchliessen, weltVorgangOeffnen,
   weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
   weltVorgangVonTagesordnung, weltNotizNeu,
-  weltVorgangLoeschen, weltAuftragLoeschen, weltDemoEntfernen, zaehleDemoDaten,
+  weltVorgangLoeschen, weltAuftragLoeschen, weltAuftragHerausloesen, weltDemoEntfernen, zaehleDemoDaten,
   timelineEintraege, weltAuftragFotoRefs,
 } from "./datenmodell.js";
 
@@ -447,7 +447,7 @@ const BETEILIGTE_GRUPPEN_ICON = {
   fallfuehrer: "🧭", melder: "📣", betroffener: "🏠", mitinformiert: "👥",
   extern: "🌐", ausfuehrender: "🛠", pruefer: "✓",
 };
-function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, kontakteObjekt = null, ve = null, t, accent, kannFlows, onWelt, onInformieren }) {
+function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, kontakteObjekt = null, ve = null, t, accent, kannFlows, onWelt, onInformieren }) {
   const [formOffen, setFormOffen] = useState(false);
   const [kontaktId, setKontaktId] = useState("");
   const [rolle, setRolle] = useState("betroffener");
@@ -455,6 +455,32 @@ function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, kontakteObjekt = n
   const [offenerKontakt, setOffenerKontakt] = useState(null); // "beteiligungId" → aufgeklappte Karte
   const aktive = beteiligungen.filter((b) => b.status !== "beendet");
   const beendete = beteiligungen.filter((b) => b.status === "beendet");
+  // ABGELEITETE Ausführende (Benny 19.07., Single-Truth-Prinzip): die
+  // beauftragten Firmen der Aufträge dieses Vorgangs erscheinen automatisch
+  // in der Gruppe „Ausführender" — KEIN eigener Beteiligungs-Datensatz.
+  // firma_kontakt_id am Auftrag ist die eine Wahrheit: Firma gewechselt oder
+  // Auftrag zurück zu Erfasst gelöst → die Zeile folgt von allein. Gleiche
+  // Firma mehrfach → EINE Zeile mit allen Auftragsnummern (Benny: „A, ja").
+  // Hat dieselbe Firma zusätzlich eine ECHTE Beteiligung als Ausführender,
+  // gewinnt die echte Zeile (keine Dublette).
+  const echteAusfIds = {};
+  aktive.concat(beendete).forEach((b) => {
+    if (b.rolle === "ausfuehrender" && b.kontakt_id) echteAusfIds[b.kontakt_id] = true;
+  });
+  const abgeleiteteMap = {};
+  (auftraege || []).forEach((a) => {
+    if (!a || !a.firma_kontakt_id || echteAusfIds[a.firma_kontakt_id]) return;
+    const e = abgeleiteteMap[a.firma_kontakt_id]
+      || { kontakt_id: a.firma_kontakt_id, nummern: [], seit: null };
+    if (a.nummer) {
+      const kurz = a.nummer.indexOf("-") >= 0
+        ? a.nummer.slice(a.nummer.lastIndexOf("-") + 1) : a.nummer;
+      if (e.nummern.indexOf(kurz) < 0) e.nummern.push(kurz);
+    }
+    if (a.beauftragt_am && (!e.seit || a.beauftragt_am < e.seit)) e.seit = a.beauftragt_am;
+    abgeleiteteMap[a.firma_kontakt_id] = e;
+  });
+  const ausfAbgeleitet = Object.keys(abgeleiteteMap).map((k) => abgeleiteteMap[k]);
   const fuegeHinzu = () => {
     if (!kontaktId) return;
     onWelt((w) => Object.assign({}, w, {
@@ -524,13 +550,57 @@ function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, kontakteObjekt = n
       </div>
     );
   };
+  // Abgeleitete Ausführenden-Zeile: wie zeile(), aber ohne Beenden-Button —
+  // sie endet mit dem Auftrag, nicht per Klick. Rechts: seit + Auftragsnummern.
+  const abgeleiteteZeile = (e) => {
+    const k = (kontakte || []).filter((x) => x && x.id === e.kontakt_id)[0];
+    const schluessel = "auf:" + e.kontakt_id;
+    const rechts = (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {e.nummern.length > 0 ? (
+          <span style={{ fontSize: FS.xs, color: t.muted, whiteSpace: "nowrap" }}>
+            {e.nummern.join(", ")}</span>
+        ) : null}
+        <span style={{ fontSize: FS.xs, color: t.muted, whiteSpace: "nowrap" }}>
+          {e.seit ? "seit " + datumDe(e.seit) : ""}</span>
+      </div>
+    );
+    if (!k) return null;
+    const offen = offenerKontakt === schluessel;
+    return (
+      <div key={schluessel}>
+        {offen ? (
+          <div style={{ margin: "6px 0 10px" }}>
+            <KontaktDetailKarte k={k} t={t} accent={accent}
+              kategorieFarbe={accent} ves={ve ? [ve] : []} kontakte={kontakte}
+              setKontakte={null} embedded
+              onKopfClick={() => setOffenerKontakt(null)}/>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+              {rechts}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <KontaktZeile k={k} ve={ve} t={t} accent={accent}
+                highlightAccent={accent} isActive={false}
+                onClick={() => setOffenerKontakt(schluessel)}/>
+            </div>
+            {rechts}
+          </div>
+        )}
+      </div>
+    );
+  };
   // Rollen-Gruppen wie im Objekt-Kontakte-Tab: Kopf mit Icon · Label · Zähler,
   // beendete Beteiligungen grau in ihrer Gruppe (Akte vergisst nichts).
+  // „Ausführender" zeigt zusätzlich die abgeleiteten Auftragsfirmen.
   const gruppen = BETEILIGUNG_ROLLEN.map((r) => ({
     rolle: r,
     aktive: aktive.filter((b) => b.rolle === r.id),
     beendete: beendete.filter((b) => b.rolle === r.id),
-  })).filter((g) => g.aktive.length + g.beendete.length > 0);
+    abgeleitet: r.id === "ausfuehrender" ? ausfAbgeleitet : [],
+  })).filter((g) => g.aktive.length + g.beendete.length + g.abgeleitet.length > 0);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {gruppen.map((g) => (
@@ -542,11 +612,12 @@ function BeteiligtenBlock({ vorgang, beteiligungen, kontakte, kontakteObjekt = n
             <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
               {g.rolle.label}
               <span style={{ color: t.muted, fontWeight: FW.med }}>
-                {"  (" + (g.aktive.length + g.beendete.length) + ")"}</span>
+                {"  (" + (g.aktive.length + g.beendete.length + g.abgeleitet.length) + ")"}</span>
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {g.aktive.map((b) => zeile(b, false))}
+            {g.abgeleitet.map((e) => abgeleiteteZeile(e))}
             {g.beendete.map((b) => zeile(b, true))}
           </div>
         </div>
@@ -869,6 +940,9 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const [tabZwang, setTabZwang] = useState({}); // Katalog erzwingt Tab vor erstem Inhalt
   const [offenerBaustein, setOffenerBaustein] = useState(null);
   const [formBaustein, setFormBaustein] = useState(null);
+  // Aufträge-Bearbeiten-Modus (Benny 19.07., Muster wie Erfasst-Bereich):
+  // Stift im „Aufträge"-Kartenkopf → Zeilen-Tap öffnet das Formular.
+  const [auftraegeEdit, setAuftraegeEdit] = useState(false);
   const [mehrOffen, setMehrOffen] = useState(false);
   const [informierenKontakt, setInformierenKontakt] = useState(null);
   const [aufgabeTitel, setAufgabeTitel] = useState("");
@@ -1194,7 +1268,19 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                 sub={auftraege.length === 0 ? null
                   : (auftraegeOffen > 0 ? auftraegeOffen + " offen" : "alle fertig")}
                 offen={offenerBaustein === "auftraege"}
-                onToggle={() => toggleBaustein("auftraege")}>
+                onToggle={() => toggleBaustein("auftraege")}
+                kopfAktion={kannFlows && offenerBaustein === "auftraege" && auftraege.length > 0 ? (
+                  <KopfIconButton icon={auftraegeEdit ? "check" : "pencil"}
+                    title={auftraegeEdit ? "Bearbeiten beenden" : "Aufträge bearbeiten"}
+                    t={t} accent={accent}
+                    onClick={() => setAuftraegeEdit(!auftraegeEdit)}/>
+                ) : null}>
+                {auftraegeEdit && kannFlows ? (
+                  <div style={{ fontSize: FS.s, color: t.muted }}>
+                    Auftrag antippen, um ihn zu bearbeiten oder zurück zu
+                    Erfasst zu lösen.
+                  </div>
+                ) : null}
                 {auftraege.map((a) => (
                   <AuftragFlowZeile key={a.id} auftrag={a}
                     kategorieId={vorgang.kategorie} firmen={firmen}
@@ -1202,6 +1288,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                     abnahmen={abnahmenAlle.filter((ab) => ab.auftrag_id === a.id)}
                     kontakte={kontakte} t={t} accent={accent}
                     onWelt={onWelt} DatumFeld={DatumFeld}
+                    editModus={auftraegeEdit && kannFlows}
                     ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}/>
                 ))}
                 {kannFlows && formBaustein === "auftraege" ? (
@@ -1285,6 +1372,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 
         {tab === "beteiligte" ? (
           <BeteiligtenBlock vorgang={vorgang} beteiligungen={beteiligungen}
+            auftraege={auftraege}
             kontakte={kontakte} kontakteObjekt={kontakteObjekt} ve={ve}
             t={t} accent={accent} kannFlows={kannFlows}
             onWelt={onWelt}
@@ -1434,37 +1522,24 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   );
 }
 
-// ── LoseAuftragKarte ─────────────────────────────────────────────────────────
-// Vorgangsloser Auftrag (Begehungsfund). Drei Zustände (Benny 19.07.):
-// 1) EINGEKLAPPT (Standard): schmal — Punkt · Titel · Status · Erfasst-Datum.
-// 2) AUFGEKLAPPT (Tap auf die Karte): alle Infos + Fotos in Galerie-Größe.
-// 3) BEARBEITEN: nur wenn der Bereichs-Stift (Header) aktiv ist, öffnet der
-//    Tap die Karte DIREKT im Formular (Abbrechen/Speichern in der Karte).
-// Auswahl für Bulk-Aktionen läuft über den runden +-Button oben rechts
-// (auswahlModus) — Body-Tap und Auswahl kollidieren nicht.
-function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt = null, DatumFeld = null,
-  auswahlModus = false, ausgewaehlt = false, onAuswahl = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null }) {
-  const [offen, setOffen] = useState(false);
-  const [edit, setEdit] = useState(false);
-  const [eBeschreibung, setEBeschreibung] = useState("");
-  const [eEinheit, setEEinheit] = useState("");
-  const [eRaum, setERaum] = useState("");
-  const [eOrt, setEOrt] = useState("");
-  const [eNotiz, setENotiz] = useState("");
-  const [eGemeldet, setEGemeldet] = useState("");
-  const farbe = ampelFarbeAuftrag(auftrag);
-  const gemeldetKontakt = auftrag.gemeldet_von_id
-    ? (kontakte || []).find((k) => k && k.id === auftrag.gemeldet_von_id) : null;
-  const editStart = () => {
-    setEBeschreibung(auftrag.beschreibung || "");
-    setEEinheit(auftrag.einheit_id || ""); setERaum(auftrag.raum_id || "");
-    setEOrt(auftrag.ort || ""); setENotiz(auftrag.notiz || "");
-    setEGemeldet(auftrag.gemeldet_von_id || "");
-    setEdit(true);
-  };
-  const editSpeichern = () => {
-    if (!onWelt) { setEdit(false); return; }
-    onWelt((w) => Object.assign({}, w, {
+// ── AuftragEditForm — DAS Formular für den Punkt (§76, EIN Bau) ─────────────
+// Genutzt von LoseAuftragKarte (Erfasst-Pool) UND AuftragFlowZeile (im
+// Vorgang, Benny 19.07.): Was ist Sache · Wo · Raum · Wo genau · Notizen ·
+// Gemeldet von · Fotos (Galerie-Größe 120). Mountet konditional → State ist
+// bei jedem Öffnen frisch vom Auftrag. extraAktion = optionaler Zusatz-
+// Button links neben Abbrechen/Speichern (z. B. „Zurück zu Erfasst").
+function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
+  onFotoHinzu = null, onFotoEntfernen = null, onFertig = null, extraAktion = null }) {
+  const [eBeschreibung, setEBeschreibung] = useState(auftrag.beschreibung || "");
+  const [eEinheit, setEEinheit] = useState(auftrag.einheit_id || "");
+  const [eRaum, setERaum] = useState(auftrag.raum_id || "");
+  const [eOrt, setEOrt] = useState(auftrag.ort || "");
+  const [eNotiz, setENotiz] = useState(auftrag.notiz || "");
+  const [eGemeldet, setEGemeldet] = useState(auftrag.gemeldet_von_id || "");
+  const einheitenL = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  const eRaeume = raeumeFuerWo(ve, eEinheit);
+  const speichern = () => {
+    if (onWelt) onWelt((w) => Object.assign({}, w, {
       auftraege: w.auftraege.map((a) => a.id === auftrag.id
         ? Object.assign({}, a, { beschreibung: eBeschreibung.trim() || a.beschreibung,
             einheit_id: eEinheit || null, raum_id: eRaum || null,
@@ -1472,15 +1547,93 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
             gemeldet_von_id: eGemeldet || null })
         : a),
     }));
-    setEdit(false);
+    if (onFertig) onFertig();
   };
+  return (
+    <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+      <Inp t={t} accent={accent} label="Was ist Sache?" required
+        value={eBeschreibung} onChange={setEBeschreibung}/>
+      {einheitenL.length > 0 ? (
+        <div>
+          <label style={feldLabelStil(t)}>Wo?</label>
+          <select value={eEinheit}
+            onChange={(e) => { setEEinheit(e.target.value); setERaum(""); }}
+            style={selectStil(t, accent, true)}>
+            <option value="">Ganzes Objekt / Gemeinschaft</option>
+            {einheitenL.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.bezeichnung || e.nr || e.einheitLabel || String(e.id)}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      {eRaeume.length > 0 ? (
+        <div>
+          <label style={feldLabelStil(t)}>Raum (optional)</label>
+          <select value={eRaum}
+            onChange={(e) => setERaum(e.target.value)}
+            style={selectStil(t, accent, !!eRaum)}>
+            <option value="">— kein bestimmter Raum —</option>
+            {eRaeume.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name || r.bezeichnung || "Raum"}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      <Inp t={t} accent={accent} label="Wo genau? (optional)"
+        value={eOrt} onChange={setEOrt}
+        placeholder="z. B. Treppenhaus 2. OG"/>
+      <label style={feldLabelStil(t)}>Notizen (optional)</label>
+      <textarea value={eNotiz} onChange={(e) => setENotiz(e.target.value)}
+        rows={2} style={Object.assign({}, selectStil(t, accent, !!eNotiz),
+          { resize: "vertical", minHeight: 48 })}/>
+      {/* Gemeldet von VOR den Fotos (Benny 19.07.): erst die Abfragen,
+          Fotos als letztes. */}
+      <KontaktPickerMitAllen value={eGemeldet || null}
+        onChange={(id) => setEGemeldet(id || "")}
+        label="Gemeldet von (leer = ich / die Verwaltung)" t={t} accent={accent}
+        kontakteObjekt={null}
+        kontakteAlle={pickerListe(kontakte)}/>
+      <label style={feldLabelStil(t)}>Fotos</label>
+      <div style={{ marginBottom: 10 }}>
+        <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
+          onFotoHinzu={onFotoHinzu} onWelt={onWelt} thumbSize={120}
+          onFotoEntfernen={onFotoEntfernen} bearbeiten={true}/>
+      </div>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end",
+        alignItems: "center", flexWrap: "wrap" }}>
+        {extraAktion}
+        <button onClick={onFertig} style={flowKnopf(t, accent, false)}>Abbrechen</button>
+        <button onClick={speichern} style={flowKnopf(t, accent, true)}>Speichern</button>
+      </div>
+    </div>
+  );
+}
+
+// ── LoseAuftragKarte ─────────────────────────────────────────────────────────
+// Vorgangsloser Auftrag (Begehungsfund). Drei Zustände (Benny 19.07.):
+// 1) EINGEKLAPPT (Standard): schmal — Punkt · Titel · Status · Erfasst-Datum.
+// 2) AUFGEKLAPPT (Tap auf die Karte): alle Infos + Fotos in Galerie-Größe.
+// 3) BEARBEITEN: nur wenn der Bereichs-Stift (Header) aktiv ist, öffnet der
+//    Tap die Karte DIREKT im Formular (AuftragEditForm, §76).
+// Auswahl für Bulk-Aktionen läuft über den runden +-Button oben rechts
+// (auswahlModus) — Body-Tap und Auswahl kollidieren nicht.
+function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt = null, DatumFeld = null,
+  auswahlModus = false, ausgewaehlt = false, onAuswahl = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null }) {
+  const [offen, setOffen] = useState(false);
+  const [edit, setEdit] = useState(false);
+  const farbe = ampelFarbeAuftrag(auftrag);
+  const gemeldetKontakt = auftrag.gemeldet_von_id
+    ? (kontakte || []).find((k) => k && k.id === auftrag.gemeldet_von_id) : null;
   // Wo-Label (Benny 18.07., wie VorgangDetail): Einheit + Raum + Freitext
   // in EINEM 📍-Eintrag — keine drei getrennten Schnipsel.
   const einheitenL = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
   const einheitL = auftrag.einheit_id
     ? (einheitenL.filter((e) => e.id === auftrag.einheit_id)[0] || null) : null;
   const raumL = ve && auftrag.raum_id ? findeRaum(ve, auftrag.raum_id) : null;
-  const eRaeume = raeumeFuerWo(ve, eEinheit);
   const infoTeile = [];
   if (auftrag.erfasst_am) infoTeile.push("erfasst " + datumDe(auftrag.erfasst_am));
   const woTeile = [
@@ -1495,7 +1648,7 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
   const kartenTap = () => {
     if (offen) { setOffen(false); setEdit(false); return; }
     setOffen(true);
-    if (auswahlModus && onWelt) editStart();
+    if (auswahlModus && onWelt) setEdit(true);
   };
   return (
     <div onClick={kartenTap}
@@ -1546,68 +1699,10 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
         </div>
       ) : null}
       {edit ? (
-        <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
-          <Inp t={t} accent={accent} label="Was ist Sache?" required
-            value={eBeschreibung} onChange={setEBeschreibung}/>
-          {/* WO — dieselben Felder wie im Anlage-Dialog (Benny 18.07.):
-              Einheit-Wahl + Raum-Verfeinerung, „Wo genau?" bleibt Freitext. */}
-          {einheitenL.length > 0 ? (
-            <div>
-              <label style={feldLabelStil(t)}>Wo?</label>
-              <select value={eEinheit}
-                onChange={(e) => { setEEinheit(e.target.value); setERaum(""); }}
-                style={selectStil(t, accent, true)}>
-                <option value="">Ganzes Objekt / Gemeinschaft</option>
-                {einheitenL.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.bezeichnung || e.nr || e.einheitLabel || String(e.id)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-          {eRaeume.length > 0 ? (
-            <div>
-              <label style={feldLabelStil(t)}>Raum (optional)</label>
-              <select value={eRaum}
-                onChange={(e) => setERaum(e.target.value)}
-                style={selectStil(t, accent, !!eRaum)}>
-                <option value="">— kein bestimmter Raum —</option>
-                {eRaeume.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name || r.bezeichnung || "Raum"}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-          <Inp t={t} accent={accent} label="Wo genau? (optional)"
-            value={eOrt} onChange={setEOrt}
-            placeholder="z. B. Treppenhaus 2. OG"/>
-          <label style={feldLabelStil(t)}>Notizen (optional)</label>
-          <textarea value={eNotiz} onChange={(e) => setENotiz(e.target.value)}
-            rows={2} style={Object.assign({}, selectStil(t, accent, !!eNotiz),
-              { resize: "vertical", minHeight: 48 })}/>
-          {/* Gemeldet von VOR den Fotos (Benny 19.07.): erst die Abfragen,
-              Fotos als letztes. */}
-          <KontaktPickerMitAllen value={eGemeldet || null}
-            onChange={(id) => setEGemeldet(id || "")}
-            label="Gemeldet von (leer = ich / die Verwaltung)" t={t} accent={accent}
-            kontakteObjekt={null}
-            kontakteAlle={pickerListe(kontakte)}/>
-          <label style={feldLabelStil(t)}>Fotos</label>
-          <div style={{ marginBottom: 10 }}>
-            <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-              onFotoHinzu={onFotoHinzu} onWelt={onWelt} thumbSize={120}
-              onFotoEntfernen={onFotoEntfernen} bearbeiten={true}/>
-          </div>
-          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-            <button onClick={() => { setEdit(false); setOffen(false); }}
-              style={flowKnopf(t, accent, false)}>Abbrechen</button>
-            <button onClick={() => { editSpeichern(); setOffen(false); }}
-              style={flowKnopf(t, accent, true)}>Speichern</button>
-          </div>
-        </div>
+        <AuftragEditForm auftrag={auftrag} t={t} accent={accent} onWelt={onWelt}
+          ve={ve} kontakte={kontakte}
+          onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
+          onFertig={() => { setEdit(false); setOffen(false); }}/>
       ) : null}
       {/* Fotos in Galerie-Größe NUR aufgeklappt (Benny 19.07.). */}
       {offen && !edit ? (
@@ -2036,7 +2131,16 @@ const flowZeileStil = (t) => ({ display: "flex", flexDirection: "column",
 // Ein Auftrag mit seinem nächsten Schritt: erfasst→Beauftragen (Form),
 // beauftragt→In Arbeit, in_arbeit/nachbesserung→Fertig gemeldet,
 // fertiggemeldet→Abnehmen (Form) bzw. Abhaken (ohne Abnahme-Phase).
-function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, kontakteObjekt = null, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null, onFotoEntfernen = null, abnahmen = [] }) {
+function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, kontakteObjekt = null, t, accent, onWelt, DatumFeld, ve = null, onFotoHinzu = null, onFotoEntfernen = null, abnahmen = [], editModus = false }) {
+  // Bearbeiten im Vorgang (Benny 19.07., Muster wie Erfasst-Bereich): der
+  // Stift im „Aufträge"-Kartenkopf schaltet editModus; Tap auf die Zeile
+  // öffnet DAS Formular (AuftragEditForm, §76) — darin zusätzlich
+  // „Zurück zu Erfasst" (weltAuftragHerausloesen, 2-Stufen).
+  const [zeileEdit, setZeileEdit] = useState(false);
+  const [loesConfirm, setLoesConfirm] = useState(false);
+  useEffect(() => {
+    if (!editModus) { setZeileEdit(false); setLoesConfirm(false); }
+  }, [editModus]);
   const firmaName = nameVon(kontakte, auftrag.firma_kontakt_id);
   // Firma als KONTAKT-Zeile (Benny 11.07., Objekt-Kontakte-Muster): Klick
   // klappt die echte KontaktDetailKarte auf — Telefon & Co. direkt greifbar.
@@ -2058,7 +2162,10 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
     return o ? o.label : id;
   };
   return (
-    <div style={flowZeileStil(t)}>
+    <div style={Object.assign({}, flowZeileStil(t),
+        editModus ? { cursor: "pointer",
+          border: "1px solid " + (zeileEdit ? accent : t.border) } : {})}
+      onClick={editModus ? () => { setZeileEdit(!zeileEdit); setLoesConfirm(false); } : undefined}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, fontWeight: FW.med,
           color: t.text, overflowWrap: "anywhere" }}>
@@ -2073,7 +2180,7 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
             <span style={{ color: t.muted }}>{" · bis " + datumDe(auftrag.frist)}</span>
           ) : null}
         </div>
-      {firmaKontakt ? (
+      {!editModus && firmaKontakt ? (
         firmaOffen ? (
           <div style={{ margin: "2px 0 6px" }}>
             <KontaktDetailKarte k={firmaKontakt} t={t} accent={accent}
@@ -2090,9 +2197,11 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
         <StatusPille t={t} farbe={statusFarbe}
           text={AUFTRAG_STATUS_LABEL[auftrag.status] || auftrag.status}/>
       </div>
-      {/* Abnahme-Historie (§6b): abnahmen[] flach, IN der Auftragskarte —
-          die Nachbesserungs-Schleife lebt IM Auftrag, Nachweis fällt frei heraus. */}
-      {abnahmen.length > 0 ? (
+      {/* Im editModus: nur die Kopfzeile bleibt (Tap = Formular auf/zu),
+          Durchführungs-Elemente pausieren — sie kämen sonst dem Tap in die
+          Quere. Der Stift-Modus ist bewusst temporär (Struktur ≠ Durchführung:
+          die Flow-Buttons sind außerhalb des Modus IMMER da). */}
+      {!editModus && abnahmen.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
           {abnahmen.map((ab, i) => (
             <div key={ab.id} style={{ fontSize: FS.xs, color: t.muted,
@@ -2105,7 +2214,7 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
           ))}
         </div>
       ) : null}
-      {schalterSichtbar ? (
+      {!editModus && schalterSichtbar ? (
         <label style={{ display: "flex", alignItems: "center", gap: 8,
           fontSize: FS.xs, color: t.muted, cursor: "pointer" }}>
           <input type="checkbox" checked={brauchtAbnahme}
@@ -2114,12 +2223,33 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
           Abnahme erforderlich
         </label>
       ) : null}
-      <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
-        onFotoHinzu={onFotoHinzu} onWelt={onWelt} onFotoEntfernen={onFotoEntfernen}/>
-      <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={brauchtAbnahme}
-        rechnungErwartet={kategorieHatPhase(kategorieId, "rechnung")}
-        firmen={firmen} kontakte={kontakte} kontakteObjekt={kontakteObjekt}
-        t={t} accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}/>
+      {!editModus ? (
+        <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
+          onFotoHinzu={onFotoHinzu} onWelt={onWelt} onFotoEntfernen={onFotoEntfernen}/>
+      ) : null}
+      {!editModus ? (
+        <AuftragFlowAktionen auftrag={auftrag} brauchtAbnahme={brauchtAbnahme}
+          rechnungErwartet={kategorieHatPhase(kategorieId, "rechnung")}
+          firmen={firmen} kontakte={kontakte} kontakteObjekt={kontakteObjekt}
+          t={t} accent={accent} onWelt={onWelt} DatumFeld={DatumFeld}/>
+      ) : null}
+      {editModus && zeileEdit ? (
+        <AuftragEditForm auftrag={auftrag} t={t} accent={accent} onWelt={onWelt}
+          ve={ve} kontakte={kontakte}
+          onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
+          onFertig={() => { setZeileEdit(false); setLoesConfirm(false); }}
+          extraAktion={
+            <AktionsButton rolle="loesen" variante="breit" t={t} accent={accent}
+              confirm={loesConfirm}
+              text={loesConfirm ? "Wirklich herauslösen?" : "Zurück zu Erfasst"}
+              title="Auftrag aus dem Vorgang lösen — der Punkt liegt wieder im Erfasst-Pool"
+              onClick={(e) => {
+                if (e && e.stopPropagation) e.stopPropagation();
+                if (!loesConfirm) { setLoesConfirm(true); return; }
+                if (onWelt) onWelt((w) => weltAuftragHerausloesen(w, auftrag.id));
+              }}/>
+          }/>
+      ) : null}
     </div>
   );
 }

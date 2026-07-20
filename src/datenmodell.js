@@ -4627,6 +4627,29 @@ function weltNotizNeu(welt, vorgangId, text) {
   return Object.assign({}, welt, { nachrichten: [...welt.nachrichten, n] });
 }
 
+// Auftrag aus dem Vorgang HERAUSLÖSEN (Benny 19.07., Regel 2A/3C): der Punkt
+// geht sauber zurück in den Erfasst-Pool — Vorgangs-Zuordnung, Nummer, Firma,
+// Beauftragungs-Datum und Frist werden geleert (ein „beauftragter" Punkt im
+// Pool wäre verwirrend). Inhaltliches (Beschreibung, Wo, Notiz, Gemeldet von,
+// Fotos, Erfasst-Datum) bleibt. War es der LETZTE Auftrag des Vorgangs, wird
+// der Vorgang automatisch gelöscht (3C) — der herausgelöste Punkt überlebt
+// die Kaskade, weil seine vorgang_id da schon null ist.
+function weltAuftragHerausloesen(welt, auftragId) {
+  const a = welt.auftraege.filter((x) => x.id === auftragId)[0];
+  if (!a || !a.vorgang_id) return welt;
+  const vorgangId = a.vorgang_id;
+  const neu = Object.assign({}, welt, {
+    auftraege: welt.auftraege.map((x) => x.id === auftragId
+      ? Object.assign({}, x, { vorgang_id: null, nummer: null,
+          status: "erfasst", firma_kontakt_id: null, freigegeben_von_id: null,
+          beauftragt_am: null, frist: null, abnahme_noetig: null })
+      : x),
+  });
+  const rest = neu.auftraege.filter((x) => x.vorgang_id === vorgangId);
+  if (rest.length === 0) return weltVorgangLoeschen(neu, vorgangId);
+  return neu;
+}
+
 // ── §96.11 · Löschen, Demo-Entfernen, Timeline (v13.58) ─────────────────────
 // Löschen ist die harte Ausnahme zur „Akte bleibt"-Regel — für Fehleingaben
 // und Demo-Daten in der Einzelplatz-Phase. IMMER kaskadiert: keine Waisen.
@@ -4794,7 +4817,7 @@ export {
   weltWiedervorlageAufheben, weltVorgangSchliessen, weltVorgangOeffnen,
   weltAuftraegeBuendeln, weltVorgangRuhen, weltVorgangAufTagesordnung,
   weltVorgangVonTagesordnung, weltNotizNeu,
-  weltVorgangLoeschen, weltAuftragLoeschen, weltDemoEntfernen, zaehleDemoDaten,
+  weltVorgangLoeschen, weltAuftragLoeschen, weltAuftragHerausloesen, weltDemoEntfernen, zaehleDemoDaten,
   vorgangLetzteAktivitaet, timelineEintraege, weltAuftragFotoRefs, weltAuftragFotoRefEntfernen,
   _kontaktAnzeigename as kontaktAnzeigename, kontaktNameVonId,
   // ETV-Welt (Konzept _03, Bau 12.07.)
