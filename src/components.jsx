@@ -146,7 +146,10 @@ function OverlayKopf({ t, titel, onClose, icon = "plus" }) {
   );
 }
 function overlayBody() {
-  return { flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 14px 14px 14px" };
+  // overscrollBehavior:contain (§14/3A) — am Modal-Ende scrollt sonst der
+  // Hintergrund weiter (scroll chaining), auf iOS spuerbar stoerend.
+  return { flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain",
+    padding: "14px 14px 14px 14px" };
 }
 
 // ── KopfIconButton (§12.9 / §86.6) — runder Aktions-Button im Karten-Kopf ───
