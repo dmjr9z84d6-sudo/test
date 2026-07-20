@@ -1524,40 +1524,39 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 
 // ── AuftragEditForm — DAS Formular für den Punkt (§76, EIN Bau) ─────────────
 // Genutzt von LoseAuftragKarte (Erfasst-Pool) UND AuftragFlowZeile (im
-// Vorgang, Benny 19.07.): Was ist Sache · Wo · Raum · Wo genau · Notizen ·
-// Gemeldet von · Fotos (Galerie-Größe 120). Mountet konditional → State ist
-// bei jedem Öffnen frisch vom Auftrag. extraAktion = optionaler Zusatz-
-// Button links neben Abbrechen/Speichern (z. B. „Zurück zu Erfasst").
+// Vorgang). LIVE-SPEICHERN (Benny 20.07.): jede Eingabe schreibt sofort in
+// die Welt — kein Abbrechen/Speichern mehr, die Buttons waren überflüssig.
+// Schließen = Tap auf den Karten-/Zeilenkopf oder Modus beenden.
+// Reihenfolge: Was ist Sache · Gemeldet von · Wo · Raum · Wo genau ·
+// Notizen · Fotos. extraAktion = optionaler Zusatz-Button unten
+// (z. B. „Zurück zu Erfasst").
 function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
   onFotoHinzu = null, onFotoEntfernen = null, onFertig = null, extraAktion = null }) {
-  const [eBeschreibung, setEBeschreibung] = useState(auftrag.beschreibung || "");
-  const [eEinheit, setEEinheit] = useState(auftrag.einheit_id || "");
-  const [eRaum, setERaum] = useState(auftrag.raum_id || "");
-  const [eOrt, setEOrt] = useState(auftrag.ort || "");
-  const [eNotiz, setENotiz] = useState(auftrag.notiz || "");
-  const [eGemeldet, setEGemeldet] = useState(auftrag.gemeldet_von_id || "");
-  const einheitenL = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
-  const eRaeume = raeumeFuerWo(ve, eEinheit);
-  const speichern = () => {
-    if (onWelt) onWelt((w) => Object.assign({}, w, {
+  const setzeFeld = (aenderung) => {
+    if (!onWelt) return;
+    onWelt((w) => Object.assign({}, w, {
       auftraege: w.auftraege.map((a) => a.id === auftrag.id
-        ? Object.assign({}, a, { beschreibung: eBeschreibung.trim() || a.beschreibung,
-            einheit_id: eEinheit || null, raum_id: eRaum || null,
-            ort: eOrt.trim(), notiz: eNotiz.trim(),
-            gemeldet_von_id: eGemeldet || null })
-        : a),
+        ? Object.assign({}, a, aenderung) : a),
     }));
-    if (onFertig) onFertig();
   };
+  const einheitenL = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  const eRaeume = raeumeFuerWo(ve, auftrag.einheit_id || "");
   return (
     <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
       <Inp t={t} accent={accent} label="Was ist Sache?" required
-        value={eBeschreibung} onChange={setEBeschreibung}/>
+        value={auftrag.beschreibung || ""}
+        onChange={(v) => setzeFeld({ beschreibung: v })}/>
+      {/* Gemeldet von DIREKT unter der Sache (Benny 20.07.). */}
+      <KontaktPickerMitAllen value={auftrag.gemeldet_von_id || null}
+        onChange={(id) => setzeFeld({ gemeldet_von_id: id || null })}
+        label="Gemeldet von (leer = ich / die Verwaltung)" t={t} accent={accent}
+        kontakteObjekt={null}
+        kontakteAlle={pickerListe(kontakte)}/>
       {einheitenL.length > 0 ? (
         <div>
           <label style={feldLabelStil(t)}>Wo?</label>
-          <select value={eEinheit}
-            onChange={(e) => { setEEinheit(e.target.value); setERaum(""); }}
+          <select value={auftrag.einheit_id || ""}
+            onChange={(e) => setzeFeld({ einheit_id: e.target.value || null, raum_id: null })}
             style={selectStil(t, accent, true)}>
             <option value="">Ganzes Objekt / Gemeinschaft</option>
             {einheitenL.map((e) => (
@@ -1571,9 +1570,9 @@ function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
       {eRaeume.length > 0 ? (
         <div>
           <label style={feldLabelStil(t)}>Raum (optional)</label>
-          <select value={eRaum}
-            onChange={(e) => setERaum(e.target.value)}
-            style={selectStil(t, accent, !!eRaum)}>
+          <select value={auftrag.raum_id || ""}
+            onChange={(e) => setzeFeld({ raum_id: e.target.value || null })}
+            style={selectStil(t, accent, !!auftrag.raum_id)}>
             <option value="">— kein bestimmter Raum —</option>
             {eRaeume.map((r) => (
               <option key={r.id} value={r.id}>
@@ -1584,31 +1583,25 @@ function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
         </div>
       ) : null}
       <Inp t={t} accent={accent} label="Wo genau? (optional)"
-        value={eOrt} onChange={setEOrt}
+        value={auftrag.ort || ""} onChange={(v) => setzeFeld({ ort: v })}
         placeholder="z. B. Treppenhaus 2. OG"/>
       <label style={feldLabelStil(t)}>Notizen (optional)</label>
-      <textarea value={eNotiz} onChange={(e) => setENotiz(e.target.value)}
-        rows={2} style={Object.assign({}, selectStil(t, accent, !!eNotiz),
+      <textarea value={auftrag.notiz || ""}
+        onChange={(e) => setzeFeld({ notiz: e.target.value })}
+        rows={2} style={Object.assign({}, selectStil(t, accent, !!auftrag.notiz),
           { resize: "vertical", minHeight: 48 })}/>
-      {/* Gemeldet von VOR den Fotos (Benny 19.07.): erst die Abfragen,
-          Fotos als letztes. */}
-      <KontaktPickerMitAllen value={eGemeldet || null}
-        onChange={(id) => setEGemeldet(id || "")}
-        label="Gemeldet von (leer = ich / die Verwaltung)" t={t} accent={accent}
-        kontakteObjekt={null}
-        kontakteAlle={pickerListe(kontakte)}/>
       <label style={feldLabelStil(t)}>Fotos</label>
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ marginBottom: extraAktion ? 10 : 0 }}>
         <AuftragFotoLeiste auftrag={auftrag} ve={ve} t={t} accent={accent}
           onFotoHinzu={onFotoHinzu} onWelt={onWelt} thumbSize={120}
           onFotoEntfernen={onFotoEntfernen} bearbeiten={true}/>
       </div>
-      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end",
-        alignItems: "center", flexWrap: "wrap" }}>
-        {extraAktion}
-        <button onClick={onFertig} style={flowKnopf(t, accent, false)}>Abbrechen</button>
-        <button onClick={speichern} style={flowKnopf(t, accent, true)}>Speichern</button>
-      </div>
+      {extraAktion ? (
+        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end",
+          alignItems: "center", flexWrap: "wrap" }}>
+          {extraAktion}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2382,7 +2375,7 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null,
             ) : null}
           </div>
         ))}
-        {onFotoHinzu && !bearb ? (
+        {onFotoHinzu ? (
           <button onClick={(e) => { if (e && e.stopPropagation) e.stopPropagation(); plusKlick(); }}
             style={flowKnopf(t, accent, false)}>+ Foto</button>
         ) : null}
@@ -2393,7 +2386,7 @@ function AuftragFotoLeiste({ auftrag, ve, t, accent, onFotoHinzu, onWelt = null,
           </button>
         ) : null}
       </div>
-      {bearb ? (
+      {bearb && fotos.length > 0 ? (
         <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 4 }}>
           Auf das × tippen, um ein Foto vom Punkt zu entfernen.
         </div>
