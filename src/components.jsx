@@ -152,6 +152,19 @@ function overlayBody() {
     padding: "14px 14px 14px 14px" };
 }
 
+// ── pickerBackdrop (§76-Hebung v14.20) — zentrierter Backdrop fuer kompakte ──
+// Dreh-Spalten-Picker (MonatJahr/TagMonat/Datum/Zeit). BEWUSST anders als
+// overlayBackdrop: vertikal ZENTRIERT + schmal, weil diese Picker feste Hoehe
+// haben und nicht springen (im Gegensatz zu hoehenvariablen Formular-Dialogen).
+// Ersetzt die vier identischen fixed-inset-Backdrop-Zeilen. overscrollBehavior
+// :contain erledigt zugleich 3A (kein Scroll-Chaining) fuer diese Picker.
+function pickerBackdrop() {
+  return { position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
+    background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex",
+    alignItems: "center", justifyContent: "center", padding: 16,
+    overscrollBehavior: "contain" };
+}
+
 // ── KopfIconButton (§12.9 / §86.6) — runder Aktions-Button im Karten-Kopf ───
 // Kanonisches Muster für Karten-Aktionen (Bearbeiten/Drucken/Löschen …):
 // rund 36×36, RAD.pill, accent-Hintergrund — Muster-Quelle VEDetail/Kontakte.
@@ -367,8 +380,7 @@ function MonatJahrPickerModal({ startWert, titel, onConfirm, onClose, t, accent 
   const jahrIdx = jahre.indexOf(jahr) < 0 ? jahre.indexOf(jetzt.getFullYear()) : jahre.indexOf(jahr);
   return (
     <div onClick={onClose}
-      style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.6)",
-        zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      style={pickerBackdrop()}>
       <div onClick={e => e.stopPropagation()}
         style={{ background: t.card, border: `1px solid ${t.border}`,
           borderRadius: RAD.xl, padding: 16, width: "100%", maxWidth: 280,
@@ -600,9 +612,7 @@ function DatumKalender({ startWert, onWaehle, t, accent, iso, hoehe = 330 }) {
 function DatumPickerModal({ startWert, onConfirm, onClose, t, accent, iso }) {
   return (
     <div onClick={onClose}
-      style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.6)",
-        zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 16 }}>
+      style={pickerBackdrop()}>
       <div onClick={e => e.stopPropagation()}
         style={{ background: t.card, border: `1px solid ${t.border}`,
           borderRadius: RAD.xl, padding: 14, width: "100%", maxWidth: 320,
@@ -649,8 +659,7 @@ function TagMonatPickerModal({ startWert, titel, onConfirm, onClose, t, accent }
 
   return (
     <div onClick={onClose}
-      style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.6)",
-        zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      style={pickerBackdrop()}>
       <div onClick={e => e.stopPropagation()}
         style={{ background: t.card, border: `1px solid ${t.border}`,
           borderRadius: RAD.xl, padding: 16, width: "100%", maxWidth: 280,
@@ -886,8 +895,7 @@ function ZeitPickerModal({ startWert, onConfirm, onClose, t, accent }) {
   const [wert, setWert] = useState(startWert || "");
   return (
     <div onClick={onClose}
-      style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 0, background: "rgba(0,0,0,0.6)",
-        zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      style={pickerBackdrop()}>
       <div onClick={e => e.stopPropagation()}
         style={{ background: t.card, border: `1px solid ${t.border}`,
           borderRadius: RAD.xl, padding: 14, width: "100%", maxWidth: 340,
