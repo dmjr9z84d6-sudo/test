@@ -15,7 +15,7 @@ import {
 import {
   I, StickySectionHeader, formatNameMitCtx, passendeMasterSpalten, useAvatarIcons,
   useContentWidth, useFirmenRollen, useKartenIcons, useKategorien,
-  useKontaktAnzeige, useKontaktFarbe, useLeistungen, useRollen, useVerwendungen,
+  useKontaktAnzeige, useKontaktFarbe, useLeistungen, useOutsideClick, useRollen, useVerwendungen,
   useZeitPicker, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
 // ZYKLISCHER Import aus der Hauptdatei: diese 10 Namen leben (noch) in S5/S7.
@@ -242,6 +242,63 @@ function KopfIconButton({ icon, title, onClick, t, accent, gefahr = false, confi
         boxShadow: gefahr ? "none" : `0 1px 2px ${accent}40` }}>
       <I name={icon} size={16} color={fg}/>
     </button>
+  );
+}
+
+// ── SortierMenu (§76): kanonisches Sortier-Popover ──────────────────────────
+// Extrahiert aus KontaktKategorieKarte (kontakte.jsx) — EIN Baustein für alle
+// sortierbaren Listen (Kontakt-Gruppen, FotoGalerie, künftig Dokumente/
+// Vorgänge). Button (sort-Icon, 24er-Höhe) öffnet ein Popover (§2.7:
+// useOutsideClick), Optionen { id, label }, aktive Option mit Häkchen.
+// Optional mit Richtung (onRichtung gesetzt): Klick auf die AKTIVE Option
+// kippt auf⇄ab (chevU/chevD an Button + aktiver Zeile), Klick auf eine andere
+// wählt sie (der Aufrufer setzt dabei ihre Default-Richtung). Jeder Klick
+// schließt das Popover — vorhersehbares Verhalten wie im Original.
+function SortierMenu({ t, accent, wert, onWert, optionen,
+  richtung = null, onRichtung = null, size = 24 }) {
+  const [auf, setAuf] = useState(false);
+  const ref = useRef(null);
+  useOutsideClick(ref, () => setAuf(false), auf);
+  const mitRichtung = !!onRichtung;
+  const richtungIcon = richtung === "auf" ? "chevU" : "chevD";
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button onClick={(e) => { e.stopPropagation(); setAuf(v => !v); }}
+        title="Sortierung" aria-label="Sortierung"
+        style={{ display: "flex", alignItems: "center", justifyContent: "center",
+          gap: 3, height: size, padding: "0 8px", cursor: "pointer",
+          background: accent + "18", border: `1px solid ${accent}40`,
+          borderRadius: RAD.sm, fontFamily: "inherit" }}>
+        <I name="sort" size={11} color={accent}/>
+        {mitRichtung && <I name={richtungIcon} size={9} color={accent}/>}
+      </button>
+      {auf && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 100,
+          background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.ml,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.3)", overflow: "hidden", minWidth: 170 }}>
+          {optionen.map(opt => {
+            const aktivOpt = opt.id === wert;
+            return (
+              <button key={opt.id} onClick={() => {
+                  if (aktivOpt && mitRichtung) onRichtung(richtung === "auf" ? "ab" : "auf");
+                  else onWert(opt.id);
+                  setAuf(false);
+                }}
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%",
+                  background: aktivOpt ? accent + "14" : "none", border: "none",
+                  padding: "9px 12px", cursor: "pointer", textAlign: "left",
+                  fontFamily: "inherit", fontSize: FS.s,
+                  fontWeight: aktivOpt ? FW.bold : FW.regular,
+                  color: aktivOpt ? accent : t.text }}>
+                {aktivOpt && <I name="check" size={11} color={accent}/>}
+                <span style={{ marginLeft: aktivOpt ? 0 : 19, flex: 1 }}>{opt.label}</span>
+                {aktivOpt && mitRichtung && <I name={richtungIcon} size={11} color={accent}/>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -3870,6 +3927,7 @@ export {
   MasterDetailRahmen,
   Toggle,
   SegmentControl,
+  SortierMenu,
   TabLeiste,
   Inp,
   DATUM_MONATE_KURZ,

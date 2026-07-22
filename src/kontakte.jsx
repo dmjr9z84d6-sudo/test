@@ -7,7 +7,7 @@ import {
   I, SortierPfeile, stabilisiereScroll, useAlleKontakte, useFirmenRollen, useKartenIcons, useKontaktFarbe,
   useOutsideClick, useRollen, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
-import { Avatar, KontaktPicker } from "./components.jsx";
+import { Avatar, KontaktPicker, SortierMenu } from "./components.jsx";
 // ╔═════════════════════════════════════════════════════════════════════════╗
 // ║ SEKTION 5d · KONTAKT-KATEGORIEN — ausgelagertes Modul                   ║
 // ║ KONTAKT_KATEGORIEN · KontaktKategorieKarte · VEKontakteTab ·            ║
@@ -573,12 +573,10 @@ function KontaktKategorieKarte({ kategorie, katId, kontakte, ve, alleKontakte, v
   // Manuelle Gruppen (kontaktIds) starten IMMER offen, damit das
   // „Kontakt zuweisen"-Feld direkt nach dem Anlegen sichtbar ist.
   const [expanded, setExpanded] = useState(kontakte.length > 0 || kontaktIds !== null);
-  const [sortMenuAuf, setSortMenuAuf] = useState(false);
   const [iconPickerAuf, setIconPickerAuf] = useState(false);
   const kartenIconsAn = useKartenIcons();
-  // Popovers schließen bei Klick außerhalb (§2.7).
-  const sortMenuRef = useRef(null);
-  useOutsideClick(sortMenuRef, () => setSortMenuAuf(false), sortMenuAuf);
+  // Popover schließt bei Klick außerhalb (§2.7) — Sortierung läuft jetzt über
+  // den SortierMenu-Baustein (components.jsx), der das selbst mitbringt.
   const gruppenIconRef = useRef(null);
   useOutsideClick(gruppenIconRef, () => setIconPickerAuf(false), iconPickerAuf);
   // Inline-Editor (Kriterien bei custom / Mitglieder bei manuell).
@@ -695,37 +693,10 @@ function KontaktKategorieKarte({ kategorie, katId, kontakte, ve, alleKontakte, v
                 <I name="pencil" size={12} color={editPanelAuf ? getContrastColor(objektAccent) : objektAccent}/>
               </button>
             )}
-            {/* Sortierung wählen (nur Gruppen mit Optionen) — neutraler Akzent. */}
+            {/* Sortierung wählen (nur Gruppen mit Optionen) — kanonischer Baustein. */}
             {sortOptionen && sortOptionen.length > 0 && onSort && (
-              <div ref={sortMenuRef} style={{ position: "relative" }}>
-                <button onClick={() => setSortMenuAuf(v => !v)}
-                  title="Sortierung" aria-label="Sortierung"
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center",
-                    gap: 4, height: 24, padding: "0 8px", cursor: "pointer",
-                    background: objektAccent + "18", border: `1px solid ${objektAccent}40`,
-                    borderRadius: RAD.sm, color: objektAccent, fontSize: FS.xs,
-                    fontWeight: FW.bold, fontFamily: "inherit" }}>
-                  <I name="sort" size={11} color={objektAccent}/>
-                </button>
-                {sortMenuAuf && (
-                  <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 100,
-                    background: t.card, border: `1px solid ${t.border}`, borderRadius: RAD.ml,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.3)", overflow: "hidden", minWidth: 170 }}>
-                    {sortOptionen.map(opt => (
-                      <button key={opt.id} onClick={() => { onSort(opt.id); setSortMenuAuf(false); }}
-                        style={{ display: "flex", alignItems: "center", gap: 8, width: "100%",
-                          background: opt.id === sort ? objektAccent + "14" : "none", border: "none",
-                          padding: "9px 12px", cursor: "pointer", textAlign: "left",
-                          fontFamily: "inherit", fontSize: FS.s,
-                          fontWeight: opt.id === sort ? FW.bold : FW.regular,
-                          color: opt.id === sort ? objektAccent : t.text }}>
-                        {opt.id === sort && <I name="check" size={11} color={objektAccent}/>}
-                        <span style={{ marginLeft: opt.id === sort ? 0 : 19 }}>{opt.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <SortierMenu t={t} accent={objektAccent} wert={sort} onWert={onSort}
+                optionen={sortOptionen}/>
             )}
             <SortierPfeile horizontal size={24}
               canUp={canUp} canDown={canDown} onUp={onUp} onDown={onDown}

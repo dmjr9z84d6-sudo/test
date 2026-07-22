@@ -2653,7 +2653,11 @@ export default function App() {
     }}>
     <FotoAnzeigeContext.Provider value={{
       gridGroesse: settings.fotoGridGroesse || "m",
-      setGridGroesse: (g) => setSettings(s => ({ ...s, fotoGridGroesse: g }))
+      setGridGroesse: (g) => setSettings(s => ({ ...s, fotoGridGroesse: g })),
+      sortKrit: settings.fotoSortKrit || "datum",
+      sortRichtung: settings.fotoSortRichtung || "ab",
+      setSort: (krit, richtung) => setSettings(s => ({
+        ...s, fotoSortKrit: krit, fotoSortRichtung: richtung }))
     }}>
     <TerminBezeichnungenContext.Provider value={settings.terminBezeichnungen || []}>
     <ZeitPickerContext.Provider value={{

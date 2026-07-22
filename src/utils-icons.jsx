@@ -2056,11 +2056,15 @@ function veKartenFeldWert(ve, kategorie, feldName) {
 const StatusLeisteContext = createContext({ objekt: true, kontakt: true });
 function useStatusLeiste() { return useContext(StatusLeisteContext); }
 
-// ── FotoAnzeigeContext: Grid-Kachelgröße der Foto-Galerien (S/M/L) ──────────
-// gridGroesse ("s"|"m"|"l") kommt aus settings.fotoGridGroesse und wird über
-// setGridGroesse direkt aus der Galerie heraus geändert (geräteweit gemerkt,
-// gilt für ALLE FotoGalerie-Instanzen — Objekt-Tab UND Fotos-Nav-Screen).
-const FotoAnzeigeContext = createContext({ gridGroesse: "m", setGridGroesse: null });
+// ── FotoAnzeigeContext: Anzeige-Einstellungen der Foto-Galerien ─────────────
+// gridGroesse ("s"|"m"|"l") + Sortierung (sortKrit "datum"|"name"|"album",
+// sortRichtung "auf"|"ab") kommen aus den Settings und werden direkt aus der
+// Galerie heraus geändert (geräteweit gemerkt, gilt für ALLE FotoGalerie-
+// Instanzen — Objekt-Tab UND Fotos-Nav-Screen).
+const FotoAnzeigeContext = createContext({
+  gridGroesse: "m", setGridGroesse: null,
+  sortKrit: "datum", sortRichtung: "ab", setSort: null,
+});
 function useFotoAnzeige() { return useContext(FotoAnzeigeContext); }
 
 // ── TerminBezeichnungenContext: frei pflegbare Dropdown-Liste fürs Anlegen ──

@@ -16,7 +16,7 @@ import {
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenEffektiveNaechste, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
-  objektHatZentralesWarmwasser, SegmentControl, TabLeiste, wjEndeDatum,
+  objektHatZentralesWarmwasser, SegmentControl, SortierMenu, TabLeiste, wjEndeDatum,
   OverlayKopf, overlayBackdrop, overlayPanel, overlayBody
 } from "./components.jsx";
 import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
@@ -2782,6 +2782,28 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
 // Kachel-Mindestbreiten der drei Grid-Stufen (S/M/L). "m" = bisheriger Wert.
 const FOTO_GRID_STUFEN = { s: 90, m: 120, l: 180 };
 
+// Sortier-Kriterien der Foto-Galerie + Default-Richtung je Kriterium.
+// Richtung "ab" bei Datum = neueste zuerst (entspricht dem bisherigen Bild).
+const FOTO_SORT_OPTIONEN = [
+  { id: "datum", label: "Aufnahmedatum", defRichtung: "ab" },
+  { id: "name",  label: "Name",          defRichtung: "auf" },
+  { id: "album", label: "Album",         defRichtung: "auf" },
+];
+
+// Sortier-Schlüssel Datum: aufgenommen "DD.MM.YYYY" → "YYYY-MM-DD",
+// Fallback angelegt (ISO) — gleiche Logik wie im fotoDateiname (§93.4).
+function fotoDatumKey(f) {
+  const dm = String((f && f.aufgenommen) || "").match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (dm) return dm[3] + "-" + dm[2] + "-" + dm[1];
+  return String((f && f.angelegt) || "").slice(0, 10);
+}
+
+// Album-Rang: Katalog-Reihenfolge (FOTO_ALBEN), eigene Alben dahinter A–Z.
+function fotoAlbumRang(album) {
+  const idx = FOTO_ALBEN.findIndex(a => a.id === album);
+  return idx >= 0 ? idx : FOTO_ALBEN.length;
+}
+
 function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoeschen }) {
   const [albumFilter, setAlbumFilter] = useState("alle");
   const [ansicht, setAnsicht] = useState("grid");      // "grid" | "liste"
@@ -2808,11 +2830,40 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
   const gefiltert = albumFilter === "alle"
     ? fotos : fotos.filter(f => ((f && f.album) || "sonstiges") === albumFilter);
 
+  // Sortierung (geräteweit aus dem FotoAnzeigeContext). Album gruppiert nach
+  // Katalog-Reihenfolge (eigene dahinter A–Z), innerhalb Aufnahmedatum ab-
+  // steigend; Richtung kehrt bei Album nur die GRUPPEN-Reihenfolge um.
+  const sortKrit = FOTO_SORT_OPTIONEN.some(o => o.id === fotoAnzeige.sortKrit)
+    ? fotoAnzeige.sortKrit : "datum";
+  const sortRichtung = fotoAnzeige.sortRichtung === "auf" ? "auf" : "ab";
+  const vz = sortRichtung === "auf" ? 1 : -1;
+  const sortiert = gefiltert.slice().sort((a, b) => {
+    if (sortKrit === "name") {
+      return vz * fotoDateiname(ve, a, fotos).localeCompare(
+        fotoDateiname(ve, b, fotos), "de");
+    }
+    if (sortKrit === "album") {
+      const ra = fotoAlbumRang((a && a.album) || "sonstiges");
+      const rb = fotoAlbumRang((b && b.album) || "sonstiges");
+      if (ra !== rb) return vz * (ra - rb);
+      const la = fotoAlbumLabel((a && a.album) || "sonstiges");
+      const lb = fotoAlbumLabel((b && b.album) || "sonstiges");
+      if (la !== lb) return vz * la.localeCompare(lb, "de");
+      // innerhalb des Albums: immer neueste zuerst (feste Regel)
+      return fotoDatumKey(b).localeCompare(fotoDatumKey(a));
+    }
+    // Datum; bei Gleichstand stabil nach angelegt (Upload-Zeitpunkt)
+    const d = fotoDatumKey(a).localeCompare(fotoDatumKey(b));
+    if (d !== 0) return vz * d;
+    return vz * String(a.angelegt || "").localeCompare(String(b.angelegt || ""));
+  });
+
   // Thumbnails nur für die sichtbaren (gefilterten) Fotos laden; alte URLs
   // beim Wechsel freigeben — sonst Speicherfresser auf dem iPhone (§93.10).
   // Seit Mini-Vorschau in der Liste: für BEIDE Ansichten laden (gleiche
   // gefilterte Menge, gleiche Hygiene) — kein Reload beim Grid⇄Liste-Wechsel.
-  const gefiltertKey = gefiltert.map(f => f.id).join(",");
+  // Key ordnungsUNabhängig (ids alphabetisch) — Umsortieren lädt nichts neu.
+  const gefiltertKey = gefiltert.map(f => f.id).slice().sort().join(",");
   useEffect(() => {
     let aktiv = true;
     const urls = {};
@@ -2862,6 +2913,14 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
           wert={albumFilter} onWert={setAlbumFilter} t={t} accent={accent}/>
         <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex",
           alignItems: "center", gap: 8 }}>
+          {/* Sortierung (Datum/Name/Album, Richtung kippbar) — geräteweit */}
+          <SortierMenu t={t} accent={accent} wert={sortKrit} richtung={sortRichtung}
+            optionen={FOTO_SORT_OPTIONEN}
+            onWert={(id) => {
+              const opt = FOTO_SORT_OPTIONEN.find(o => o.id === id);
+              fotoAnzeige.setSort && fotoAnzeige.setSort(id, (opt && opt.defRichtung) || "ab");
+            }}
+            onRichtung={(r) => fotoAnzeige.setSort && fotoAnzeige.setSort(sortKrit, r)}/>
           {/* Kachelgröße S/M/L — nur im Grid relevant, geräteweit gemerkt */}
           {ansicht === "grid" && (
             <SegmentControl t={t} accent={accent} value={gridGroesse}
@@ -2887,15 +2946,15 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
       )}
 
       {/* Galerie-Grid: quadratische Kacheln, Name (gekürzt) + Datum darunter */}
-      {ansicht === "grid" && gefiltert.length > 0 && (
+      {ansicht === "grid" && sortiert.length > 0 && (
         <div style={{ display: "grid", gap: 10,
           gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${FOTO_GRID_STUFEN[gridGroesse]}px), 1fr))` }}>
-          {gefiltert.map(foto => {
+          {sortiert.map(foto => {
             const anzeigeName = fotoDateiname(ve, foto, fotos);
             const url = thumbUrls[foto.id];
             return (
               <div key={foto.id} style={{ minWidth: 0 }}>
-                <div onClick={() => onAnsehen && onAnsehen(foto, gefiltert)}
+                <div onClick={() => onAnsehen && onAnsehen(foto, sortiert)}
                   style={{ position: "relative", aspectRatio: "1 / 1",
                     borderRadius: RAD.md, overflow: "hidden", cursor: "pointer",
                     background: t.surface, border: `1px solid ${t.border}` }}>
@@ -2933,9 +2992,9 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
       )}
 
       {/* Zeilenliste (Stufe-1-Darstellung, als Umschalt-Option erhalten) */}
-      {ansicht === "liste" && gefiltert.length > 0 && (
+      {ansicht === "liste" && sortiert.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column" }}>
-          {gefiltert.map((foto, idx) => {
+          {sortiert.map((foto, idx) => {
             const anzeigeName = fotoDateiname(ve, foto, fotos);
             const url = thumbUrls[foto.id];
             return (
@@ -2943,7 +3002,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
                 padding: "10px 2px",
                 borderTop: idx > 0 ? `1px solid ${t.border}` : "none" }}>
                 {/* Mini-Vorschau 34×34 — Icon nur als Platzhalter, bis das Thumb lädt */}
-                <div onClick={() => onAnsehen && onAnsehen(foto, gefiltert)}
+                <div onClick={() => onAnsehen && onAnsehen(foto, sortiert)}
                   style={{ width: 34, height: 34, borderRadius: RAD.md, flexShrink: 0,
                   overflow: "hidden", cursor: "pointer",
                   background: accent + "18", display: "flex", alignItems: "center",
@@ -2955,7 +3014,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
                     <I name="paint" size={16} color={accent}/>
                   )}
                 </div>
-                <div onClick={() => onAnsehen && onAnsehen(foto, gefiltert)}
+                <div onClick={() => onAnsehen && onAnsehen(foto, sortiert)}
                   style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
                   <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
