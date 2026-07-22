@@ -8,7 +8,7 @@ import {
 import { vorgangAnzahlFuerObjekt } from "./vorgang.jsx";
 import {
   DESKTOP_MIN_WIDTH, EinheitOffenContext, I, scrollToCard, useHandlungsbedarf, useKontaktFarbe,
-  useLoeschenErlaubt, useObjektTabs, useStatusLeiste, useWindowWidth, veKartenFeldWert
+  useFotoAnzeige, useLoeschenErlaubt, useObjektTabs, useStatusLeiste, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
 import {
   Avatar, DATUM_MONATE_KURZ, DatumFeld, FeldKontaktKarte, LEGIONELLEN_BEFUNDE,
@@ -2779,10 +2779,17 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
 // vom Fotos-Screen der linken Nav wiederverwendet (eine Quelle: ve.fotos).
 // Object-URL-Hygiene: Thumbnails werden NUR für die aktuell gefilterten Fotos
 // erzeugt und beim Filter-Wechsel/Unmount konsequent revoked (§93.7/§93.10).
+// Kachel-Mindestbreiten der drei Grid-Stufen (S/M/L). "m" = bisheriger Wert.
+const FOTO_GRID_STUFEN = { s: 90, m: 120, l: 180 };
+
 function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoeschen }) {
   const [albumFilter, setAlbumFilter] = useState("alle");
   const [ansicht, setAnsicht] = useState("grid");      // "grid" | "liste"
   const [thumbUrls, setThumbUrls] = useState({});      // fotoId -> Object-URL
+  // Grid-Kachelgröße geräteweit aus den Settings (FotoAnzeigeContext) — gilt
+  // für ALLE Galerie-Instanzen (Objekt-Tab + Fotos-Nav-Screen) gleichermaßen.
+  const fotoAnzeige = useFotoAnzeige();
+  const gridGroesse = FOTO_GRID_STUFEN[fotoAnzeige.gridGroesse] ? fotoAnzeige.gridGroesse : "m";
 
   // Album-Katalog + eigene Alben (aus vorhandenen foto.album-Werten abgeleitet).
   const counts = {};
@@ -2803,11 +2810,13 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
 
   // Thumbnails nur für die sichtbaren (gefilterten) Fotos laden; alte URLs
   // beim Wechsel freigeben — sonst Speicherfresser auf dem iPhone (§93.10).
+  // Seit Mini-Vorschau in der Liste: für BEIDE Ansichten laden (gleiche
+  // gefilterte Menge, gleiche Hygiene) — kein Reload beim Grid⇄Liste-Wechsel.
   const gefiltertKey = gefiltert.map(f => f.id).join(",");
   useEffect(() => {
     let aktiv = true;
     const urls = {};
-    if (ansicht !== "grid" || gefiltert.length === 0) { setThumbUrls({}); return; }
+    if (gefiltert.length === 0) { setThumbUrls({}); return; }
     Promise.all(gefiltert.map(f =>
       dateiBlobUrl(f.dateiRef).then(res => { if (res && res.url) urls[f.id] = res.url; })
     )).then(() => {
@@ -2820,7 +2829,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
       setThumbUrls({});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gefiltertKey, ansicht]);
+  }, [gefiltertKey]);
 
   const unterZeile = (foto) => {
     const geraet = fotoFindeGeraet(ve, foto.geraetId);
@@ -2851,7 +2860,18 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <FilterButtons arten={filterArten} aktive={aktiveArten} counts={counts}
           wert={albumFilter} onWert={setAlbumFilter} t={t} accent={accent}/>
-        <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+        <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex",
+          alignItems: "center", gap: 8 }}>
+          {/* Kachelgröße S/M/L — nur im Grid relevant, geräteweit gemerkt */}
+          {ansicht === "grid" && (
+            <SegmentControl t={t} accent={accent} value={gridGroesse}
+              onChange={(g) => fotoAnzeige.setGridGroesse && fotoAnzeige.setGridGroesse(g)}
+              options={[
+                { id: "s", label: "S" },
+                { id: "m", label: "M" },
+                { id: "l", label: "L" },
+              ]}/>
+          )}
           <SegmentControl t={t} accent={accent} value={ansicht} onChange={setAnsicht}
             options={[
               { id: "grid", label: "", icon: "grid" },
@@ -2869,7 +2889,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
       {/* Galerie-Grid: quadratische Kacheln, Name (gekürzt) + Datum darunter */}
       {ansicht === "grid" && gefiltert.length > 0 && (
         <div style={{ display: "grid", gap: 10,
-          gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}>
+          gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${FOTO_GRID_STUFEN[gridGroesse]}px), 1fr))` }}>
           {gefiltert.map(foto => {
             const anzeigeName = fotoDateiname(ve, foto, fotos);
             const url = thumbUrls[foto.id];
@@ -2917,14 +2937,23 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
         <div style={{ display: "flex", flexDirection: "column" }}>
           {gefiltert.map((foto, idx) => {
             const anzeigeName = fotoDateiname(ve, foto, fotos);
+            const url = thumbUrls[foto.id];
             return (
               <div key={foto.id} style={{ display: "flex", alignItems: "center", gap: 10,
                 padding: "10px 2px",
                 borderTop: idx > 0 ? `1px solid ${t.border}` : "none" }}>
-                <div style={{ width: 34, height: 34, borderRadius: RAD.md, flexShrink: 0,
+                {/* Mini-Vorschau 34×34 — Icon nur als Platzhalter, bis das Thumb lädt */}
+                <div onClick={() => onAnsehen && onAnsehen(foto, gefiltert)}
+                  style={{ width: 34, height: 34, borderRadius: RAD.md, flexShrink: 0,
+                  overflow: "hidden", cursor: "pointer",
                   background: accent + "18", display: "flex", alignItems: "center",
                   justifyContent: "center" }}>
-                  <I name="paint" size={16} color={accent}/>
+                  {url ? (
+                    <img src={url} alt={anzeigeName} style={{ width: "100%",
+                      height: "100%", objectFit: "cover", display: "block" }}/>
+                  ) : (
+                    <I name="paint" size={16} color={accent}/>
+                  )}
                 </div>
                 <div onClick={() => onAnsehen && onAnsehen(foto, gefiltert)}
                   style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>

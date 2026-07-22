@@ -258,6 +258,7 @@ import {
   SIDEBAR_MIN_WIDTH,
   STORAGE_SCHEMA_VERSION,
   SortierPfeile,
+  FotoAnzeigeContext,
   StatusLeisteContext,
   StickySectionHeader,
   TerminBezeichnungenContext,
@@ -2650,6 +2651,10 @@ export default function App() {
       kontextWahl: settings.statusKontextWahl || {},
       kontextDaten: { welt: vorgangsWelt }
     }}>
+    <FotoAnzeigeContext.Provider value={{
+      gridGroesse: settings.fotoGridGroesse || "m",
+      setGridGroesse: (g) => setSettings(s => ({ ...s, fotoGridGroesse: g }))
+    }}>
     <TerminBezeichnungenContext.Provider value={settings.terminBezeichnungen || []}>
     <ZeitPickerContext.Provider value={{
       minutenschritt: settings.zeitMinutenschritt === 5 ? 5 : 15,
@@ -4225,6 +4230,7 @@ export default function App() {
     </HandlungsbedarfContext.Provider>
     </ZeitPickerContext.Provider>
     </TerminBezeichnungenContext.Provider>
+    </FotoAnzeigeContext.Provider>
     </StatusLeisteContext.Provider>
     </KartenBadgesContext.Provider>
     </DokumentViewerBgContext.Provider>
