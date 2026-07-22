@@ -7341,13 +7341,15 @@ function DateiViewerModal({ t, accent, datei, onClose, onVor = null, onZurueck =
   // durch), sonst die modus-eigene Hintergrundfarbe.
   const inhaltBg = transparent ? "transparent" : t.bg;
   // Zoom-Faktor (1 = 100%). Bild + PDF werden per transform:scale vergrößert.
-  // Start bei 50% — am Handy passt eine PDF-Seite bei 100% nicht in den schmalen
-  // Viewport, darum nach unten bis 50% erlaubt.
-  const [zoom, setZoom] = useState(0.5);
+  // Start bei 100% (Benny 22.07.): Bilder sind über objectFit:contain bei 100%
+  // bereits bildschirmfüllend eingepasst; der frühere 50%-Start stammte aus
+  // PDF-Zeiten — PDFs laufen inzwischen über den iframe-Viewer des Browsers
+  // mit eigenem Zoom. Herauszoomen bis 50% bleibt möglich.
+  const [zoom, setZoom] = useState(1);
   const ZOOM_MIN = 0.5, ZOOM_MAX = 4, ZOOM_STEP = 0.25;
   const zoomRein = () => setZoom(z => Math.min(ZOOM_MAX, Math.round((z + ZOOM_STEP) * 100) / 100));
   const zoomRaus = () => setZoom(z => Math.max(ZOOM_MIN, Math.round((z - ZOOM_STEP) * 100) / 100));
-  const zoomReset = () => setZoom(0.5);
+  const zoomReset = () => setZoom(1);
 
   // Pinch-to-Zoom (Touch): Abstand zweier Finger → Zoomfaktor. Reiner Eigenbau,
   // damit es auf iboth iOS-Safari + Android im Bild- UND PDF-Container greift.

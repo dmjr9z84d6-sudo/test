@@ -3252,11 +3252,17 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
           bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", zIndex: 900,
           background: t.card, border: `1px solid ${t.border}`,
           borderRadius: RAD.lg, boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
-          padding: "8px 10px", display: "flex", alignItems: "center", gap: 8,
+          padding: "8px 10px", display: "flex", alignItems: "center", gap: 6,
           maxWidth: "calc(100vw - 24px)" }}>
-          <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text,
-            whiteSpace: "nowrap", padding: "0 2px" }}>
-            {auswahl.length} ausgewählt
+          {/* Kompakter Zähler (Badge) — "N ausgewählt" brach auf schmalen
+              iPhones die Buttons um (Benny-Screenshot 22.07.). */}
+          <span title={auswahl.length + " ausgewählt"} style={{ minWidth: 24,
+            height: 24, padding: "0 7px", borderRadius: RAD.pill,
+            background: accent, color: getContrastColor(accent),
+            fontSize: FS.s, fontWeight: FW.heavy, display: "flex",
+            alignItems: "center", justifyContent: "center", flexShrink: 0,
+            boxSizing: "border-box" }}>
+            {auswahl.length}
           </span>
           {/* Bearbeiten */}
           <button onClick={() => { setLoeschConfirm(false);
@@ -3265,7 +3271,8 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
             style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
               padding: "0 10px", cursor: "pointer", background: accent + "18",
               border: `1px solid ${accent}40`, borderRadius: RAD.sm,
-              color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit" }}>
+              color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
+              whiteSpace: "nowrap", flexShrink: 0 }}>
             <I name="pencil" size={12} color={accent}/>
             <span>Bearbeiten</span>
           </button>
@@ -3276,7 +3283,8 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
               style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
                 padding: "0 10px", cursor: "pointer", background: accent + "18",
                 border: `1px solid ${accent}40`, borderRadius: RAD.sm,
-                color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit" }}>
+                color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
+                whiteSpace: "nowrap", flexShrink: 0 }}>
               <I name="list" size={12} color={accent}/>
               <span>Album</span>
             </button>
@@ -3310,7 +3318,9 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
               </div>
             )}
           </div>
-          {/* Löschen — Zwei-Tipp-Bestätigung */}
+          {/* Löschen — nur Papierkorb (Benny 22.07.). Zwei-Tipp-Bestätigung:
+              erster Tipp füllt den Button rot (Icon weiß), zweiter löscht.
+              Antippen eines Fotos oder einer anderen Aktion setzt zurück. */}
           <button onClick={() => {
               if (!loeschConfirm) { setLoeschConfirm(true); return; }
               setLoeschConfirm(false);
@@ -3318,22 +3328,18 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
               auswahlLeeren();
             }}
             title={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
-            aria-label="Löschen"
-            style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
-              padding: "0 10px", cursor: "pointer",
+            aria-label={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              width: 32, height: 32, cursor: "pointer", padding: 0, flexShrink: 0,
               background: loeschConfirm ? "#EF4444" : "#EF444418",
-              border: "1px solid #EF444455", borderRadius: RAD.sm,
-              color: loeschConfirm ? "#FFFFFF" : "#EF4444",
-              fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
-              whiteSpace: "nowrap" }}>
-            <I name="trash" size={12} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
-            <span>{loeschConfirm ? "Wirklich?" : "Löschen"}</span>
+              border: "1px solid #EF444455", borderRadius: RAD.sm }}>
+            <I name="trash" size={13} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
           </button>
           {/* Auswahl aufheben */}
           <button onClick={auswahlLeeren} title="Auswahl aufheben"
             aria-label="Auswahl aufheben"
             style={{ display: "flex", alignItems: "center", justifyContent: "center",
-              width: 32, height: 32, cursor: "pointer", background: "none",
+              width: 32, height: 32, cursor: "pointer", background: "none", flexShrink: 0,
               border: `1px solid ${t.border}`, borderRadius: RAD.sm, padding: 0 }}>
             <I name="x" size={12} color={t.sub}/>
           </button>
