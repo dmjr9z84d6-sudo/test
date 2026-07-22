@@ -2420,22 +2420,36 @@ function fotoFelderAbleitung(ve, art, hausWahl, einheitWahl) {
   const verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
   const aktEinheit = verfEinheiten.find(e => String(e.id) === String(einheitWahl)) || null;
   // Raum-Angebot je Welt: Gemeinschaft → Gemeinschaftsräume des Hauses;
-  // Einheit → Räume der gewählten Einheit (über ihre Teile).
+  // Einheit → Räume der gewählten Einheit. WICHTIG (Bugfix v14.25): Räume
+  // einer NICHT unterteilten Einheit hängen direkt an einheit.raeume — erst
+  // beim Unterteilen wandern sie in teile[0].raeume (fuegeTeilHinzu). Beide
+  // Pfade lesen; fehlende/doppelte IDs defensiv abfangen (Alt-Bestände).
   const verfRaeume = (() => {
     const out = [];
+    const gesehen = {};
+    const nimm = (r) => {
+      if (!r) return;
+      const id = r.id != null ? r.id : (r.name || "");
+      const key = String(id);
+      if (!key || gesehen[key]) return;
+      gesehen[key] = true;
+      out.push({ id: id, label: r.name || "Raum" });
+    };
     if (art === "einheit") {
       if (!aktEinheit) return out;
-      (aktEinheit.teile || []).forEach(teil => {
-        ((teil && teil.raeume) || []).forEach(r => {
-          if (r) out.push({ id: r.id, label: r.name || "Raum" });
-        });
-      });
+      const teile = (Array.isArray(aktEinheit.teile) && aktEinheit.teile.length > 0)
+        ? aktEinheit.teile : null;
+      if (teile) {
+        teile.forEach(teil => ((teil && teil.raeume) || []).forEach(nimm));
+      }
+      // Normalfall unaufgeteilte Einheit + Legacy: Räume direkt an der Einheit.
+      if (out.length === 0 && Array.isArray(aktEinheit.raeume)) {
+        aktEinheit.raeume.forEach(nimm);
+      }
       return out;
     }
     if (!aktHaus) return out;
-    (aktHaus.raeume || []).forEach(r => {
-      if (r) out.push({ id: r.id, label: r.name || "Raum" });
-    });
+    (aktHaus.raeume || []).forEach(nimm);
     return out;
   })();
   // Technik-Geräte für die optionale Verknüpfung — hängen an den TECHNIK-
@@ -2495,7 +2509,8 @@ function FotoFelderBlock({ ve, t, accent,
       <div style={{ marginBottom: 14 }}>
         <div style={labelStyle}>{zuordnungLabel}</div>
         <SegmentControl t={t} accent={accent} value={art}
-          onChange={(id) => { setArt(id); setEinheitWahl(""); setRaumWahl(""); }}
+          onChange={(id) => { setArt(id); setEinheitWahl(""); setRaumWahl("");
+            if (id === "einheit") setGeraetWahl(""); }}
           options={[
             { id: "gemeinschaft", label: "Gemeinschaft" },
             { id: "einheit", label: "Einheit (SE)" },
@@ -2539,8 +2554,10 @@ function FotoFelderBlock({ ve, t, accent,
         </div>
       </div>
 
-      {/* Technik-Gerät (optional) */}
-      {alleGeraete.length > 0 && (
+      {/* Technik-Gerät (optional) — nur bei Gemeinschaft: Technik-Geräte
+          hängen an den Technik-Karten des Objekts (Gemeinschaftsanlagen),
+          im Sondereigentum ergibt die Verknüpfung keinen Sinn (Benny 22.07.). */}
+      {art === "gemeinschaft" && alleGeraete.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div style={labelStyle}>Technik-Gerät (optional)</div>
           <select value={geraetWahl} onChange={e => setGeraetWahl(e.target.value)}
@@ -2658,7 +2675,7 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
             einheitId: art === "einheit" ? einheitWahl : null,
             raumId: raumWahl || null,   // optionale Verfeinerung beider Welten
           },
-          geraetId: geraetWahl || null,
+          geraetId: art === "gemeinschaft" ? (geraetWahl || null) : null,
           aufgenommen: info.aufgenommen || heuteDE,
           exifQuelle: info.aufgenommen ? "exif" : "upload",
           gps: info.gps || null,           // Hintergrund-Info, nicht prominent (§93.2)
@@ -2861,7 +2878,7 @@ function FotoBearbeitenModal({ ve, fotos, t, accent, onClose, onSave }) {
         einheitId: art === "einheit" ? einheitWahl : null,
         raumId: raumWahl || null,
       },
-      geraetId: geraetWahl || null,
+      geraetId: art === "gemeinschaft" ? (geraetWahl || null) : null,
       notiz: notiz.trim(),
       // Datum nur im Einzel-Fall anfassen; manuell geändert → kennzeichnen
       // (Info-Zeile §93.2). Bei Mehrfach bleibt jedes Datum wie es ist.

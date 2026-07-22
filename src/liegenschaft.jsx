@@ -7393,7 +7393,7 @@ function DateiViewerModal({ t, accent, datei, onClose, onVor = null, onZurueck =
   }, [datei && datei.id]);
 
   // Bei Dateiwechsel Zoom zurücksetzen.
-  useEffect(function () { setZoom(0.5); }, [datei && datei.id]);
+  useEffect(function () { setZoom(1); }, [datei && datei.id]);
 
   // Pfeiltasten-Blättern (Desktop) — nur aktiv, wenn Blättern angeboten wird.
   useEffect(function () {
