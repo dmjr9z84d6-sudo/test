@@ -3903,7 +3903,7 @@ export default function App() {
               <FotosAnsicht
                 ve={veObj} setVes={setVes} t={t}
                 accent={(effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899"}
-                editMode={fotosEditMode}/>
+                editMode={fotosEditMode} mitPlus={false}/>
             )}/>
         )}
         {/* §95: Timeline-Sicht der Legionellen-Kachel — EXAKT die Kalender-

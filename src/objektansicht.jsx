@@ -8,7 +8,7 @@ import {
 import { vorgangAnzahlFuerObjekt } from "./vorgang.jsx";
 import {
   DESKTOP_MIN_WIDTH, EinheitOffenContext, I, scrollToCard, useHandlungsbedarf, useKontaktFarbe,
-  useFotoAnzeige, useLoeschenErlaubt, useObjektTabs, useStatusLeiste, useWindowWidth, veKartenFeldWert
+  useFotoAnzeige, useLoeschenErlaubt, useObjektTabs, useOutsideClick, useStatusLeiste, useWindowWidth, veKartenFeldWert
 } from "./utils-icons.jsx";
 import {
   Avatar, DATUM_MONATE_KURZ, DatumFeld, FeldKontaktKarte, LEGIONELLEN_BEFUNDE,
@@ -2408,34 +2408,11 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
 // Mehrfach-Auswahl JA (Begehung = viele Fotos auf einmal): alle gewählten
 // Dateien teilen Album/Zuordnung/Gerät/Notiz — bewusste Vereinfachung (§93.10).
 // Zuordnung ist PFLICHT; Hochladen bleibt disabled, bis sie vollständig ist.
-function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) {
-  const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
-    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
-  const inputStyle = { width: "100%", padding: "8px 10px",
-    background: t.surface, color: t.text, border: `1px solid ${t.border}`,
-    borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
-
-  const [dateien, setDateien] = useState([]);       // gewählte File-Objekte
-  const [exifInfos, setExifInfos] = useState([]);   // parallel je Datei: { aufgenommen, gps, quelle }
-  const [heicAnzahl, setHeicAnzahl] = useState(0);  // abgewiesene HEIC-Dateien (Hinweis)
-  const [album, setAlbum] = useState("");
-  const [eigenAlbum, setEigenAlbum] = useState("");
-  const [art, setArt] = useState("gemeinschaft");   // "gemeinschaft" | "einheit" | "raum"
-  const [hausWahl, setHausWahl] = useState("");
-  const [einheitWahl, setEinheitWahl] = useState("");
-  const [raumWahl, setRaumWahl] = useState("");
-  const [geraetWahl, setGeraetWahl] = useState("");
-  const [notiz, setNotiz] = useState("");
-  const [fehler, setFehler] = useState("");
-  const [ladend, setLadend] = useState(false);
-
-  // Standorte/Einheiten/Räume — DIESELBE Quelle wie Technik/Legionellen
-  // (legionellenStandorte, §93.8 Baustein-Inventar). Haus-Dropdown nur bei
-  // mehreren Standorten; bei genau einem ist er implizit vorgewählt.
-  // ZWEI Welten (Benny, 05.07.2026): „gemeinschaft" = Gemeinschaftseigentum
-  // (Haus/TG → optional Gemeinschaftsraum) · „einheit" = Sondereigentum
-  // (Einheit PFLICHT → optional Raum DIESER Einheit). Der Raum ist keine
-  // eigene Art mehr, sondern eine optionale Verfeinerung beider Welten.
+// ── Gemeinsame Feld-Logik Upload + Bearbeiten (§76: EIN Feld-Block) ─────────
+// Abgeleitete Auswahllisten für die Foto-Felder — Single Truth für beide
+// Modale (Hochladen + Bearbeiten). Standorte/Einheiten/Räume aus DERSELBEN
+// Quelle wie Technik/Legionellen (legionellenStandorte, §93.8).
+function fotoFelderAbleitung(ve, art, hausWahl, einheitWahl) {
   const standorte = legionellenStandorte(ve);
   const einzigerStandort = standorte.length === 1 ? standorte[0] : null;
   const effHausId = hausWahl || (einzigerStandort ? String(einzigerStandort.id) : "");
@@ -2461,9 +2438,8 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
     });
     return out;
   })();
-  // Technik-Geräte für die optionale Verknüpfung — sie hängen an den
-  // TECHNIK-Karten des Objekts (Bugfix v13.53: vorher wurden fälschlich die
-  // Gebäude-Karten durchsucht, das Dropdown blieb dadurch immer verborgen).
+  // Technik-Geräte für die optionale Verknüpfung — hängen an den TECHNIK-
+  // Karten des Objekts (Bugfix v13.53).
   const alleGeraete = (() => {
     const out = [];
     (((ve && ve.karten) || []).filter(k => k && k.kategorie === "technik")).forEach(k => {
@@ -2473,7 +2449,148 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
     });
     return out;
   })();
+  return { standorte, effHausId, aktHaus, verfEinheiten, aktEinheit, verfRaeume, alleGeraete };
+}
 
+// Der gemeinsame Feld-Block (Album · Zuordnung · Gerät · Notiz) — kontrolliert
+// über Einzel-Props, damit Upload-Modal und Bearbeiten-Modal ihre eigenen
+// useStates behalten und nur das Rendern + die Ableitung teilen.
+function FotoFelderBlock({ ve, t, accent,
+  album, setAlbum, eigenAlbum, setEigenAlbum,
+  art, setArt, hausWahl, setHausWahl, einheitWahl, setEinheitWahl,
+  raumWahl, setRaumWahl, geraetWahl, setGeraetWahl,
+  notiz, setNotiz, setFehler = () => {},
+  zuordnungLabel = "Wozu gehören die Fotos?" }) {
+  const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
+    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
+  const inputStyle = { width: "100%", padding: "8px 10px",
+    background: t.surface, color: t.text, border: `1px solid ${t.border}`,
+    borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
+  const { standorte, aktHaus, verfEinheiten, aktEinheit, verfRaeume, alleGeraete } =
+    fotoFelderAbleitung(ve, art, hausWahl, einheitWahl);
+  const istEigenAlbum = album === "__eigen__";
+  return (
+    <>
+      {/* Album */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={labelStyle}>Album</div>
+        <select value={album} onChange={e => { setAlbum(e.target.value); setFehler(""); }}
+          style={inputStyle}>
+          <option value="">— Album wählen —</option>
+          {FOTO_ALBEN.map(a => (
+            <option key={a.id} value={a.id}>{a.label}</option>
+          ))}
+          <option value="__eigen__">Eigenes Album …</option>
+        </select>
+      </div>
+      {istEigenAlbum && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={labelStyle}>Name des Albums</div>
+          <input value={eigenAlbum} onChange={e => { setEigenAlbum(e.target.value); setFehler(""); }}
+            placeholder="z. B. Begehung Juli 2026" style={inputStyle}/>
+        </div>
+      )}
+
+      {/* Zuordnung (PFLICHT): Gemeinschaftseigentum ODER Sondereigentum */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={labelStyle}>{zuordnungLabel}</div>
+        <SegmentControl t={t} accent={accent} value={art}
+          onChange={(id) => { setArt(id); setEinheitWahl(""); setRaumWahl(""); }}
+          options={[
+            { id: "gemeinschaft", label: "Gemeinschaft" },
+            { id: "einheit", label: "Einheit (SE)" },
+          ]}/>
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          {standorte.length > 1 && (
+            <select value={hausWahl}
+              onChange={e => { setHausWahl(e.target.value); setEinheitWahl(""); setRaumWahl(""); }}
+              style={inputStyle}>
+              <option value="">— Haus / Tiefgarage —</option>
+              {standorte.map(h => (
+                <option key={h.id} value={h.id}>{h.name || "Gebäude"}</option>
+              ))}
+            </select>
+          )}
+          {art === "einheit" && (
+            <select value={einheitWahl}
+              onChange={e => { setEinheitWahl(e.target.value); setRaumWahl(""); }}
+              style={inputStyle} disabled={!aktHaus}>
+              <option value="">— Einheit wählen —</option>
+              {verfEinheiten.map(eh => (
+                <option key={eh.id} value={eh.id}>
+                  {eh.bezeichnung || eh.nr || ("Einheit " + eh.id)}
+                </option>
+              ))}
+            </select>
+          )}
+          {/* Raum: optionale Verfeinerung — Gemeinschaftsraum des Hauses
+              bzw. Raum der gewählten Einheit. Nur zeigen, wenn es welche gibt. */}
+          {verfRaeume.length > 0 && (art === "gemeinschaft" || !!aktEinheit) && (
+            <select value={raumWahl} onChange={e => setRaumWahl(e.target.value)}
+              style={inputStyle}>
+              <option value="">
+                {art === "einheit" ? "— ganze Einheit (kein Raum) —" : "— kein bestimmter Raum —"}
+              </option>
+              {verfRaeume.map(r => (
+                <option key={r.id} value={r.id}>{r.label}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+
+      {/* Technik-Gerät (optional) */}
+      {alleGeraete.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={labelStyle}>Technik-Gerät (optional)</div>
+          <select value={geraetWahl} onChange={e => setGeraetWahl(e.target.value)}
+            style={inputStyle}>
+            <option value="">— kein Gerät —</option>
+            {alleGeraete.map(g => (
+              <option key={g.id} value={g.id}>{g.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Notiz (optional) */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={labelStyle}>Notiz (optional)</div>
+        <textarea value={notiz} onChange={e => setNotiz(e.target.value)}
+          placeholder="z. B. Wasserfleck an der Decke, gemeldet am …"
+          rows={3} style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}/>
+      </div>
+    </>
+  );
+}
+
+function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) {
+  const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
+    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
+  const inputStyle = { width: "100%", padding: "8px 10px",
+    background: t.surface, color: t.text, border: `1px solid ${t.border}`,
+    borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
+
+  const [dateien, setDateien] = useState([]);       // gewählte File-Objekte
+  const [exifInfos, setExifInfos] = useState([]);   // parallel je Datei: { aufgenommen, gps, quelle }
+  const [heicAnzahl, setHeicAnzahl] = useState(0);  // abgewiesene HEIC-Dateien (Hinweis)
+  const [album, setAlbum] = useState("");
+  const [eigenAlbum, setEigenAlbum] = useState("");
+  const [art, setArt] = useState("gemeinschaft");   // "gemeinschaft" | "einheit" | "raum"
+  const [hausWahl, setHausWahl] = useState("");
+  const [einheitWahl, setEinheitWahl] = useState("");
+  const [raumWahl, setRaumWahl] = useState("");
+  const [geraetWahl, setGeraetWahl] = useState("");
+  const [notiz, setNotiz] = useState("");
+  const [fehler, setFehler] = useState("");
+  const [ladend, setLadend] = useState(false);
+
+  // ZWEI Welten (Benny, 05.07.2026): „gemeinschaft" = Gemeinschaftseigentum
+  // (Haus/TG → optional Gemeinschaftsraum) · „einheit" = Sondereigentum
+  // (Einheit PFLICHT → optional Raum DIESER Einheit). Ableitung + Felder
+  // laufen über den gemeinsamen Block (fotoFelderAbleitung/FotoFelderBlock,
+  // §76) — hier wird nur noch effHausId fürs Speichern gebraucht.
+  const { effHausId } = fotoFelderAbleitung(ve, art, hausWahl, einheitWahl);
   const istEigenAlbum = album === "__eigen__";
   const albumWert = istEigenAlbum ? eigenAlbum.trim() : album;
   // Gemeinschaft ist ohne weitere Wahl gültig (Raum optional);
@@ -2653,95 +2770,16 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
             )}
           </div>
 
-          {/* Album */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={labelStyle}>Album</div>
-            <select value={album} onChange={e => { setAlbum(e.target.value); setFehler(""); }}
-              style={inputStyle}>
-              <option value="">— Album wählen —</option>
-              {FOTO_ALBEN.map(a => (
-                <option key={a.id} value={a.id}>{a.label}</option>
-              ))}
-              <option value="__eigen__">Eigenes Album …</option>
-            </select>
-          </div>
-          {istEigenAlbum && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={labelStyle}>Name des Albums</div>
-              <input value={eigenAlbum} onChange={e => { setEigenAlbum(e.target.value); setFehler(""); }}
-                placeholder="z. B. Begehung Juli 2026" style={inputStyle}/>
-            </div>
-          )}
-
-          {/* Zuordnung (PFLICHT): Gemeinschaftseigentum ODER Sondereigentum */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={labelStyle}>Wozu gehören die Fotos?</div>
-            <SegmentControl t={t} accent={accent} value={art}
-              onChange={(id) => { setArt(id); setEinheitWahl(""); setRaumWahl(""); }}
-              options={[
-                { id: "gemeinschaft", label: "Gemeinschaft" },
-                { id: "einheit", label: "Einheit (SE)" },
-              ]}/>
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-              {standorte.length > 1 && (
-                <select value={hausWahl}
-                  onChange={e => { setHausWahl(e.target.value); setEinheitWahl(""); setRaumWahl(""); }}
-                  style={inputStyle}>
-                  <option value="">— Haus / Tiefgarage —</option>
-                  {standorte.map(h => (
-                    <option key={h.id} value={h.id}>{h.name || "Gebäude"}</option>
-                  ))}
-                </select>
-              )}
-              {art === "einheit" && (
-                <select value={einheitWahl}
-                  onChange={e => { setEinheitWahl(e.target.value); setRaumWahl(""); }}
-                  style={inputStyle} disabled={!aktHaus}>
-                  <option value="">— Einheit wählen —</option>
-                  {verfEinheiten.map(eh => (
-                    <option key={eh.id} value={eh.id}>
-                      {eh.bezeichnung || eh.nr || ("Einheit " + eh.id)}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {/* Raum: optionale Verfeinerung — Gemeinschaftsraum des Hauses
-                  bzw. Raum der gewählten Einheit. Nur zeigen, wenn es welche gibt. */}
-              {verfRaeume.length > 0 && (art === "gemeinschaft" || !!aktEinheit) && (
-                <select value={raumWahl} onChange={e => setRaumWahl(e.target.value)}
-                  style={inputStyle}>
-                  <option value="">
-                    {art === "einheit" ? "— ganze Einheit (kein Raum) —" : "— kein bestimmter Raum —"}
-                  </option>
-                  {verfRaeume.map(r => (
-                    <option key={r.id} value={r.id}>{r.label}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-
-          {/* Technik-Gerät (optional) */}
-          {alleGeraete.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={labelStyle}>Technik-Gerät (optional)</div>
-              <select value={geraetWahl} onChange={e => setGeraetWahl(e.target.value)}
-                style={inputStyle}>
-                <option value="">— kein Gerät —</option>
-                {alleGeraete.map(g => (
-                  <option key={g.id} value={g.id}>{g.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Notiz (optional) */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={labelStyle}>Notiz (optional)</div>
-            <textarea value={notiz} onChange={e => setNotiz(e.target.value)}
-              placeholder="z. B. Wasserfleck an der Decke, gemeldet am …"
-              rows={3} style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}/>
-          </div>
+          {/* Album · Zuordnung · Gerät · Notiz — gemeinsamer Block (§76) */}
+          <FotoFelderBlock ve={ve} t={t} accent={accent}
+            album={album} setAlbum={setAlbum}
+            eigenAlbum={eigenAlbum} setEigenAlbum={setEigenAlbum}
+            art={art} setArt={setArt}
+            hausWahl={hausWahl} setHausWahl={setHausWahl}
+            einheitWahl={einheitWahl} setEinheitWahl={setEinheitWahl}
+            raumWahl={raumWahl} setRaumWahl={setRaumWahl}
+            geraetWahl={geraetWahl} setGeraetWahl={setGeraetWahl}
+            notiz={notiz} setNotiz={setNotiz} setFehler={setFehler}/>
 
           {fehler && (
             <div style={{ fontSize: FS.s, color: "#EF4444", padding: "2px 0 6px" }}>{fehler}</div>
@@ -2766,6 +2804,142 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
             disabled={!valid} text={ladend ? "Speichert …" : "Hochladen"}
             icon={false} flex={2} t={t} accent={accent}/>
           ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── FotoBearbeitenModal: Eigenschaften BESTEHENDER Fotos ändern ─────────────
+// Gleiche Felder wie beim Hochladen (gemeinsamer FotoFelderBlock, §76).
+// EIN Foto: voller Dialog inkl. Aufnahmedatum (TT.MM.JJJJ), vorbelegt.
+// MEHRERE Fotos (Auswahl-Modus): gleiche Angaben für alle — exakt das
+// Upload-Modell rückwärts; Datum bleibt dann unangetastet. Der Dateiname
+// baut sich aus Album/Zuordnung/Datum automatisch neu zusammen (§93.4).
+function FotoBearbeitenModal({ ve, fotos, t, accent, onClose, onSave }) {
+  const foto = (fotos && fotos[0]) || {};
+  const mehrfach = (fotos || []).length > 1;
+  const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
+    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
+  const inputStyle = { width: "100%", padding: "8px 10px",
+    background: t.surface, color: t.text, border: `1px solid ${t.border}`,
+    borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
+  // Vorbelegung aus dem Foto: Katalog-Album direkt, sonst „Eigenes Album".
+  const albumIstKatalog = FOTO_ALBEN.some(a => a.id === foto.album);
+  const [album, setAlbum] = useState(foto.album ? (albumIstKatalog ? foto.album : "__eigen__") : "");
+  const [eigenAlbum, setEigenAlbum] = useState(albumIstKatalog ? "" : (foto.album || ""));
+  const z = (foto && foto.zuordnung) || {};
+  const [art, setArt] = useState(z.art === "einheit" ? "einheit" : "gemeinschaft");
+  const [hausWahl, setHausWahl] = useState(z.hausId != null ? String(z.hausId) : "");
+  const [einheitWahl, setEinheitWahl] = useState(z.einheitId != null ? String(z.einheitId) : "");
+  const [raumWahl, setRaumWahl] = useState(z.raumId != null ? String(z.raumId) : "");
+  const [geraetWahl, setGeraetWahl] = useState(foto.geraetId != null ? String(foto.geraetId) : "");
+  const [notiz, setNotiz] = useState(foto.notiz || "");
+  const [aufgenommen, setAufgenommen] = useState(foto.aufgenommen || "");
+  const [fehler, setFehler] = useState("");
+
+  const { effHausId } = fotoFelderAbleitung(ve, art, hausWahl, einheitWahl);
+  const istEigenAlbum = album === "__eigen__";
+  const albumWert = istEigenAlbum ? eigenAlbum.trim() : album;
+  const zuordnungOk = art === "gemeinschaft" || (art === "einheit" && !!einheitWahl);
+  const datumOk = mehrfach || !aufgenommen.trim()
+    || /^\d{2}\.\d{2}\.\d{4}$/.test(aufgenommen.trim());
+  const valid = !!albumWert && zuordnungOk && datumOk;
+
+  const speichern = () => {
+    if (!valid) {
+      setFehler(!datumOk ? "Datum bitte als TT.MM.JJJJ angeben."
+        : "Bitte Album und Zuordnung angeben.");
+      return;
+    }
+    const neuesDatum = aufgenommen.trim();
+    onSave({
+      album: albumWert,
+      zuordnung: {
+        art: art,
+        hausId: effHausId || null,
+        einheitId: art === "einheit" ? einheitWahl : null,
+        raumId: raumWahl || null,
+      },
+      geraetId: geraetWahl || null,
+      notiz: notiz.trim(),
+      // Datum nur im Einzel-Fall anfassen; manuell geändert → kennzeichnen
+      // (Info-Zeile §93.2). Bei Mehrfach bleibt jedes Datum wie es ist.
+      ...(!mehrfach ? { aufgenommen: neuesDatum } : {}),
+      ...(!mehrfach && neuesDatum !== (foto.aufgenommen || "")
+        ? { exifQuelle: "manuell" } : {}),
+    });
+  };
+
+  return (
+    <div style={overlayBackdrop()} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: t.card, border: `1px solid ${t.border}`,
+        borderRadius: RAD.xl, width: "100%", maxWidth: 480,
+        maxHeight: "calc(95dvh - 16px)", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+        {/* Header */}
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.border}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          position: "sticky", top: 0, background: t.card, zIndex: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <I name="pencil" size={14} color={accent}/>
+            <span style={{ fontSize: FS.xl, fontWeight: FW.bold, color: t.text }}>
+              {mehrfach ? (fotos.length + " Fotos bearbeiten") : "Foto bearbeiten"}
+              {ve && (ve.nr || ve.name) ? " · " + (ve.nr || ve.name) : ""}
+            </span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}
+            title="Schließen" aria-label="Schließen">
+            <I name="x" size={16} color={t.sub}/>
+          </button>
+        </div>
+
+        <div style={{ padding: 16 }}>
+          <FotoFelderBlock ve={ve} t={t} accent={accent}
+            album={album} setAlbum={setAlbum}
+            eigenAlbum={eigenAlbum} setEigenAlbum={setEigenAlbum}
+            art={art} setArt={setArt}
+            hausWahl={hausWahl} setHausWahl={setHausWahl}
+            einheitWahl={einheitWahl} setEinheitWahl={setEinheitWahl}
+            raumWahl={raumWahl} setRaumWahl={setRaumWahl}
+            geraetWahl={geraetWahl} setGeraetWahl={setGeraetWahl}
+            notiz={notiz} setNotiz={setNotiz} setFehler={setFehler}
+            zuordnungLabel="Wozu gehört das Foto?"/>
+
+          {/* Aufnahmedatum — beim Upload automatisch (EXIF/Upload-Tag), hier
+              manuell korrigierbar. Leer = kein Datum. Nur im Einzel-Fall —
+              bei Mehrfachauswahl bleibt jedes Datum unangetastet. */}
+          {!mehrfach && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={labelStyle}>Aufnahmedatum (TT.MM.JJJJ)</div>
+            <input value={aufgenommen}
+              onChange={e => { setAufgenommen(e.target.value); setFehler(""); }}
+              placeholder="z. B. 05.07.2026" inputMode="numeric" style={inputStyle}/>
+          </div>
+          )}
+
+          {fehler && (
+            <div style={{ fontSize: FS.s, color: "#EF4444", padding: "2px 0 6px" }}>{fehler}</div>
+          )}
+
+          <div style={{ fontSize: FS.s, color: t.muted, fontStyle: "italic",
+            padding: "6px 0 0", lineHeight: 1.4 }}>
+            {mehrfach
+              ? "Alle ausgewählten Fotos erhalten dieselben Angaben — wie beim Hochladen. Die Dateinamen passen sich automatisch an."
+              : "Der Dateiname passt sich automatisch an Album, Zuordnung und Datum an."}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${t.border}`,
+          display: "flex", gap: 8,
+          position: "sticky", bottom: 0, background: t.card }}>
+          <AktionsButton variante="breit" rolle="abbrechen" onClick={onClose}
+            text="Abbrechen" icon={false} flex={1} t={t} accent={accent}/>
+          <AktionsButton variante="breit" rolle="bestaetigen" onClick={speichern}
+            disabled={!valid} text="Speichern"
+            icon={false} flex={2} t={t} accent={accent}/>
         </div>
       </div>
     </div>
@@ -2804,10 +2978,36 @@ function fotoAlbumRang(album) {
   return idx >= 0 ? idx : FOTO_ALBEN.length;
 }
 
-function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoeschen }) {
+function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
+  onBearbeitenAuswahl, onAlbumZuweisen, onLoeschenAuswahl, auswahlReset = 0 }) {
   const [albumFilter, setAlbumFilter] = useState("alle");
   const [ansicht, setAnsicht] = useState("grid");      // "grid" | "liste"
   const [thumbUrls, setThumbUrls] = useState({});      // fotoId -> Object-URL
+  // Auswahl-Modus (Benny 22.07.): Im Edit-Modus tippt man Fotos AN statt sie
+  // zu öffnen — markierte Fotos sammeln sich in auswahl, die Aktionen liegen
+  // EINMAL in der schwebenden Leiste unten (iOS-Fotos-Muster), nicht mehr als
+  // Einzel-Buttons auf jeder Kachel (auf S-Kacheln zu eng).
+  const [auswahl, setAuswahl] = useState([]);          // foto-ids
+  const [albumMenuAuf, setAlbumMenuAuf] = useState(false);
+  const [loeschConfirm, setLoeschConfirm] = useState(false);
+  const albumMenuRef = useRef(null);
+  useOutsideClick(albumMenuRef, () => setAlbumMenuAuf(false), albumMenuAuf);
+  // Edit-Modus aus → Auswahl + offene Leisten-Zustände verwerfen.
+  useEffect(() => {
+    if (!editMode) { setAuswahl([]); setAlbumMenuAuf(false); setLoeschConfirm(false); }
+  }, [editMode]);
+  // Reset-Signal von außen: nach gespeichertem Bearbeiten-Modal hebt die
+  // FotosAnsicht die Auswahl auf (Zähler hochzählen genügt).
+  useEffect(() => {
+    setAuswahl([]); setAlbumMenuAuf(false); setLoeschConfirm(false);
+  }, [auswahlReset]);
+  const istGewaehlt = (id) => auswahl.indexOf(id) >= 0;
+  const toggleAuswahl = (id) => {
+    setLoeschConfirm(false);
+    setAuswahl(a => a.indexOf(id) >= 0 ? a.filter(x => x !== id) : a.concat(id));
+  };
+  const auswahlFotos = () => fotos.filter(f => istGewaehlt(f.id));
+  const auswahlLeeren = () => { setAuswahl([]); setAlbumMenuAuf(false); setLoeschConfirm(false); };
   // Grid-Kachelgröße geräteweit aus den Settings (FotoAnzeigeContext) — gilt
   // für ALLE Galerie-Instanzen (Objekt-Tab + Fotos-Nav-Screen) gleichermaßen.
   const fotoAnzeige = useFotoAnzeige();
@@ -2825,6 +3025,8 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
     .map(a => ({ id: a, label: a, kurz: a }));
   const filterArten = FOTO_ALBEN.map(a => ({ id: a.id, label: a.label, kurz: a.label }))
     .concat(eigene);
+  // Für die Album-Schnellzuweisung der Aktionsleiste: nur die Namen.
+  const eigeneAlben = eigene.map(a => a.id);
   const aktiveArten = filterArten.filter(a => counts[a.id] > 0).map(a => a.id);
 
   const gefiltert = albumFilter === "alle"
@@ -2893,18 +3095,6 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
     return teile.filter(Boolean).join(" · ");
   };
 
-  const loeschBtn = (foto, absolut) => (
-    <button onClick={(e) => { e.stopPropagation(); onLoeschen && onLoeschen(foto); }}
-      title="Foto entfernen" aria-label="Foto entfernen" style={{
-      background: absolut ? t.card : "none", border: `1px solid ${t.border}`,
-      borderRadius: RAD.sm, width: 30, height: 30, cursor: "pointer", padding: 0,
-      flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-      ...(absolut ? { position: "absolute", top: 6, right: 6,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.35)" } : {}) }}>
-      <I name="trash" size={13} color={t.sub}/>
-    </button>
-  );
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* Filter-Zeile: Alben links (scrollbar), Ansicht-Umschalter rechts */}
@@ -2913,14 +3103,6 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
           wert={albumFilter} onWert={setAlbumFilter} t={t} accent={accent}/>
         <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex",
           alignItems: "center", gap: 8 }}>
-          {/* Sortierung (Datum/Name/Album, Richtung kippbar) — geräteweit */}
-          <SortierMenu t={t} accent={accent} wert={sortKrit} richtung={sortRichtung}
-            optionen={FOTO_SORT_OPTIONEN}
-            onWert={(id) => {
-              const opt = FOTO_SORT_OPTIONEN.find(o => o.id === id);
-              fotoAnzeige.setSort && fotoAnzeige.setSort(id, (opt && opt.defRichtung) || "ab");
-            }}
-            onRichtung={(r) => fotoAnzeige.setSort && fotoAnzeige.setSort(sortKrit, r)}/>
           {/* Kachelgröße S/M/L — nur im Grid relevant, geräteweit gemerkt */}
           {ansicht === "grid" && (
             <SegmentControl t={t} accent={accent} value={gridGroesse}
@@ -2954,10 +3136,15 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
             const url = thumbUrls[foto.id];
             return (
               <div key={foto.id} style={{ minWidth: 0 }}>
-                <div onClick={() => onAnsehen && onAnsehen(foto, sortiert)}
+                <div onClick={() => editMode
+                    ? toggleAuswahl(foto.id)
+                    : (onAnsehen && onAnsehen(foto, sortiert))}
                   style={{ position: "relative", aspectRatio: "1 / 1",
                     borderRadius: RAD.md, overflow: "hidden", cursor: "pointer",
-                    background: t.surface, border: `1px solid ${t.border}` }}>
+                    background: t.surface,
+                    border: editMode && istGewaehlt(foto.id)
+                      ? `2px solid ${accent}` : `1px solid ${t.border}`,
+                    opacity: editMode && auswahl.length > 0 && !istGewaehlt(foto.id) ? 0.55 : 1 }}>
                   {url ? (
                     <img src={url} alt={anzeigeName} style={{ width: "100%",
                       height: "100%", objectFit: "cover", display: "block" }}/>
@@ -2967,7 +3154,15 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
                       <I name="paint" size={22} color={t.muted}/>
                     </div>
                   )}
-                  {editMode && loeschBtn(foto, true)}
+                  {editMode && istGewaehlt(foto.id) && (
+                    <div style={{ position: "absolute", top: 6, right: 6,
+                      width: 22, height: 22, borderRadius: RAD.pill,
+                      background: accent, display: "flex", alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.35)" }}>
+                      <I name="check" size={11} color={getContrastColor(accent)}/>
+                    </div>
+                  )}
                 </div>
                 <div style={{ fontSize: FS.xs, color: t.text, marginTop: 4,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -3002,8 +3197,11 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
                 padding: "10px 2px",
                 borderTop: idx > 0 ? `1px solid ${t.border}` : "none" }}>
                 {/* Mini-Vorschau 34×34 — Icon nur als Platzhalter, bis das Thumb lädt */}
-                <div onClick={() => onAnsehen && onAnsehen(foto, sortiert)}
+                <div onClick={() => editMode
+                    ? toggleAuswahl(foto.id)
+                    : (onAnsehen && onAnsehen(foto, sortiert))}
                   style={{ width: 34, height: 34, borderRadius: RAD.md, flexShrink: 0,
+                  outline: editMode && istGewaehlt(foto.id) ? `2px solid ${accent}` : "none",
                   overflow: "hidden", cursor: "pointer",
                   background: accent + "18", display: "flex", alignItems: "center",
                   justifyContent: "center" }}>
@@ -3014,7 +3212,9 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
                     <I name="paint" size={16} color={accent}/>
                   )}
                 </div>
-                <div onClick={() => onAnsehen && onAnsehen(foto, sortiert)}
+                <div onClick={() => editMode
+                    ? toggleAuswahl(foto.id)
+                    : (onAnsehen && onAnsehen(foto, sortiert))}
                   style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
                   <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -3026,10 +3226,117 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
                     {foto.notiz ? " · " + foto.notiz : ""}
                   </div>
                 </div>
-                {editMode && loeschBtn(foto, false)}
+                {editMode && istGewaehlt(foto.id) && (
+                  <div style={{ width: 22, height: 22, borderRadius: RAD.pill,
+                    background: accent, display: "flex", alignItems: "center",
+                    justifyContent: "center", flexShrink: 0 }}>
+                    <I name="check" size={11} color={getContrastColor(accent)}/>
+                  </div>
+                )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Schwebende Aktionsleiste (iOS-Fotos-Muster) — erscheint, sobald im
+          Edit-Modus mindestens ein Foto markiert ist. Fixiert am unteren
+          Bildschirmrand (Daumenzone), bleibt beim Scrollen sichtbar.
+          Aktionen: Bearbeiten (1 Foto → voller Dialog, mehrere → gleiche
+          Angaben für alle) · Album (Schnellzuweisung, Popover §2.7) ·
+          Löschen (Zwei-Tipp-Bestätigung wie AktionsButton-gefahr).
+          Kandidat für Baustein-Extraktion, sobald die Dokumente-Kachel das
+          Muster übernimmt (§76: zweites Vorkommen → Baustein). */}
+      {editMode && auswahl.length > 0 && (
+        <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)",
+          bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", zIndex: 900,
+          background: t.card, border: `1px solid ${t.border}`,
+          borderRadius: RAD.lg, boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
+          padding: "8px 10px", display: "flex", alignItems: "center", gap: 8,
+          maxWidth: "calc(100vw - 24px)" }}>
+          <span style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text,
+            whiteSpace: "nowrap", padding: "0 2px" }}>
+            {auswahl.length} ausgewählt
+          </span>
+          {/* Bearbeiten */}
+          <button onClick={() => { setLoeschConfirm(false);
+              onBearbeitenAuswahl && onBearbeitenAuswahl(auswahlFotos()); }}
+            title="Bearbeiten" aria-label="Bearbeiten"
+            style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
+              padding: "0 10px", cursor: "pointer", background: accent + "18",
+              border: `1px solid ${accent}40`, borderRadius: RAD.sm,
+              color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit" }}>
+            <I name="pencil" size={12} color={accent}/>
+            <span>Bearbeiten</span>
+          </button>
+          {/* Album zuweisen (Schnellaktion) — Popover nach OBEN, §2.7 */}
+          <div ref={albumMenuRef} style={{ position: "relative" }}>
+            <button onClick={() => { setLoeschConfirm(false); setAlbumMenuAuf(v => !v); }}
+              title="Album zuweisen" aria-label="Album zuweisen"
+              style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
+                padding: "0 10px", cursor: "pointer", background: accent + "18",
+                border: `1px solid ${accent}40`, borderRadius: RAD.sm,
+                color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit" }}>
+              <I name="list" size={12} color={accent}/>
+              <span>Album</span>
+            </button>
+            {albumMenuAuf && (
+              <div style={{ position: "absolute", bottom: "calc(100% + 6px)", right: 0,
+                zIndex: 910, background: t.card, border: `1px solid ${t.border}`,
+                borderRadius: RAD.ml, boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+                overflow: "hidden", minWidth: 180, maxHeight: 260, overflowY: "auto" }}>
+                {FOTO_ALBEN.map(a => (
+                  <button key={a.id} onClick={() => { setAlbumMenuAuf(false);
+                      onAlbumZuweisen && onAlbumZuweisen(auswahlFotos(), a.id);
+                      auswahlLeeren(); }}
+                    style={{ display: "block", width: "100%", background: "none",
+                      border: "none", padding: "9px 12px", cursor: "pointer",
+                      textAlign: "left", fontFamily: "inherit", fontSize: FS.s,
+                      color: t.text }}>
+                    {a.label}
+                  </button>
+                ))}
+                {eigeneAlben.map(a => (
+                  <button key={a} onClick={() => { setAlbumMenuAuf(false);
+                      onAlbumZuweisen && onAlbumZuweisen(auswahlFotos(), a);
+                      auswahlLeeren(); }}
+                    style={{ display: "block", width: "100%", background: "none",
+                      border: "none", padding: "9px 12px", cursor: "pointer",
+                      textAlign: "left", fontFamily: "inherit", fontSize: FS.s,
+                      color: t.text }}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Löschen — Zwei-Tipp-Bestätigung */}
+          <button onClick={() => {
+              if (!loeschConfirm) { setLoeschConfirm(true); return; }
+              setLoeschConfirm(false);
+              onLoeschenAuswahl && onLoeschenAuswahl(auswahlFotos());
+              auswahlLeeren();
+            }}
+            title={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+            aria-label="Löschen"
+            style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
+              padding: "0 10px", cursor: "pointer",
+              background: loeschConfirm ? "#EF4444" : "#EF444418",
+              border: "1px solid #EF444455", borderRadius: RAD.sm,
+              color: loeschConfirm ? "#FFFFFF" : "#EF4444",
+              fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
+              whiteSpace: "nowrap" }}>
+            <I name="trash" size={12} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
+            <span>{loeschConfirm ? "Wirklich?" : "Löschen"}</span>
+          </button>
+          {/* Auswahl aufheben */}
+          <button onClick={auswahlLeeren} title="Auswahl aufheben"
+            aria-label="Auswahl aufheben"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              width: 32, height: 32, cursor: "pointer", background: "none",
+              border: `1px solid ${t.border}`, borderRadius: RAD.sm, padding: 0 }}>
+            <I name="x" size={12} color={t.sub}/>
+          </button>
         </div>
       )}
     </div>
@@ -3042,9 +3349,20 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen, onLoes
 // Kopf mit Plus (§86.6) + FotoGalerie (Grid/Liste, Album-Filter). Ansehen über
 // den bestehenden DateiViewerModal (§86.1) inkl. Info-Zeile (Zuordnung/Album/
 // Datum + Quelle/Notiz — GPS bewusst NICHT, §93.2).
-function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
+function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true }) {
   const fotos = (ve && Array.isArray(ve.fotos)) ? ve.fotos : [];
   const [uploadOffen, setUploadOffen] = useState(false);
+  // Bearbeiten-Modal: 1..n Fotos (Auswahl-Modus liefert Listen).
+  const [bearbFotos, setBearbFotos] = useState(null);
+  const [auswahlReset, setAuswahlReset] = useState(0);
+  // Sortier-Steuerung sitzt im Karten-Kopf (Benny 22.07.: an der Stelle des
+  // entfallenen Nav-Screen-Plus; im Objekt-Tab links neben dem Plus) — die
+  // ANWENDUNG der Sortierung bleibt in der FotoGalerie, beide über den einen
+  // FotoAnzeigeContext (geräteweit).
+  const fotoAnzeige = useFotoAnzeige();
+  const sortKrit = FOTO_SORT_OPTIONEN.some(o => o.id === fotoAnzeige.sortKrit)
+    ? fotoAnzeige.sortKrit : "datum";
+  const sortRichtung = fotoAnzeige.sortRichtung === "auf" ? "auf" : "ab";
   // Viewer-Zustand fürs Durchblättern: die beim Öffnen aktuelle (gefilterte)
   // Foto-Liste + Index. Das datei-Objekt für den Viewer wird daraus abgeleitet.
   const [viewer, setViewer] = useState(null); // { liste: foto[], index }
@@ -3059,6 +3377,25 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
     patch(fotos.filter(f => f.id !== foto.id));
     // Falls das Foto gerade im Viewer offen ist: Viewer schließen.
     setViewer(v => (v && v.liste[v.index] && v.liste[v.index].id === foto.id) ? null : v);
+  };
+  // Auswahl-Aktionen der schwebenden Leiste (1..n Fotos, EIN setVes je Aktion).
+  const fotosLoeschenViele = (liste) => {
+    const ids = {};
+    (liste || []).forEach(f => { if (f) { ids[f.id] = true; dateiLoeschen(f.dateiRef); } });
+    patch(fotos.filter(f => !ids[f.id]));
+    setViewer(v => (v && v.liste[v.index] && ids[v.liste[v.index].id]) ? null : v);
+  };
+  const fotosAlbumZuweisen = (liste, albumWert) => {
+    const ids = {};
+    (liste || []).forEach(f => { if (f) ids[f.id] = true; });
+    patch(fotos.map(f => ids[f.id] ? { ...f, album: albumWert } : f));
+  };
+  const fotosBearbeitenSpeichern = (patchObj) => {
+    const ids = {};
+    (bearbFotos || []).forEach(f => { if (f) ids[f.id] = true; });
+    patch(fotos.map(f => ids[f.id] ? { ...f, ...patchObj } : f));
+    setBearbFotos(null);
+    setAuswahlReset(n => n + 1); // Auswahl in der Galerie aufheben
   };
   const fotoInfo = (foto) => {
     const geraet = fotoFindeGeraet(ve, foto.geraetId);
@@ -3105,13 +3442,31 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
           <span style={{ fontSize: FS.input, fontWeight: FW.heavy, color: t.text }}>
             Fotos{fotos.length > 0 ? " (" + fotos.length + ")" : ""}
           </span>
-          <button onClick={() => setUploadOffen(true)} title="Fotos hochladen"
-            aria-label="Fotos hochladen" style={{
-            width: 36, height: 36, borderRadius: RAD.pill, border: "none",
-            background: accent, cursor: "pointer", flexShrink: 0,
-            display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <I name="plus" size={16} color={getContrastColor(accent)}/>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {/* Sortierung (Datum/Name/Album, Richtung kippbar) — Baustein wie
+                bei den Kontakt-Gruppen-Karten, Popover öffnet frei (§2.7). */}
+            {fotos.length > 1 && (
+              <SortierMenu t={t} accent={accent} size={30}
+                wert={sortKrit} richtung={sortRichtung}
+                optionen={FOTO_SORT_OPTIONEN}
+                onWert={(id) => {
+                  const opt = FOTO_SORT_OPTIONEN.find(o => o.id === id);
+                  fotoAnzeige.setSort && fotoAnzeige.setSort(id, (opt && opt.defRichtung) || "ab");
+                }}
+                onRichtung={(r) => fotoAnzeige.setSort && fotoAnzeige.setSort(sortKrit, r)}/>
+            )}
+            {/* Plus nur im Objekt-Tab (mitPlus) — im Fotos-Nav-Screen lädt der
+                Screen-Plus oben hoch (Benny 22.07.: ein Plus reicht). */}
+            {mitPlus && (
+              <button onClick={() => setUploadOffen(true)} title="Fotos hochladen"
+                aria-label="Fotos hochladen" style={{
+                width: 36, height: 36, borderRadius: RAD.pill, border: "none",
+                background: accent, cursor: "pointer", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <I name="plus" size={16} color={getContrastColor(accent)}/>
+              </button>
+            )}
+          </div>
         </div>
 
         {fotos.length === 0 ? (
@@ -3123,13 +3478,21 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false }) {
           </div>
         ) : (
           <FotoGalerie ve={ve} fotos={fotos} t={t} accent={accent}
-            editMode={editMode} onAnsehen={fotoAnsehen} onLoeschen={fotoLoeschen}/>
+            editMode={editMode} onAnsehen={fotoAnsehen}
+            onBearbeitenAuswahl={(liste) => setBearbFotos(liste)}
+            onAlbumZuweisen={fotosAlbumZuweisen}
+            onLoeschenAuswahl={fotosLoeschenViele}
+            auswahlReset={auswahlReset}/>
         )}
       </div>
 
       {uploadOffen && (
         <FotoUploadModal ve={ve} t={t} accent={accent}
           onClose={() => setUploadOffen(false)} onSave={fotosHinzu}/>
+      )}
+      {bearbFotos && bearbFotos.length > 0 && (
+        <FotoBearbeitenModal ve={ve} fotos={bearbFotos} t={t} accent={accent}
+          onClose={() => setBearbFotos(null)} onSave={fotosBearbeitenSpeichern}/>
       )}
       {viewerDatei && (
         <DateiViewerModal t={t} accent={accent} datei={viewerDatei}
