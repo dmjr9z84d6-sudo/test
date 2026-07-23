@@ -16,7 +16,7 @@ import {
   aggregiereObjektVerwendungen, datumAnzeige, legionellenAnsprechpartner,
   legionellenBefund, legionellenEffektiveNaechste, legionellenFaelligStatus, legionellenFindeEinheit,
   legionellenFindeRaum, legionellenNaechste, legionellenStandorte,
-  objektHatZentralesWarmwasser, SegmentControl, SortierMenu, TabLeiste, wjEndeDatum,
+  objektHatZentralesWarmwasser, KopfPille, SegmentControl, SortierMenu, TabLeiste, wjEndeDatum,
   OverlayKopf, overlayBackdrop, overlayPanel, overlayBody
 } from "./components.jsx";
 import { restzeitText, sammleTermine, terminEinheitIds } from "./kalender.jsx";
@@ -1578,12 +1578,21 @@ function VEDetail({ ve, t, accent, onKontaktClick, onBack, kontakte, setKontakte
       <ObjektDetailKopf t={t} accent={accent} ve={ve}
         onTitelClick={(headerOhneEditBtn && onBack) ? onBack : null}
         aktion={(!headerOhneEditBtn && !(einheitOffen && !editMode)) ? (
-          <KopfAktionsLeiste t={t} accent={accent} editMode={editMode}
-            onEdit={() => setEditMode(true)}
-            onCancel={bearbeitenAbbrechen}
-            onConfirm={bearbeitenFertig}
-            loeschConfirm={loeschConfirm}
-            onDelete={(loeschenErlaubt.objekte && setVes) ? handleObjektLoeschen : null}/>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {/* Foto-Ansicht-Umschalter (S/M/L + Grid/Liste) — NUR im Fotos-Tab
+                und nur wenn es Fotos gibt; sitzt links neben dem Stift
+                (Benny 23.07., §76-Baustein, gleiche Stelle wie im
+                Fotos-Nav-Screen). */}
+            {tab === "fotos" && Array.isArray(ve.fotos) && ve.fotos.length > 0 && (
+              <FotoAnsichtUmschalter t={t} accent={accent}/>
+            )}
+            <KopfAktionsLeiste t={t} accent={accent} editMode={editMode}
+              onEdit={() => setEditMode(true)}
+              onCancel={bearbeitenAbbrechen}
+              onConfirm={bearbeitenFertig}
+              loeschConfirm={loeschConfirm}
+              onDelete={(loeschenErlaubt.objekte && setVes) ? handleObjektLoeschen : null}/>
+          </div>
         ) : null}/>
 
       {/* Reiter — kanonische TabLeiste (§97). Horizontal scrollbar, aktiver
@@ -3047,10 +3056,40 @@ function fotoAlbumRang(album) {
   return idx >= 0 ? idx : FOTO_ALBEN.length;
 }
 
+// ── FotoAnsichtUmschalter (§76, NEU 14.29) — Kopf-Umschalter der Galerien ───
+// S/M/L-Kachelgröße (nur in der Grid-Ansicht) + Grid⇄Liste, beides geräteweit
+// aus dem FotoAnzeigeContext. Sitzt im Akten-Kopf NEBEN dem Stift (Benny
+// 23.07.: „hoch neben den Bearbeiten-Button") — Fotos-Nav-Screen (detailAktion,
+// allesda_merged) UND Objekt-Tab „Fotos" (VEDetail-Aktions-Slot). Optik:
+// KopfPille (runde Header-Welt, DESIGN §66), NICHT SegmentControl.
+function FotoAnsichtUmschalter({ t, accent }) {
+  const fotoAnzeige = useFotoAnzeige();
+  const gridGroesse = FOTO_GRID_STUFEN[fotoAnzeige.gridGroesse] ? fotoAnzeige.gridGroesse : "m";
+  const ansicht = fotoAnzeige.ansicht === "liste" ? "liste" : "grid";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      {ansicht === "grid" && (
+        <KopfPille t={t} accent={accent} aktiv={gridGroesse}
+          onWaehle={(g) => fotoAnzeige.setGridGroesse && fotoAnzeige.setGridGroesse(g)}
+          optionen={[
+            { id: "s", label: "S", title: "Kleine Kacheln" },
+            { id: "m", label: "M", title: "Mittlere Kacheln" },
+            { id: "l", label: "L", title: "Große Kacheln" },
+          ]}/>
+      )}
+      <KopfPille t={t} accent={accent} aktiv={ansicht}
+        onWaehle={(a) => fotoAnzeige.setAnsicht && fotoAnzeige.setAnsicht(a)}
+        optionen={[
+          { id: "grid", icon: "grid", title: "Kacheln" },
+          { id: "liste", icon: "list", title: "Liste" },
+        ]}/>
+    </div>
+  );
+}
+
 function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   onBearbeitenAuswahl, onAlbumZuweisen, onLoeschenAuswahl, auswahlReset = 0 }) {
   const [albumFilter, setAlbumFilter] = useState("alle");
-  const [ansicht, setAnsicht] = useState("grid");      // "grid" | "liste"
   const [thumbUrls, setThumbUrls] = useState({});      // fotoId -> Object-URL
   // Auswahl-Modus (Benny 22.07.): Im Edit-Modus tippt man Fotos AN statt sie
   // zu öffnen — markierte Fotos sammeln sich in auswahl, die Aktionen liegen
@@ -3077,10 +3116,13 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   };
   const auswahlFotos = () => fotos.filter(f => istGewaehlt(f.id));
   const auswahlLeeren = () => { setAuswahl([]); setAlbumMenuAuf(false); setLoeschConfirm(false); };
-  // Grid-Kachelgröße geräteweit aus den Settings (FotoAnzeigeContext) — gilt
-  // für ALLE Galerie-Instanzen (Objekt-Tab + Fotos-Nav-Screen) gleichermaßen.
+  // Grid-Kachelgröße + Grid/Liste-Ansicht geräteweit aus den Settings
+  // (FotoAnzeigeContext) — gilt für ALLE Galerie-Instanzen (Objekt-Tab +
+  // Fotos-Nav-Screen). Umgeschaltet wird seit 14.29 im Akten-Kopf
+  // (FotoAnsichtUmschalter), nicht mehr in der Filter-Zeile.
   const fotoAnzeige = useFotoAnzeige();
   const gridGroesse = FOTO_GRID_STUFEN[fotoAnzeige.gridGroesse] ? fotoAnzeige.gridGroesse : "m";
+  const ansicht = fotoAnzeige.ansicht === "liste" ? "liste" : "grid";
 
   // Album-Katalog + eigene Alben (aus vorhandenen foto.album-Werten abgeleitet).
   const counts = {};
@@ -3166,28 +3208,12 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Filter-Zeile: Alben links (scrollbar), Ansicht-Umschalter rechts */}
+      {/* Filter-Zeile: nur noch die Alben — die Ansicht-Umschalter (S/M/L +
+          Grid/Liste) sitzen seit 14.29 im Akten-Kopf neben dem Stift
+          (FotoAnsichtUmschalter, geräteweit über FotoAnzeigeContext). */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <FilterButtons arten={filterArten} aktive={aktiveArten} counts={counts}
           wert={albumFilter} onWert={setAlbumFilter} t={t} accent={accent}/>
-        <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex",
-          alignItems: "center", gap: 8 }}>
-          {/* Kachelgröße S/M/L — nur im Grid relevant, geräteweit gemerkt */}
-          {ansicht === "grid" && (
-            <SegmentControl t={t} accent={accent} value={gridGroesse}
-              onChange={(g) => fotoAnzeige.setGridGroesse && fotoAnzeige.setGridGroesse(g)}
-              options={[
-                { id: "s", label: "S" },
-                { id: "m", label: "M" },
-                { id: "l", label: "L" },
-              ]}/>
-          )}
-          <SegmentControl t={t} accent={accent} value={ansicht} onChange={setAnsicht}
-            options={[
-              { id: "grid", label: "", icon: "grid" },
-              { id: "liste", label: "", icon: "list" },
-            ]}/>
-        </div>
       </div>
 
       {gefiltert.length === 0 && (
@@ -3582,7 +3608,7 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true 
 
 
 export {
-  EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons, FotoGalerie, FotosAnsicht,
+  EinheitKachel, FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons, FotoAnsichtUmschalter, FotoGalerie, FotosAnsicht,
   HistorieAnsicht, LegionellenAnsicht, TERegisterAnsicht,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, STATUS_KONTEXTE, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,

@@ -3575,11 +3575,18 @@ function KopfPille({ t, accent, optionen, aktiv, onWaehle }) {
     <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: RAD.pill,
       background: t.surface, border: `1px solid ${t.border}`, flexShrink: 0 }}>
       {optionen.map(o => (
-        <button key={o.id} onClick={() => onWaehle(o.id)}
-          style={{ padding: "5px 12px", borderRadius: RAD.pill, cursor: "pointer",
+        <button key={o.id} onClick={() => onWaehle(o.id)} title={o.title || undefined}
+          aria-label={o.title || undefined}
+          style={{ padding: o.icon && !o.label ? "5px 9px" : "5px 12px",
+            borderRadius: RAD.pill, cursor: "pointer", display: "inline-flex",
+            alignItems: "center", gap: 5,
             fontFamily: "inherit", fontSize: FS.s, fontWeight: FW.bold, border: "none",
             background: aktiv === o.id ? accent : "transparent",
             color: aktiv === o.id ? getContrastColor(accent) : t.sub }}>
+          {/* NEU 14.29: optionales Icon je Option — gleiches Muster wie
+              SegmentControl (Foto-Umschalter Grid/Liste im Akten-Kopf). */}
+          {o.icon ? <I name={o.icon} size={13}
+            color={aktiv === o.id ? getContrastColor(accent) : t.sub}/> : null}
           {o.label}
         </button>
       ))}

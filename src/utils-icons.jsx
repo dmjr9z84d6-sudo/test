@@ -2058,12 +2058,15 @@ function useStatusLeiste() { return useContext(StatusLeisteContext); }
 
 // ── FotoAnzeigeContext: Anzeige-Einstellungen der Foto-Galerien ─────────────
 // gridGroesse ("s"|"m"|"l") + Sortierung (sortKrit "datum"|"name"|"album",
-// sortRichtung "auf"|"ab") kommen aus den Settings und werden direkt aus der
-// Galerie heraus geändert (geräteweit gemerkt, gilt für ALLE FotoGalerie-
-// Instanzen — Objekt-Tab UND Fotos-Nav-Screen).
+// sortRichtung "auf"|"ab") + ansicht ("grid"|"liste", NEU 14.29) kommen aus
+// den Settings und werden direkt aus dem Kopf-Umschalter heraus geändert
+// (geräteweit gemerkt, gilt für ALLE FotoGalerie-Instanzen — Objekt-Tab UND
+// Fotos-Nav-Screen). Die Umschalter selbst sitzen seit 14.29 im Akten-Kopf
+// neben dem Stift (FotoAnsichtUmschalter, objektansicht.jsx).
 const FotoAnzeigeContext = createContext({
   gridGroesse: "m", setGridGroesse: null,
   sortKrit: "datum", sortRichtung: "ab", setSort: null,
+  ansicht: "grid", setAnsicht: null,
 });
 function useFotoAnzeige() { return useContext(FotoAnzeigeContext); }
 

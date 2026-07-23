@@ -378,7 +378,7 @@ import {
 import {
   FeldEinheitKarte, FeldEinheitenSammelKarte, FeldObjektKarte, FilterButtons,
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, StatBalkenZeile, StatKpi, StatPanel,
-  StatusLeiste, VEDetail, VEKachel, VEListenZeile, FotosAnsicht, HistorieAnsicht,
+  StatusLeiste, VEDetail, VEKachel, VEListenZeile, FotoAnsichtUmschalter, FotosAnsicht, HistorieAnsicht,
   LegionellenAnsicht, TERegisterAnsicht, ObjekteMasterDetail, alleEinheitenVonVe,
   ObjektWahlOverlay, FotoUploadModal,
   berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
@@ -2657,7 +2657,10 @@ export default function App() {
       sortKrit: settings.fotoSortKrit || "datum",
       sortRichtung: settings.fotoSortRichtung || "ab",
       setSort: (krit, richtung) => setSettings(s => ({
-        ...s, fotoSortKrit: krit, fotoSortRichtung: richtung }))
+        ...s, fotoSortKrit: krit, fotoSortRichtung: richtung })),
+      // NEU 14.29: Grid⇄Liste geräteweit (Umschalter im Akten-Kopf)
+      ansicht: settings.fotoAnsicht === "liste" ? "liste" : "grid",
+      setAnsicht: (a) => setSettings(s => ({ ...s, fotoAnsicht: a }))
     }}>
     <TerminBezeichnungenContext.Provider value={settings.terminBezeichnungen || []}>
     <ZeitPickerContext.Provider value={{
@@ -3876,9 +3879,15 @@ export default function App() {
               }, 450);
             }}
             emptyText="Keine Fotos für dieses Objekt."
-            detailAktion={() => {
+            detailAktion={(veObj) => {
               const fAccent = (effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899";
-              return fotosEditMode ? (
+              // NEU 14.29: S/M/L + Grid/Liste sitzen im Akten-Kopf links neben
+              // dem Stift (Benny 23.07.) — geräteweit, §76-Baustein aus
+              // objektansicht.jsx. Nur zeigen, wenn das Objekt Fotos hat.
+              const hatFotos = veObj && Array.isArray(veObj.fotos) && veObj.fotos.length > 0;
+              const umschalter = hatFotos
+                ? <FotoAnsichtUmschalter t={t} accent={fAccent}/> : null;
+              const stift = fotosEditMode ? (
                 <button onClick={() => setFotosEditMode(false)}
                   title="Fertig" aria-label="Fertig"
                   style={{ display: "flex", alignItems: "center", justifyContent: "center",
@@ -3894,6 +3903,12 @@ export default function App() {
                     borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${fAccent}40` }}>
                   <I name="pencil" size={14} color={getContrastColor(fAccent)}/>
                 </button>
+              );
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {umschalter}
+                  {stift}
+                </div>
               );
             }}
             renderDetail={(veObj) => (
