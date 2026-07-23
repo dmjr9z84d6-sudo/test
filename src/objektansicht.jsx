@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getContrastColor } from "./constants.js";
 import { parseDatumWert, dateiBlobUrl, dateiSpeichern, dateiLoeschen, fotoExifLesen } from "./utils-basis.js";
 import {
-  FOTO_ALBEN, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
+  FOTO_ALBEN, FOTO_RAUM_KATALOG, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
   fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, sammlungFuerObjekt, teileVon
 } from "./datenmodell.js";
 import { vorgangAnzahlFuerObjekt } from "./vorgang.jsx";
@@ -2446,6 +2446,12 @@ function fotoFelderAbleitung(ve, art, hausWahl, einheitWahl) {
       if (out.length === 0 && Array.isArray(aktEinheit.raeume)) {
         aktEinheit.raeume.forEach(nimm);
       }
+      // Einheit ganz ohne erfasste Räume → Standard-Raumkatalog anbieten
+      // (Benny 22.07.). Wert "name:<Name>" — gespeichert wird raumName,
+      // raumId bleibt null (kein Struktur-Eingriff).
+      if (out.length === 0) {
+        FOTO_RAUM_KATALOG.forEach(n => out.push({ id: "name:" + n, label: n }));
+      }
       return out;
     }
     if (!aktHaus) return out;
@@ -2482,6 +2488,13 @@ function FotoFelderBlock({ ve, t, accent,
     borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit", boxSizing: "border-box" };
   const { standorte, aktHaus, verfEinheiten, aktEinheit, verfRaeume, alleGeraete } =
     fotoFelderAbleitung(ve, art, hausWahl, einheitWahl);
+  // Gespeicherten Katalog-/Freitext-Raum ("name:<N>") als Option erhalten,
+  // falls er im aktuellen Angebot fehlt (z. B. Einheit hat inzwischen echte
+  // Räume) — sonst zeigte das Select beim Bearbeiten leer.
+  if (raumWahl && raumWahl.indexOf("name:") === 0
+      && !verfRaeume.some(r => String(r.id) === raumWahl)) {
+    verfRaeume.push({ id: raumWahl, label: raumWahl.slice(5) });
+  }
   const istEigenAlbum = album === "__eigen__";
   return (
     <>
@@ -2673,7 +2686,11 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
             art: art,
             hausId: effHausId || null,
             einheitId: art === "einheit" ? einheitWahl : null,
-            raumId: raumWahl || null,   // optionale Verfeinerung beider Welten
+            // Optionale Verfeinerung beider Welten: struktureller Raum (raumId)
+            // ODER Katalog-Raum ohne Struktur-Verweis (raumName, "name:"-Wert).
+            raumId: raumWahl && raumWahl.indexOf("name:") !== 0 ? raumWahl : null,
+            raumName: raumWahl && raumWahl.indexOf("name:") === 0
+              ? raumWahl.slice(5) : null,
           },
           geraetId: art === "gemeinschaft" ? (geraetWahl || null) : null,
           aufgenommen: info.aufgenommen || heuteDE,
@@ -2849,7 +2866,8 @@ function FotoBearbeitenModal({ ve, fotos, t, accent, onClose, onSave }) {
   const [art, setArt] = useState(z.art === "einheit" ? "einheit" : "gemeinschaft");
   const [hausWahl, setHausWahl] = useState(z.hausId != null ? String(z.hausId) : "");
   const [einheitWahl, setEinheitWahl] = useState(z.einheitId != null ? String(z.einheitId) : "");
-  const [raumWahl, setRaumWahl] = useState(z.raumId != null ? String(z.raumId) : "");
+  const [raumWahl, setRaumWahl] = useState(
+    z.raumId != null ? String(z.raumId) : (z.raumName ? "name:" + z.raumName : ""));
   const [geraetWahl, setGeraetWahl] = useState(foto.geraetId != null ? String(foto.geraetId) : "");
   const [notiz, setNotiz] = useState(foto.notiz || "");
   const [aufgenommen, setAufgenommen] = useState(foto.aufgenommen || "");
@@ -2876,7 +2894,9 @@ function FotoBearbeitenModal({ ve, fotos, t, accent, onClose, onSave }) {
         art: art,
         hausId: effHausId || null,
         einheitId: art === "einheit" ? einheitWahl : null,
-        raumId: raumWahl || null,
+        raumId: raumWahl && raumWahl.indexOf("name:") !== 0 ? raumWahl : null,
+        raumName: raumWahl && raumWahl.indexOf("name:") === 0
+          ? raumWahl.slice(5) : null,
       },
       geraetId: art === "gemeinschaft" ? (geraetWahl || null) : null,
       notiz: notiz.trim(),

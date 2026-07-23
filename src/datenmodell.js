@@ -2499,6 +2499,15 @@ export const FOTO_ALBEN = [
   { id: "sonstiges", label: "Sonstiges" },
 ];
 
+// Standard-Raumkatalog für die Foto-Zuordnung (Benny 22.07.): Hat die gewählte
+// Einheit KEINE Räume in der Struktur erfasst, bietet der Foto-Dialog diese
+// Standard-Räume an. Gespeichert wird dann zuordnung.raumName (Freitext-Name,
+// raumId bleibt null) — additives Feld, kein Eingriff in die Objekt-Struktur.
+export const FOTO_RAUM_KATALOG = [
+  "Wohnzimmer", "Schlafzimmer", "Kinderzimmer", "Küche", "Bad/WC",
+  "Diele/Flur", "Abstellraum", "Balkon", "Terrasse", "Keller",
+];
+
 // Anzeige-Label eines Album-Werts: Katalog-id → Label, sonst der eigene Name.
 export function fotoAlbumLabel(album) {
   const a = FOTO_ALBEN.find(x => x.id === album);
@@ -2562,7 +2571,11 @@ export function fotoFindeGeraet(ve, geraetId) {
 export function fotoZuordnungLabel(ve, foto) {
   const z = (foto && foto.zuordnung) || {};
   const raum = z.raumId ? fotoFindeRaum(ve, z.raumId) : null;
-  const raumName = z.raumId ? ((raum && raum.name) || "Raum") : "";
+  // raumId = struktureller Verweis; raumName = Katalog-/Freitext-Raum einer
+  // Einheit ohne erfasste Räume (FOTO_RAUM_KATALOG).
+  const raumName = z.raumId
+    ? ((raum && raum.name) || "Raum")
+    : (z.raumName || "");
   if (z.art === "einheit") {
     const eh = fotoFindeEinheit(ve, z.einheitId);
     const we = eh ? ("WE" + (eh.nr || eh.id)) : "Einheit";
