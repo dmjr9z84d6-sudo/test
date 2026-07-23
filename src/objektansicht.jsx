@@ -2417,13 +2417,21 @@ function fotoFelderAbleitung(ve, art, hausWahl, einheitWahl) {
   const einzigerStandort = standorte.length === 1 ? standorte[0] : null;
   const effHausId = hausWahl || (einzigerStandort ? String(einzigerStandort.id) : "");
   const aktHaus = standorte.find(h => String(h.id) === String(effHausId)) || null;
-  const verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
+  let verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
+  // Rückfallebene (14.28): Einheiten müssen NICHT unter einer Gebäude-/TG-Karte
+  // hängen — je nach Objekt/Import liegen sie unter einer anderen Karten-
+  // Kategorie oder direkt an `ve.einheiten`. Dann ALLE anbieten (gleiche Quelle
+  // wie die Objekt-Ansicht: alleEinheitenVonVe), sonst bliebe das Dropdown leer.
+  if (verfEinheiten.length === 0) verfEinheiten = alleEinheitenVonVe(ve);
   const aktEinheit = verfEinheiten.find(e => String(e.id) === String(einheitWahl)) || null;
   // Raum-Angebot je Welt: Gemeinschaft → Gemeinschaftsräume des Hauses;
-  // Einheit → Räume der gewählten Einheit. WICHTIG (Bugfix v14.25): Räume
-  // einer NICHT unterteilten Einheit hängen direkt an einheit.raeume — erst
-  // beim Unterteilen wandern sie in teile[0].raeume (fuegeTeilHinzu). Beide
-  // Pfade lesen; fehlende/doppelte IDs defensiv abfangen (Alt-Bestände).
+  // Einheit → Räume DIESER Einheit. Gesammelt wird aus ALLEN Fundstellen der
+  // Einheit im Objekt (14.28): dieselbe Einheit kann unter mehreren Karten
+  // stehen bzw. zusätzlich an `ve.einheiten` — steht dort ein Platzhalter ohne
+  // Räume, fand die frühere Suche nichts und fiel fälschlich auf den Katalog
+  // zurück. Räume hängen an `teile[].raeume` (Normalfall, auch bei nicht
+  // unterteilten Einheiten) ODER direkt an `einheit.raeume` (Alt-/Importdaten).
+  // Jeder Eintrag trägt `katalog` — daraus baut das Feld die Gruppen-Titel.
   const verfRaeume = (() => {
     const out = [];
     const gesehen = {};
@@ -2433,24 +2441,29 @@ function fotoFelderAbleitung(ve, art, hausWahl, einheitWahl) {
       const key = String(id);
       if (!key || gesehen[key]) return;
       gesehen[key] = true;
-      out.push({ id: id, label: r.name || "Raum" });
+      out.push({ id: id, label: r.name || "Raum", katalog: false });
     };
     if (art === "einheit") {
       if (!aktEinheit) return out;
-      const teile = (Array.isArray(aktEinheit.teile) && aktEinheit.teile.length > 0)
-        ? aktEinheit.teile : null;
-      if (teile) {
-        teile.forEach(teil => ((teil && teil.raeume) || []).forEach(nimm));
-      }
-      // Normalfall unaufgeteilte Einheit + Legacy: Räume direkt an der Einheit.
-      if (out.length === 0 && Array.isArray(aktEinheit.raeume)) {
-        aktEinheit.raeume.forEach(nimm);
-      }
-      // Einheit ganz ohne erfasste Räume → Standard-Raumkatalog anbieten
-      // (Benny 22.07.). Wert "name:<Name>" — gespeichert wird raumName,
-      // raumId bleibt null (kein Struktur-Eingriff).
+      // Alle Objekte derselben Einheit-Id einsammeln (Karten + ve.einheiten).
+      const treffer = [];
+      const merke = (e) => {
+        if (e && String(e.id) === String(aktEinheit.id) && treffer.indexOf(e) < 0) treffer.push(e);
+      };
+      (((ve && ve.karten) || [])).forEach(k => ((k && k.einheiten) || []).forEach(merke));
+      (((ve && ve.einheiten) || [])).forEach(merke);
+      if (treffer.length === 0) treffer.push(aktEinheit);
+      treffer.forEach(eh => {
+        (Array.isArray(eh.teile) ? eh.teile : []).forEach(teil =>
+          ((teil && teil.raeume) || []).forEach(nimm));
+        (Array.isArray(eh.raeume) ? eh.raeume : []).forEach(nimm);
+      });
+      // Erst wenn NIRGENDS ein Raum erfasst ist: Standard-Katalog anbieten.
+      // Wert "name:<Name>" → gespeichert wird raumName, raumId bleibt null
+      // (kein Eingriff in die Objekt-Struktur).
       if (out.length === 0) {
-        FOTO_RAUM_KATALOG.forEach(n => out.push({ id: "name:" + n, label: n }));
+        FOTO_RAUM_KATALOG.forEach(n =>
+          out.push({ id: "name:" + n, label: n, katalog: true }));
       }
       return out;
     }
@@ -2493,8 +2506,11 @@ function FotoFelderBlock({ ve, t, accent,
   // Räume) — sonst zeigte das Select beim Bearbeiten leer.
   if (raumWahl && raumWahl.indexOf("name:") === 0
       && !verfRaeume.some(r => String(r.id) === raumWahl)) {
-    verfRaeume.push({ id: raumWahl, label: raumWahl.slice(5) });
+    verfRaeume.push({ id: raumWahl, label: raumWahl.slice(5), katalog: true });
   }
+  // Gruppen fürs Dropdown: erfasste (verknüpfte) Räume vs. Standard-Auswahl.
+  const raeumeErfasst = verfRaeume.filter(r => !r.katalog);
+  const raeumeKatalog = verfRaeume.filter(r => r.katalog);
   const istEigenAlbum = album === "__eigen__";
   return (
     <>
@@ -2559,9 +2575,25 @@ function FotoFelderBlock({ ve, t, accent,
               <option value="">
                 {art === "einheit" ? "— ganze Einheit (kein Raum) —" : "— kein bestimmter Raum —"}
               </option>
-              {verfRaeume.map(r => (
-                <option key={r.id} value={r.id}>{r.label}</option>
-              ))}
+              {/* Gruppen-Titel machen sichtbar, WORAUS die Auswahl stammt:
+                  „Erfasste Räume" = echte Räume aus der Objekt-Struktur (werden
+                  als Verknüpfung gespeichert) · „Standard-Auswahl" = Katalog,
+                  weil an der Einheit kein Raum erfasst ist (Name wird
+                  gespeichert). Kontrolle für Benny (22.07.). */}
+              {raeumeErfasst.length > 0 && (
+                <optgroup label="Erfasste Räume">
+                  {raeumeErfasst.map(r => (
+                    <option key={r.id} value={r.id}>{r.label}</option>
+                  ))}
+                </optgroup>
+              )}
+              {raeumeKatalog.length > 0 && (
+                <optgroup label="Standard-Auswahl (keine Räume erfasst)">
+                  {raeumeKatalog.map(r => (
+                    <option key={r.id} value={r.id}>{r.label}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           )}
         </div>
