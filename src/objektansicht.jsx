@@ -3,7 +3,7 @@ import { AMPEL_FARBEN, FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getCo
 import { parseDatumWert, dateiBlobUrl, dateiSpeichern, dateiLoeschen, fotoExifLesen } from "./utils-basis.js";
 import {
   FOTO_ALBEN, FOTO_RAUM_KATALOG, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
-  alleEinheitenVonVe, fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, raeumeVonEinheit, sammlungFuerObjekt, teileVon
+  alleEinheitenVonVe, fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, raeumeVonEinheit, raumWert, raumLabel, sammlungFuerObjekt, teileVon
 } from "./datenmodell.js";
 import { vorgangAnzahlFuerObjekt } from "./vorgang.jsx";
 import {
@@ -2037,19 +2037,18 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
   const einzigerStandort = standorte.length === 1 ? standorte[0] : null;
   const effHausId = neuHaus || (einzigerStandort ? String(einzigerStandort.id) : "");
   const aktHaus = standorte.find(h => String(h.id) === String(effHausId)) || null;
-  const verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
+  const verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : alleEinheitenVonVe(ve);
   const aktEinheit = verfEinheiten.find(e => String(e.id) === String(neuEinheit)) || null;
-  // Räume: aus der gewählten Einheit (über ihre Teile), sonst aus dem Haus
-  // (Gemeinschaftsräume wie Heizraum). „Vom Groben zum Feinen": Haus → Einheit → Raum.
-  const einheitRaeume = (eh) => {
-    if (!eh || !Array.isArray(eh.teile)) return [];
-    const out = [];
-    eh.teile.forEach(teil => {
-      (teil && Array.isArray(teil.raeume) ? teil.raeume : []).forEach(r => { if (r) out.push(r); });
-    });
-    return out;
-  };
-  const verfRaeume = aktEinheit ? einheitRaeume(aktEinheit) : (aktHaus ? (aktHaus.raeume || []) : []);
+  // Räume: aus der gewählten Einheit, sonst aus dem Haus (Gemeinschaftsräume
+  // wie Heizraum). „Vom Groben zum Feinen": Haus → Einheit → Raum.
+  // 14.32 (§76): über den zentralen Baustein `raeumeVonEinheit` statt eigener
+  // Sammlung — deckt alle Fundstellen der Einheit + Alt-Feld `einheit.raeume`
+  // ab. Optionswerte über `raumWert`: Räume aus Import/Teilungserklärung haben
+  // `id: ""`, dann trugen ALLE Optionen denselben leeren Wert und die Auswahl
+  // blieb wirkungslos (Benny 24.07. — derselbe Fehler wie im Foto-Modul).
+  const verfRaeume = aktEinheit
+    ? raeumeVonEinheit(ve, aktEinheit.id)
+    : (aktHaus ? (aktHaus.raeume || []) : []);
   const formReset = () => { setNeueBez("");
     setNeuHaus(""); setNeuRaum(""); setNeuEinheit(""); setFormOffen(false); };
   const stellenPatch = (liste) => patch({ pruefstellen: liste });
@@ -2066,17 +2065,22 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
   // Verknüpfungs-Anzeige je Stelle: Raum ist Pflicht; Einheit (falls gesetzt)
   // als Kontext davor + Ansprechpartner. Reine Gemeinschaftsräume: nur Raum.
   const stelleVerknuepfung = (s) => {
-    const raum = s.raumId ? legionellenFindeRaum(ve, s.raumId) : null;
-    const raumLabel = s.raumId ? (raum ? raum.name : "Raum (entfernt)") : null;
+    // 14.32: raumId kann ein "name:<Name>"-Wert sein (Raum ohne eigene id,
+    // Import/Teilungserklärung) — dann direkt den Namen zeigen, statt ihn
+    // vergeblich in der Struktur zu suchen und „(entfernt)" auszugeben.
+    const istNameWert = typeof s.raumId === "string" && s.raumId.indexOf("name:") === 0;
+    const raum = (s.raumId && !istNameWert) ? legionellenFindeRaum(ve, s.raumId) : null;
+    const raumText = !s.raumId ? null
+      : (istNameWert ? s.raumId.slice(5) : (raum ? raumLabel(raum) : "Raum (entfernt)"));
     if (s.einheitId) {
       const eh = legionellenFindeEinheit(ve, s.einheitId);
       const ap = legionellenAnsprechpartner(ve, s.einheitId, kontakte);
       const ehLabel = eh ? ("Einheit " + (eh.nr || "")) : "Einheit (entfernt)";
-      const label = raumLabel ? (ehLabel + " · " + raumLabel) : ehLabel;
+      const label = raumText ? (ehLabel + " · " + raumText) : ehLabel;
       return { typ: "einheit", label: label, ansprech: ap };
     }
     if (s.raumId) {
-      return { typ: "raum", label: "Raum " + (raum ? raum.name : "(entfernt)"), ansprech: null };
+      return { typ: "raum", label: "Raum " + (raumText || "(entfernt)"), ansprech: null };
     }
     return null;
   };
@@ -2335,8 +2339,10 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
                         ? (aktEinheit ? "keine Räume in dieser Einheit" : "keine Gemeinschaftsräume")
                       : (aktEinheit ? "— Raum der Einheit —" : "— Raum (Gemeinschaft) —")}
                   </option>
-                  {verfRaeume.map(r => (
-                    <option key={r.id} value={r.id}>{r.name}{r.lage ? ` (${r.lage})` : ""}</option>
+                  {verfRaeume.map((r, ri) => (
+                    <option key={raumWert(r) || ("pos" + ri)} value={raumWert(r)}>
+                      {raumLabel(r)}{r.lage ? ` (${r.lage})` : ""}
+                    </option>
                   ))}
                 </select>
               </div>

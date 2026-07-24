@@ -13,7 +13,7 @@ import {
   leererHaushalt, neueBelegung, neuerRaum, neuerTeil, neuerZaehler, neuesHhMitglied, parseFlaeche,
   sevStatus, starteSevWechsel, summeRaumFlaechen, teileVon, verwendungenVon, vsBasisLabel,
   vsIstManuell, vsIstPersonen, einheitKopfzahl, setzeEinheitKopfzahl, setzeEinheitMea, setzeEinheitFlaeche, darfFlaecheImVsEditieren, vsWertVon, wirtschaftsjahrZeitraum, personenTageAufschluesselung, neuerPersonenAbschnitt, tageInklusive, wendeKontaktZuweisungenAn, zaehlerArtLabel,
-  versammlungenFuerObjekt, UNTERLAGE_ART_LABEL
+  versammlungenFuerObjekt, UNTERLAGE_ART_LABEL, raumWert, raumLabel
 } from "./datenmodell.js";
 import {
   DESKTOP_MIN_WIDTH, HEADER_FILTER_LEER, I, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH,
@@ -4285,7 +4285,12 @@ function TechnikUebersichtAnsicht({ ve, t, accent, kontakte = [], setKontakte = 
 
 function GeraetStandort({ g, haeuser, t }) {
   const haus = g.hausId ? (haeuser || []).find(h => String(h.id) === String(g.hausId)) : null;
-  const raum = haus && g.raumId ? (haus.raeume || []).find(r => String(r.id) === String(g.raumId)) : null;
+  // 14.32: raumId kann ein "name:<Name>"-Wert sein (Raum ohne eigene id) —
+  // dann als Pseudo-Raum auflösen, statt ihn in der Struktur zu suchen.
+  const istNameWert = typeof g.raumId === "string" && g.raumId.indexOf("name:") === 0;
+  const raum = istNameWert ? { id: "", name: g.raumId.slice(5) }
+    : (haus && g.raumId ? (haus.raeume || []).find(r => r && r.id != null
+        && String(r.id) !== "" && String(r.id) === String(g.raumId)) : null);
   const einheit = haus && g.einheitId
     ? ((haus.einheiten || []).find(e => String(e.id) === String(g.einheitId)) || null) : null;
   if (!haus) return null;
@@ -4825,8 +4830,14 @@ function TechnikGeraetForm({ typ, initial = null, t, accent, onSave, onCancel, h
                     einheitId ? "— (Einheit gewählt) —" :
                     verfRaeume.length === 0 ? "— keine Räume —" : "— ohne Raum —"}
                 </option>
-                {verfRaeume.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}{r.lage ? ` (${r.lage})` : ""}</option>
+                {/* 14.32: Wert über raumWert (§76) — Räume aus Import/
+                    Teilungserklärung tragen `id: ""`, dann hätten ALLE
+                    Optionen denselben leeren Wert und die Auswahl bliebe
+                    wirkungslos (gleicher Fehler wie im Foto-Modul). */}
+                {verfRaeume.map((r, ri) => (
+                  <option key={raumWert(r) || ("pos" + ri)} value={raumWert(r)}>
+                    {raumLabel(r)}{r.lage ? ` (${r.lage})` : ""}
+                  </option>
                 ))}
               </select>
             </div>
