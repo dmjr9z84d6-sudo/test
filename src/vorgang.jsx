@@ -29,6 +29,7 @@ import {
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
   vorlageFuerSchritt, fuelleVorlage, fotoStandorte, fotoFindeRaum,
+  alleEinheitenVonVe, raeumeVonEinheit, findeRaumUeberall,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
   auftragsNummerNeu, angebotsNummerNeu,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
@@ -259,37 +260,24 @@ function useObjektKontakte(kontakte, ve) {
 
 // Räume je Wo (Benny 11.07.): Objekt → Einheit → RAUM. Einheit gewählt →
 // Räume ihrer Teile; Gemeinschaft → Räume der Standorte (Häuser).
+// Seit 14.30 über den zentralen §76-Baustein `raeumeVonEinheit` (datenmodell):
+// findet die Einheit auch, wenn sie an einer Gebäude-/TG-Karte hängt statt
+// flach an `ve.einheiten` — vorher blieb das Raum-Dropdown dann leer.
 function raeumeFuerWo(ve, einheitId) {
   if (!ve) return [];
+  if (einheitId) return raeumeVonEinheit(ve, einheitId);
   const raus = [];
-  if (einheitId) {
-    const e = (ve.einheiten || []).find((x) => x && String(x.id) === String(einheitId));
-    ((e && e.teile) || []).forEach((teil) => {
-      (teil.raeume || []).forEach((r) => { if (r) raus.push(r); });
-    });
-  } else {
-    (fotoStandorte(ve) || []).forEach((st) => {
-      (st.raeume || []).forEach((r) => { if (r) raus.push(r); });
-    });
-  }
+  (fotoStandorte(ve) || []).forEach((st) => {
+    (st.raeume || []).forEach((r) => { if (r) raus.push(r); });
+  });
   return raus;
 }
 
-// Raum finden — über BEIDE Welten (Benny 11.07.): fotoFindeRaum kennt nur
-// die Gebäude-Karten (§93); Einheiten-Räume leben in ve.einheiten[].teile.
+// Raum finden — über BEIDE Welten. Seit 14.30 delegiert an den zentralen
+// Baustein `findeRaumUeberall` (datenmodell): Gemeinschaftsräume aller Karten
+// + SE-Räume aller Einheiten (Karten-Fundstellen UND ve.einheiten).
 function findeRaum(ve, raumId) {
-  if (!ve || !raumId) return null;
-  const ausKarten = fotoFindeRaum(ve, raumId);
-  if (ausKarten) return ausKarten;
-  const einheiten = Array.isArray(ve.einheiten) ? ve.einheiten : [];
-  for (let i = 0; i < einheiten.length; i++) {
-    const teile = (einheiten[i] && einheiten[i].teile) || [];
-    for (let j = 0; j < teile.length; j++) {
-      const r = (teile[j].raeume || []).find((x) => x && String(x.id) === String(raumId));
-      if (r) return r;
-    }
-  }
-  return null;
+  return findeRaumUeberall(ve, raumId);
 }
 
 // KontaktPicker-Adapter (§76): der kanonische Baustein erwartet ein
@@ -979,7 +967,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const kat = vorgangKategorie(vorgang.kategorie);
   const hinweise = hinweiseFuerVorgang(vorgang, welt);
   const verlauf = baueVerlauf(vorgang, welt, kontakte);
-  const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  const einheiten = alleEinheitenVonVe(ve); // 14.30: zentrale Quelle (Karten + ve.einheiten)
   const einheit = vorgang.einheit_id
     ? (einheiten.filter((e) => e.id === vorgang.einheit_id)[0] || null) : null;
   const raum = ve && vorgang.raum_id ? findeRaum(ve, vorgang.raum_id) : null;
@@ -1539,7 +1527,7 @@ function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
         ? Object.assign({}, a, aenderung) : a),
     }));
   };
-  const einheitenL = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  const einheitenL = alleEinheitenVonVe(ve); // 14.30: zentrale Quelle (Karten + ve.einheiten)
   const eRaeume = raeumeFuerWo(ve, auftrag.einheit_id || "");
   return (
     <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
@@ -1628,7 +1616,7 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
     ? (kontakte || []).find((k) => k && k.id === auftrag.gemeldet_von_id) : null;
   // Wo-Label (Benny 18.07., wie VorgangDetail): Einheit + Raum + Freitext
   // in EINEM 📍-Eintrag — keine drei getrennten Schnipsel.
-  const einheitenL = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  const einheitenL = alleEinheitenVonVe(ve); // 14.30: zentrale Quelle (Karten + ve.einheiten)
   const einheitL = auftrag.einheit_id
     ? (einheitenL.filter((e) => e.id === auftrag.einheit_id)[0] || null) : null;
   const raumL = ve && auftrag.raum_id ? findeRaum(ve, auftrag.raum_id) : null;
@@ -2963,7 +2951,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
     input.click();
   };
 
-  const einheiten = (ve && Array.isArray(ve.einheiten)) ? ve.einheiten : [];
+  const einheiten = alleEinheitenVonVe(ve); // 14.30: zentrale Quelle (Karten + ve.einheiten)
   // Räume für den Auftrag-Zweig (Benny 18.07.): dieselbe Wo?/Raum-Wahl wie
   // beim Vorgang — ein Punkt sitzt genauso an Einheit/Raum.
   const auftragRaeume = raeumeFuerWo(ve, auftragEinheitId);

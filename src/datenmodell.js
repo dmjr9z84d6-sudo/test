@@ -2522,31 +2522,104 @@ export function fotoStandorte(ve) {
   const karten = (ve && Array.isArray(ve.karten)) ? ve.karten : [];
   return karten.filter(k => k && (k.kategorie === "gebaeude" || k.kategorie === "tiefgarage"));
 }
-export function fotoFindeEinheit(ve, einheitId) {
-  if (!einheitId) return null;
-  const st = fotoStandorte(ve);
-  for (let i = 0; i < st.length; i++) {
-    const eh = (st[i].einheiten || []).find(e => e && String(e.id) === String(einheitId));
-    if (eh) return eh;
+
+// ── Zentrale Einheiten-/Raum-Findung (§76, NEU 14.30 — Benny 23.07.:
+// „wir brauchen die Struktur immer wieder und überall") ─────────────────────
+// Die EINE Wahrheit dafür, wo Einheiten und Räume im Objekt liegen können:
+//   • Einheiten hängen an einheiten-haltenden Karten (Gebäude/TG — je nach
+//     Objekt/Import auch andere Kategorien) UND/ODER flach an `ve.einheiten`.
+//     Dieselbe Einheit kann MEHRFACH vorkommen (Platzhalter-Kopien) — deshalb
+//     immer über ALLE Fundstellen sammeln, nie nur die erste nehmen.
+//   • SE-Räume: `teile[].raeume` (Normalfall) oder `einheit.raeume` (Alt-/
+//     Importdaten). Gemeinschaftsräume: `karte.raeume` (Gebäude/TG und
+//     „Eigene Karten").
+// Konsumenten: Foto-Modul, Vorgangswelt (Wo/Raum), Legionellen. KEINE eigenen
+// Scans mehr an den Aufrufstellen bauen — diese Helfer erweitern.
+// Alle Einheiten des Objekts — Karten zuerst (Gebäude/TG & Co.), Fallback
+// flach an `ve.einheiten`. Bis 14.29 in objektansicht.jsx; hierher gezogen,
+// damit auch die Vorgangswelt dieselbe Quelle nutzt (kein Import-Zyklus).
+export function alleEinheitenVonVe(ve) {
+  if (!ve) return [];
+  var aus = [];
+  (ve.karten || []).forEach(function(k) { ((k && k.einheiten) || []).forEach(function(e) { if (e) aus.push(e); }); });
+  return aus.length > 0 ? aus : (ve.einheiten || []);
+}
+export function einheitFundstellen(ve, einheitId) {
+  if (!ve || einheitId == null || einheitId === "") return [];
+  const treffer = [];
+  const merke = (e) => {
+    if (e && String(e.id) === String(einheitId) && treffer.indexOf(e) < 0) treffer.push(e);
+  };
+  ((ve.karten || [])).forEach(k => ((k && k.einheiten) || []).forEach(merke));
+  ((ve.einheiten || [])).forEach(merke);
+  return treffer;
+}
+export function findeEinheitUeberall(ve, einheitId) {
+  const t = einheitFundstellen(ve, einheitId);
+  return t.length > 0 ? t[0] : null;
+}
+// Alle SE-Räume einer Einheit über ALLE Fundstellen, dedupliziert (id bzw. Name).
+export function raeumeVonEinheit(ve, einheitId) {
+  const out = [];
+  const gesehen = {};
+  const nimm = (r) => {
+    if (!r) return;
+    const key = String(r.id != null ? r.id : (r.name || ""));
+    if (!key || gesehen[key]) return;
+    gesehen[key] = true;
+    out.push(r);
+  };
+  einheitFundstellen(ve, einheitId).forEach(eh => {
+    (Array.isArray(eh.teile) ? eh.teile : []).forEach(teil =>
+      ((teil && teil.raeume) || []).forEach(nimm));
+    (Array.isArray(eh.raeume) ? eh.raeume : []).forEach(nimm);
+  });
+  return out;
+}
+// Raum per id ÜBERALL: Gemeinschaftsräume aller Karten (karte.raeume — Gebäude,
+// TG, „Eigene Karten") + SE-Räume aller Einheiten (alle Fundstellen inkl.
+// ve.einheiten). Liefert das Raum-Objekt oder null.
+export function findeRaumUeberall(ve, raumId) {
+  if (!ve || !raumId) return null;
+  const gleich = (r) => r && String(r.id) === String(raumId);
+  const karten = Array.isArray(ve.karten) ? ve.karten : [];
+  for (let i = 0; i < karten.length; i++) {
+    const r = ((karten[i] && karten[i].raeume) || []).find(gleich);
+    if (r) return r;
+  }
+  const proEinheit = (eh) => {
+    if (!eh) return null;
+    const teile = Array.isArray(eh.teile) ? eh.teile : [];
+    for (let k = 0; k < teile.length; k++) {
+      const tr = ((teile[k] && teile[k].raeume) || []).find(gleich);
+      if (tr) return tr;
+    }
+    return (Array.isArray(eh.raeume) ? eh.raeume : []).find(gleich) || null;
+  };
+  for (let i = 0; i < karten.length; i++) {
+    const einheiten = (karten[i] && karten[i].einheiten) || [];
+    for (let j = 0; j < einheiten.length; j++) {
+      const r = proEinheit(einheiten[j]);
+      if (r) return r;
+    }
+  }
+  const flach = Array.isArray(ve.einheiten) ? ve.einheiten : [];
+  for (let i = 0; i < flach.length; i++) {
+    const r = proEinheit(flach[i]);
+    if (r) return r;
   }
   return null;
 }
+
+export function fotoFindeEinheit(ve, einheitId) {
+  // Delegiert an die zentrale Findung (14.30) — früher nur Gebäude-/TG-Karten,
+  // wodurch flach an `ve.einheiten` hängende Einheiten übersehen wurden.
+  return findeEinheitUeberall(ve, einheitId);
+}
 export function fotoFindeRaum(ve, raumId) {
-  if (!raumId) return null;
-  const st = fotoStandorte(ve);
-  for (let i = 0; i < st.length; i++) {
-    const r = (st[i].raeume || []).find(x => x && String(x.id) === String(raumId));
-    if (r) return r;
-    const einheiten = st[i].einheiten || [];
-    for (let j = 0; j < einheiten.length; j++) {
-      const teile = einheiten[j].teile || [];
-      for (let k = 0; k < teile.length; k++) {
-        const tr = (teile[k].raeume || []).find(x => x && String(x.id) === String(raumId));
-        if (tr) return tr;
-      }
-    }
-  }
-  return null;
+  // Delegiert an die zentrale Findung (14.30) — deckt jetzt auch `ve.einheiten`
+  // und Räume an „Eigenen Karten" ab.
+  return findeRaumUeberall(ve, raumId);
 }
 export function fotoFindeGeraet(ve, geraetId) {
   // Geräte hängen an den TECHNIK-Karten des Objekts (kategorie "technik"),

@@ -10,7 +10,7 @@ import {
 } from "./utils-basis.js";
 import {
   ANLEGE_FELDTYPEN, EIG_STATUS, FIELD_TYPES, SUGGESTIONS, aktiverHaushalt,
-  eigStatus, findeKontaktKandidaten, verwendungenVon
+  eigStatus, findeEinheitUeberall, findeKontaktKandidaten, findeRaumUeberall, verwendungenVon
 } from "./datenmodell.js";
 import {
   I, StickySectionHeader, formatNameMitCtx, passendeMasterSpalten, useAvatarIcons,
@@ -2650,31 +2650,15 @@ function legionellenStandorte(ve) {
 }
 // Findet eine Einheit über alle Standorte hinweg (für Anzeige + Ansprechpartner).
 function legionellenFindeEinheit(ve, einheitId) {
-  if (!einheitId) return null;
-  const standorte = legionellenStandorte(ve);
-  for (let i = 0; i < standorte.length; i++) {
-    const eh = (standorte[i].einheiten || []).find(e => e && String(e.id) === String(einheitId));
-    if (eh) return eh;
-  }
-  return null;
+  // 14.30: delegiert an die zentrale Findung (datenmodell, §76) — findet die
+  // Einheit auch, wenn sie flach an `ve.einheiten` hängt statt an einer Karte.
+  return findeEinheitUeberall(ve, einheitId);
 }
 // Findet einen Raum über alle Standorte hinweg.
 function legionellenFindeRaum(ve, raumId) {
-  if (!raumId) return null;
-  const standorte = legionellenStandorte(ve);
-  for (let i = 0; i < standorte.length; i++) {
-    const r = (standorte[i].raeume || []).find(x => x && String(x.id) === String(raumId));
-    if (r) return r;
-    const einheiten = standorte[i].einheiten || [];
-    for (let j = 0; j < einheiten.length; j++) {
-      const teile = einheiten[j].teile || [];
-      for (let k = 0; k < teile.length; k++) {
-        const tr = (teile[k].raeume || []).find(x => x && String(x.id) === String(raumId));
-        if (tr) return tr;
-      }
-    }
-  }
-  return null;
+  // 14.30: delegiert an die zentrale Findung (datenmodell, §76) — deckt auch
+  // `ve.einheiten`, Alt-Feld `einheit.raeume` und „Eigene Karten" ab.
+  return findeRaumUeberall(ve, raumId);
 }
 // Ansprechpartner einer einheit-verknüpften Probenahmestelle: aktueller Bewohner
 // (Zutritt zur Wohnung), ersatzweise Eigentümer. Liefert das Kontakt-Objekt

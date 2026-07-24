@@ -3,7 +3,7 @@ import { AMPEL_FARBEN, FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getCo
 import { parseDatumWert, dateiBlobUrl, dateiSpeichern, dateiLoeschen, fotoExifLesen } from "./utils-basis.js";
 import {
   FOTO_ALBEN, FOTO_RAUM_KATALOG, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
-  fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, sammlungFuerObjekt, teileVon
+  alleEinheitenVonVe, fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, raeumeVonEinheit, sammlungFuerObjekt, teileVon
 } from "./datenmodell.js";
 import { vorgangAnzahlFuerObjekt } from "./vorgang.jsx";
 import {
@@ -48,12 +48,10 @@ const HISTORIE_TYPEN = [
 ];
 
 // Einheiten kanonisch aus den Liegenschafts-Karten, Fallback ve.einheiten.
-function alleEinheitenVonVe(ve) {
-  if (!ve) return [];
-  var aus = [];
-  (ve.karten || []).forEach(function(k) { ((k && k.einheiten) || []).forEach(function(e) { if (e) aus.push(e); }); });
-  return aus.length > 0 ? aus : (ve.einheiten || []);
-}
+// alleEinheitenVonVe: seit 14.30 im Datenmodell (§76, zentrale Einheiten-
+// Quelle — auch die Vorgangswelt nutzt sie). Hier nur noch importiert und
+// unten unverändert re-exportiert, damit bestehende Importe aus
+// objektansicht.jsx (etv, kalender, listen-tools, App-Rumpf) gültig bleiben.
 
 function sammleHistorie(ve, kontakte) {
   var out = [];
@@ -2454,19 +2452,11 @@ function fotoFelderAbleitung(ve, art, hausWahl, einheitWahl) {
     };
     if (art === "einheit") {
       if (!aktEinheit) return out;
-      // Alle Objekte derselben Einheit-Id einsammeln (Karten + ve.einheiten).
-      const treffer = [];
-      const merke = (e) => {
-        if (e && String(e.id) === String(aktEinheit.id) && treffer.indexOf(e) < 0) treffer.push(e);
-      };
-      (((ve && ve.karten) || [])).forEach(k => ((k && k.einheiten) || []).forEach(merke));
-      (((ve && ve.einheiten) || [])).forEach(merke);
-      if (treffer.length === 0) treffer.push(aktEinheit);
-      treffer.forEach(eh => {
-        (Array.isArray(eh.teile) ? eh.teile : []).forEach(teil =>
-          ((teil && teil.raeume) || []).forEach(nimm));
-        (Array.isArray(eh.raeume) ? eh.raeume : []).forEach(nimm);
-      });
+      // Zentrale Findung (14.30, §76): `raeumeVonEinheit` sammelt über ALLE
+      // Fundstellen der Einheit (karten[].einheiten + ve.einheiten;
+      // teile[].raeume + Alt-Feld einheit.raeume) — dieselbe Quelle wie
+      // Vorgangswelt und Legionellen.
+      raeumeVonEinheit(ve, aktEinheit.id).forEach(nimm);
       // Erst wenn NIRGENDS ein Raum erfasst ist: Standard-Katalog anbieten.
       // Wert "name:<Name>" → gespeichert wird raumName, raumId bleibt null
       // (kein Eingriff in die Objekt-Struktur).
@@ -3088,7 +3078,8 @@ function FotoAnsichtUmschalter({ t, accent }) {
 }
 
 function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
-  onBearbeitenAuswahl, onAlbumZuweisen, onLoeschenAuswahl, auswahlReset = 0 }) {
+  onBearbeitenAuswahl, onAlbumZuweisen, onLoeschenAuswahl, auswahlReset = 0,
+  einheitFilter = "" }) {
   const [albumFilter, setAlbumFilter] = useState("alle");
   const [thumbUrls, setThumbUrls] = useState({});      // fotoId -> Object-URL
   // Auswahl-Modus (Benny 22.07.): Im Edit-Modus tippt man Fotos AN statt sie
@@ -3123,10 +3114,25 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   const fotoAnzeige = useFotoAnzeige();
   const gridGroesse = FOTO_GRID_STUFEN[fotoAnzeige.gridGroesse] ? fotoAnzeige.gridGroesse : "m";
   const ansicht = fotoAnzeige.ansicht === "liste" ? "liste" : "grid";
+  // Aktionsleisten-Position (14.31, Benny 23.07.): Desktop → fest OBEN in der
+  // Foto-Karte (unter dem Kopf, nahe am Geschehen); mobil → schwebend unten
+  // in der Daumenzone (iOS-Fotos-Muster, unverändert).
+  const istDesktop = useWindowWidth() >= DESKTOP_MIN_WIDTH;
+
+  // Einheiten-Vorfilter (14.31, Benny 23.07.): wirkt VOR dem Album-Filter —
+  // auch die Alben-Zähler beziehen sich auf die vorgefilterte Menge. Werte:
+  // "" = alle · "gemeinschaft" = alles außer Einheiten-Zuordnung · sonst
+  // Einheits-Id (foto.zuordnung.einheitId). Gesteuert über das Select im
+  // Karten-Kopf der FotosAnsicht (links neben der Sortierung).
+  const basis = !einheitFilter ? fotos : fotos.filter(f => {
+    const z = (f && f.zuordnung) || {};
+    if (einheitFilter === "gemeinschaft") return z.art !== "einheit";
+    return z.art === "einheit" && String(z.einheitId) === String(einheitFilter);
+  });
 
   // Album-Katalog + eigene Alben (aus vorhandenen foto.album-Werten abgeleitet).
   const counts = {};
-  fotos.forEach(f => {
+  basis.forEach(f => {
     const a = (f && f.album) || "sonstiges";
     counts[a] = (counts[a] || 0) + 1;
   });
@@ -3140,8 +3146,11 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   const eigeneAlben = eigene.map(a => a.id);
   const aktiveArten = filterArten.filter(a => counts[a.id] > 0).map(a => a.id);
 
-  const gefiltert = albumFilter === "alle"
-    ? fotos : fotos.filter(f => ((f && f.album) || "sonstiges") === albumFilter);
+  // Randfall: Der Einheiten-Filter kann das gewählte Album leeren — dann
+  // effektiv auf „Alle" zurückfallen (die Pille wäre sonst unsichtbar aktiv).
+  const effAlbumFilter = (albumFilter !== "alle" && !counts[albumFilter]) ? "alle" : albumFilter;
+  const gefiltert = effAlbumFilter === "alle"
+    ? basis : basis.filter(f => ((f && f.album) || "sonstiges") === effAlbumFilter);
 
   // Sortierung (geräteweit aus dem FotoAnzeigeContext). Album gruppiert nach
   // Katalog-Reihenfolge (eigene dahinter A–Z), innerhalb Aufnahmedatum ab-
@@ -3208,12 +3217,128 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Auswahl-Aktionsleiste — erscheint, sobald im Edit-Modus mindestens
+          ein Foto markiert ist. Desktop (14.31, Benny 23.07.): fest OBEN in
+          der Foto-Karte unter dem Kopf (nahe am Geschehen). Mobil: schwebend
+          am unteren Bildschirmrand (Daumenzone), bleibt beim Scrollen sichtbar.
+          Aktionen: Bearbeiten (1 Foto → voller Dialog, mehrere → gleiche
+          Angaben für alle) · Album (Schnellzuweisung, Popover §2.7) ·
+          Löschen (Zwei-Tipp-Bestätigung wie AktionsButton-gefahr).
+          Kandidat für Baustein-Extraktion, sobald die Dokumente-Kachel das
+          Muster übernimmt (§76: zweites Vorkommen → Baustein). */}
+      {editMode && auswahl.length > 0 && (
+        <div style={istDesktop ? {
+          alignSelf: "flex-start", maxWidth: "100%",
+          background: t.surface, border: `1px solid ${t.border}`,
+          borderRadius: RAD.lg,
+          padding: "8px 10px", display: "flex", alignItems: "center", gap: 6
+        } : {
+          position: "fixed", left: "50%", transform: "translateX(-50%)",
+          bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", zIndex: 900,
+          background: t.card, border: `1px solid ${t.border}`,
+          borderRadius: RAD.lg, boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
+          padding: "8px 10px", display: "flex", alignItems: "center", gap: 6,
+          maxWidth: "calc(100vw - 24px)" }}>
+          {/* Kompakter Zähler (Badge) — "N ausgewählt" brach auf schmalen
+              iPhones die Buttons um (Benny-Screenshot 22.07.). */}
+          <span title={auswahl.length + " ausgewählt"} style={{ minWidth: 24,
+            height: 24, padding: "0 7px", borderRadius: RAD.pill,
+            background: accent, color: getContrastColor(accent),
+            fontSize: FS.s, fontWeight: FW.heavy, display: "flex",
+            alignItems: "center", justifyContent: "center", flexShrink: 0,
+            boxSizing: "border-box" }}>
+            {auswahl.length}
+          </span>
+          {/* Bearbeiten */}
+          <button onClick={() => { setLoeschConfirm(false);
+              onBearbeitenAuswahl && onBearbeitenAuswahl(auswahlFotos()); }}
+            title="Bearbeiten" aria-label="Bearbeiten"
+            style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
+              padding: "0 10px", cursor: "pointer", background: accent + "18",
+              border: `1px solid ${accent}40`, borderRadius: RAD.sm,
+              color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
+              whiteSpace: "nowrap", flexShrink: 0 }}>
+            <I name="pencil" size={12} color={accent}/>
+            <span>Bearbeiten</span>
+          </button>
+          {/* Album zuweisen (Schnellaktion) — Popover mobil nach OBEN (Leiste
+              unten), am Desktop nach UNTEN (Leiste oben). §2.7 */}
+          <div ref={albumMenuRef} style={{ position: "relative" }}>
+            <button onClick={() => { setLoeschConfirm(false); setAlbumMenuAuf(v => !v); }}
+              title="Album zuweisen" aria-label="Album zuweisen"
+              style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
+                padding: "0 10px", cursor: "pointer", background: accent + "18",
+                border: `1px solid ${accent}40`, borderRadius: RAD.sm,
+                color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
+                whiteSpace: "nowrap", flexShrink: 0 }}>
+              <I name="list" size={12} color={accent}/>
+              <span>Album</span>
+            </button>
+            {albumMenuAuf && (
+              <div style={{ position: "absolute", right: 0,
+                ...(istDesktop ? { top: "calc(100% + 6px)" } : { bottom: "calc(100% + 6px)" }),
+                zIndex: 910, background: t.card, border: `1px solid ${t.border}`,
+                borderRadius: RAD.ml, boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+                overflow: "hidden", minWidth: 180, maxHeight: 260, overflowY: "auto" }}>
+                {FOTO_ALBEN.map(a => (
+                  <button key={a.id} onClick={() => { setAlbumMenuAuf(false);
+                      onAlbumZuweisen && onAlbumZuweisen(auswahlFotos(), a.id);
+                      auswahlLeeren(); }}
+                    style={{ display: "block", width: "100%", background: "none",
+                      border: "none", padding: "9px 12px", cursor: "pointer",
+                      textAlign: "left", fontFamily: "inherit", fontSize: FS.s,
+                      color: t.text }}>
+                    {a.label}
+                  </button>
+                ))}
+                {eigeneAlben.map(a => (
+                  <button key={a} onClick={() => { setAlbumMenuAuf(false);
+                      onAlbumZuweisen && onAlbumZuweisen(auswahlFotos(), a);
+                      auswahlLeeren(); }}
+                    style={{ display: "block", width: "100%", background: "none",
+                      border: "none", padding: "9px 12px", cursor: "pointer",
+                      textAlign: "left", fontFamily: "inherit", fontSize: FS.s,
+                      color: t.text }}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Löschen — nur Papierkorb (Benny 22.07.). Zwei-Tipp-Bestätigung:
+              erster Tipp füllt den Button rot (Icon weiß), zweiter löscht.
+              Antippen eines Fotos oder einer anderen Aktion setzt zurück. */}
+          <button onClick={() => {
+              if (!loeschConfirm) { setLoeschConfirm(true); return; }
+              setLoeschConfirm(false);
+              onLoeschenAuswahl && onLoeschenAuswahl(auswahlFotos());
+              auswahlLeeren();
+            }}
+            title={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+            aria-label={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              width: 32, height: 32, cursor: "pointer", padding: 0, flexShrink: 0,
+              background: loeschConfirm ? "#EF4444" : "#EF444418",
+              border: "1px solid #EF444455", borderRadius: RAD.sm }}>
+            <I name="trash" size={13} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
+          </button>
+          {/* Auswahl aufheben */}
+          <button onClick={auswahlLeeren} title="Auswahl aufheben"
+            aria-label="Auswahl aufheben"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              width: 32, height: 32, cursor: "pointer", background: "none", flexShrink: 0,
+              border: `1px solid ${t.border}`, borderRadius: RAD.sm, padding: 0 }}>
+            <I name="x" size={12} color={t.sub}/>
+          </button>
+        </div>
+      )}
+
       {/* Filter-Zeile: nur noch die Alben — die Ansicht-Umschalter (S/M/L +
           Grid/Liste) sitzen seit 14.29 im Akten-Kopf neben dem Stift
           (FotoAnsichtUmschalter, geräteweit über FotoAnzeigeContext). */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <FilterButtons arten={filterArten} aktive={aktiveArten} counts={counts}
-          wert={albumFilter} onWert={setAlbumFilter} t={t} accent={accent}/>
+          wert={effAlbumFilter} onWert={setAlbumFilter} t={t} accent={accent}/>
       </div>
 
       {gefiltert.length === 0 && (
@@ -3334,112 +3459,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
         </div>
       )}
 
-      {/* Schwebende Aktionsleiste (iOS-Fotos-Muster) — erscheint, sobald im
-          Edit-Modus mindestens ein Foto markiert ist. Fixiert am unteren
-          Bildschirmrand (Daumenzone), bleibt beim Scrollen sichtbar.
-          Aktionen: Bearbeiten (1 Foto → voller Dialog, mehrere → gleiche
-          Angaben für alle) · Album (Schnellzuweisung, Popover §2.7) ·
-          Löschen (Zwei-Tipp-Bestätigung wie AktionsButton-gefahr).
-          Kandidat für Baustein-Extraktion, sobald die Dokumente-Kachel das
-          Muster übernimmt (§76: zweites Vorkommen → Baustein). */}
-      {editMode && auswahl.length > 0 && (
-        <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)",
-          bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", zIndex: 900,
-          background: t.card, border: `1px solid ${t.border}`,
-          borderRadius: RAD.lg, boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
-          padding: "8px 10px", display: "flex", alignItems: "center", gap: 6,
-          maxWidth: "calc(100vw - 24px)" }}>
-          {/* Kompakter Zähler (Badge) — "N ausgewählt" brach auf schmalen
-              iPhones die Buttons um (Benny-Screenshot 22.07.). */}
-          <span title={auswahl.length + " ausgewählt"} style={{ minWidth: 24,
-            height: 24, padding: "0 7px", borderRadius: RAD.pill,
-            background: accent, color: getContrastColor(accent),
-            fontSize: FS.s, fontWeight: FW.heavy, display: "flex",
-            alignItems: "center", justifyContent: "center", flexShrink: 0,
-            boxSizing: "border-box" }}>
-            {auswahl.length}
-          </span>
-          {/* Bearbeiten */}
-          <button onClick={() => { setLoeschConfirm(false);
-              onBearbeitenAuswahl && onBearbeitenAuswahl(auswahlFotos()); }}
-            title="Bearbeiten" aria-label="Bearbeiten"
-            style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
-              padding: "0 10px", cursor: "pointer", background: accent + "18",
-              border: `1px solid ${accent}40`, borderRadius: RAD.sm,
-              color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
-              whiteSpace: "nowrap", flexShrink: 0 }}>
-            <I name="pencil" size={12} color={accent}/>
-            <span>Bearbeiten</span>
-          </button>
-          {/* Album zuweisen (Schnellaktion) — Popover nach OBEN, §2.7 */}
-          <div ref={albumMenuRef} style={{ position: "relative" }}>
-            <button onClick={() => { setLoeschConfirm(false); setAlbumMenuAuf(v => !v); }}
-              title="Album zuweisen" aria-label="Album zuweisen"
-              style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
-                padding: "0 10px", cursor: "pointer", background: accent + "18",
-                border: `1px solid ${accent}40`, borderRadius: RAD.sm,
-                color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
-                whiteSpace: "nowrap", flexShrink: 0 }}>
-              <I name="list" size={12} color={accent}/>
-              <span>Album</span>
-            </button>
-            {albumMenuAuf && (
-              <div style={{ position: "absolute", bottom: "calc(100% + 6px)", right: 0,
-                zIndex: 910, background: t.card, border: `1px solid ${t.border}`,
-                borderRadius: RAD.ml, boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-                overflow: "hidden", minWidth: 180, maxHeight: 260, overflowY: "auto" }}>
-                {FOTO_ALBEN.map(a => (
-                  <button key={a.id} onClick={() => { setAlbumMenuAuf(false);
-                      onAlbumZuweisen && onAlbumZuweisen(auswahlFotos(), a.id);
-                      auswahlLeeren(); }}
-                    style={{ display: "block", width: "100%", background: "none",
-                      border: "none", padding: "9px 12px", cursor: "pointer",
-                      textAlign: "left", fontFamily: "inherit", fontSize: FS.s,
-                      color: t.text }}>
-                    {a.label}
-                  </button>
-                ))}
-                {eigeneAlben.map(a => (
-                  <button key={a} onClick={() => { setAlbumMenuAuf(false);
-                      onAlbumZuweisen && onAlbumZuweisen(auswahlFotos(), a);
-                      auswahlLeeren(); }}
-                    style={{ display: "block", width: "100%", background: "none",
-                      border: "none", padding: "9px 12px", cursor: "pointer",
-                      textAlign: "left", fontFamily: "inherit", fontSize: FS.s,
-                      color: t.text }}>
-                    {a}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {/* Löschen — nur Papierkorb (Benny 22.07.). Zwei-Tipp-Bestätigung:
-              erster Tipp füllt den Button rot (Icon weiß), zweiter löscht.
-              Antippen eines Fotos oder einer anderen Aktion setzt zurück. */}
-          <button onClick={() => {
-              if (!loeschConfirm) { setLoeschConfirm(true); return; }
-              setLoeschConfirm(false);
-              onLoeschenAuswahl && onLoeschenAuswahl(auswahlFotos());
-              auswahlLeeren();
-            }}
-            title={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
-            aria-label={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
-            style={{ display: "flex", alignItems: "center", justifyContent: "center",
-              width: 32, height: 32, cursor: "pointer", padding: 0, flexShrink: 0,
-              background: loeschConfirm ? "#EF4444" : "#EF444418",
-              border: "1px solid #EF444455", borderRadius: RAD.sm }}>
-            <I name="trash" size={13} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
-          </button>
-          {/* Auswahl aufheben */}
-          <button onClick={auswahlLeeren} title="Auswahl aufheben"
-            aria-label="Auswahl aufheben"
-            style={{ display: "flex", alignItems: "center", justifyContent: "center",
-              width: 32, height: 32, cursor: "pointer", background: "none", flexShrink: 0,
-              border: `1px solid ${t.border}`, borderRadius: RAD.sm, padding: 0 }}>
-            <I name="x" size={12} color={t.sub}/>
-          </button>
-        </div>
-      )}
+
     </div>
   );
 }
@@ -3464,6 +3484,11 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true 
   const sortKrit = FOTO_SORT_OPTIONEN.some(o => o.id === fotoAnzeige.sortKrit)
     ? fotoAnzeige.sortKrit : "datum";
   const sortRichtung = fotoAnzeige.sortRichtung === "auf" ? "auf" : "ab";
+  // Einheiten-Filter (14.31): "" = alle · "gemeinschaft" · Einheits-Id.
+  // Liste über die zentrale Quelle (alleEinheitenVonVe, §76) — dieselben
+  // Einheiten wie im Upload-Dialog, egal wo sie im Objekt hängen.
+  const [einheitFilter, setEinheitFilter] = useState("");
+  const filterEinheiten = alleEinheitenVonVe(ve);
   // Viewer-Zustand fürs Durchblättern: die beim Öffnen aktuelle (gefilterte)
   // Foto-Liste + Index. Das datei-Objekt für den Viewer wird daraus abgeleitet.
   const [viewer, setViewer] = useState(null); // { liste: foto[], index }
@@ -3544,6 +3569,29 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true 
             Fotos{fotos.length > 0 ? " (" + fotos.length + ")" : ""}
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {/* Einheiten-Filter (14.31, Benny 23.07.): Select links neben der
+                Sortierung — dynamisch je Objekt (Alle · Gemeinschaft · je
+                Einheit). Gefiltert wird in der FotoGalerie VOR den Alben. */}
+            {fotos.length > 0 && filterEinheiten.length > 0 && (
+              <select value={einheitFilter}
+                onChange={(e) => setEinheitFilter(e.target.value)}
+                title="Nach Zuordnung filtern" aria-label="Nach Zuordnung filtern"
+                style={{ height: 30, maxWidth: 150, padding: "0 8px",
+                  background: einheitFilter ? accent + "18" : t.surface,
+                  color: einheitFilter ? accent : t.text,
+                  border: `1px solid ${einheitFilter ? accent + "55" : t.border}`,
+                  borderRadius: RAD.ms, fontSize: 16, fontFamily: "inherit",
+                  fontWeight: einheitFilter ? FW.bold : FW.normal,
+                  cursor: "pointer", boxSizing: "border-box" }}>
+                <option value="">Alle</option>
+                <option value="gemeinschaft">Gemeinschaft</option>
+                {filterEinheiten.map(eh => (
+                  <option key={eh.id} value={eh.id}>
+                    {eh.bezeichnung || ("WE " + (eh.nr || eh.id))}
+                  </option>
+                ))}
+              </select>
+            )}
             {/* Sortierung (Datum/Name/Album, Richtung kippbar) — Baustein wie
                 bei den Kontakt-Gruppen-Karten, Popover öffnet frei (§2.7). */}
             {fotos.length > 1 && (
@@ -3583,7 +3631,8 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true 
             onBearbeitenAuswahl={(liste) => setBearbFotos(liste)}
             onAlbumZuweisen={fotosAlbumZuweisen}
             onLoeschenAuswahl={fotosLoeschenViele}
-            auswahlReset={auswahlReset}/>
+            auswahlReset={auswahlReset}
+            einheitFilter={einheitFilter}/>
         )}
       </div>
 
