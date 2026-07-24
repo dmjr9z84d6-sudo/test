@@ -2422,13 +2422,30 @@ function LegionellenAnsicht({ ve, setVes, t, accent, editMode = false, kontakte 
 // Dateien teilen Album/Zuordnung/Gerät/Notiz — bewusste Vereinfachung (§93.10).
 // Zuordnung ist PFLICHT; Hochladen bleibt disabled, bis sie vollständig ist.
 // ── Gemeinsame Feld-Logik Upload + Bearbeiten (§76: EIN Feld-Block) ─────────
+// Effektives Haus (14.33): Wahl des Nutzers, sonst der EINZIGE Standort als
+// stille Vorbelegung. Eigene Mini-Funktion, weil die Modale beim Speichern
+// NUR diesen Wert brauchen — früher lief dafür die komplette Ableitung unten
+// (Räume über alle Fundstellen + alle Technik-Geräte) pro Render mit, und
+// zwar doppelt (Modal + FotoFelderBlock). Single Truth bleibt gewahrt:
+// `fotoFelderAbleitung` ruft dieselbe Funktion auf.
+function fotoEffHausId(ve, hausWahl) {
+  const standorte = legionellenStandorte(ve);
+  const einzigerStandort = standorte.length === 1 ? standorte[0] : null;
+  return hausWahl || (einzigerStandort ? String(einzigerStandort.id) : "");
+}
+
 // Abgeleitete Auswahllisten für die Foto-Felder — Single Truth für beide
 // Modale (Hochladen + Bearbeiten). Standorte/Einheiten/Räume aus DERSELBEN
 // Quelle wie Technik/Legionellen (legionellenStandorte, §93.8).
+// RÜCKGABE-VERTRAG (14.33) — wer nutzt was:
+//   FotoFelderBlock  → standorte, aktHaus, verfEinheiten, aktEinheit,
+//                      verfRaeume, alleGeraete (alles außer effHausId)
+//   FotoUploadModal / Bearbeiten-Modal → NICHTS von hier; die holen ihr
+//                      effHausId direkt über `fotoEffHausId` (s. o.)
+// Wer ein Feld ergänzt/entfernt, prüft diese Liste mit.
 function fotoFelderAbleitung(ve, art, hausWahl, einheitWahl) {
   const standorte = legionellenStandorte(ve);
-  const einzigerStandort = standorte.length === 1 ? standorte[0] : null;
-  const effHausId = hausWahl || (einzigerStandort ? String(einzigerStandort.id) : "");
+  const effHausId = fotoEffHausId(ve, hausWahl);
   const aktHaus = standorte.find(h => String(h.id) === String(effHausId)) || null;
   let verfEinheiten = aktHaus ? (aktHaus.einheiten || []) : [];
   // Rückfallebene (14.28): Einheiten müssen NICHT unter einer Gebäude-/TG-Karte
@@ -2518,13 +2535,16 @@ function FotoFelderBlock({ ve, t, accent,
   // Gespeicherten Katalog-/Freitext-Raum ("name:<N>") als Option erhalten,
   // falls er im aktuellen Angebot fehlt (z. B. Einheit hat inzwischen echte
   // Räume) — sonst zeigte das Select beim Bearbeiten leer.
-  if (raumWahl && raumWahl.indexOf("name:") === 0
-      && !verfRaeume.some(r => String(r.id) === raumWahl)) {
-    verfRaeume.push({ id: raumWahl, label: raumWahl.slice(5), katalog: true });
-  }
+  // 14.33: KOPIE statt push — das Ergebnis der Ableitungs-Funktion bleibt
+  // unangetastet (Single Truth wird nicht an der Aufrufstelle verändert).
+  // Reihenfolge bewusst identisch zu vorher: der Eintrag kommt ans Ende.
+  const raeumeAnzeige = (raumWahl && raumWahl.indexOf("name:") === 0
+      && !verfRaeume.some(r => String(r.id) === raumWahl))
+    ? verfRaeume.concat([{ id: raumWahl, label: raumWahl.slice(5), katalog: true }])
+    : verfRaeume;
   // Gruppen fürs Dropdown: erfasste (verknüpfte) Räume vs. Standard-Auswahl.
-  const raeumeErfasst = verfRaeume.filter(r => !r.katalog);
-  const raeumeKatalog = verfRaeume.filter(r => r.katalog);
+  const raeumeErfasst = raeumeAnzeige.filter(r => !r.katalog);
+  const raeumeKatalog = raeumeAnzeige.filter(r => r.katalog);
   const istEigenAlbum = album === "__eigen__";
   return (
     <>
@@ -2583,7 +2603,7 @@ function FotoFelderBlock({ ve, t, accent,
           )}
           {/* Raum: optionale Verfeinerung — Gemeinschaftsraum des Hauses
               bzw. Raum der gewählten Einheit. Nur zeigen, wenn es welche gibt. */}
-          {verfRaeume.length > 0 && (art === "gemeinschaft" || !!aktEinheit) && (
+          {raeumeAnzeige.length > 0 && (art === "gemeinschaft" || !!aktEinheit) && (
             <select value={raumWahl} onChange={e => setRaumWahl(e.target.value)}
               style={inputStyle}>
               <option value="">
@@ -2665,8 +2685,9 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null }) 
   // (Haus/TG → optional Gemeinschaftsraum) · „einheit" = Sondereigentum
   // (Einheit PFLICHT → optional Raum DIESER Einheit). Ableitung + Felder
   // laufen über den gemeinsamen Block (fotoFelderAbleitung/FotoFelderBlock,
-  // §76) — hier wird nur noch effHausId fürs Speichern gebraucht.
-  const { effHausId } = fotoFelderAbleitung(ve, art, hausWahl, einheitWahl);
+  // §76) — hier wird nur noch effHausId fürs Speichern gebraucht (14.33:
+  // schlanke Ableitung, s. `fotoEffHausId`).
+  const effHausId = fotoEffHausId(ve, hausWahl);
   const istEigenAlbum = album === "__eigen__";
   const albumWert = istEigenAlbum ? eigenAlbum.trim() : album;
   // Gemeinschaft ist ohne weitere Wahl gültig (Raum optional);
@@ -2919,7 +2940,9 @@ function FotoBearbeitenModal({ ve, fotos, t, accent, onClose, onSave }) {
   const [aufgenommen, setAufgenommen] = useState(foto.aufgenommen || "");
   const [fehler, setFehler] = useState("");
 
-  const { effHausId } = fotoFelderAbleitung(ve, art, hausWahl, einheitWahl);
+  // 14.33: nur das effektive Haus fürs Speichern — die vollen Auswahllisten
+  // baut FotoFelderBlock selbst (s. Rückgabe-Vertrag bei fotoFelderAbleitung).
+  const effHausId = fotoEffHausId(ve, hausWahl);
   const istEigenAlbum = album === "__eigen__";
   const albumWert = istEigenAlbum ? eigenAlbum.trim() : album;
   const zuordnungOk = art === "gemeinschaft" || (art === "einheit" && !!einheitWahl);
@@ -3677,5 +3700,5 @@ export {
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, STATUS_KONTEXTE, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
   ObjektWahlOverlay, FotoUploadModal,
-  berechneKontaktStatus, hbQuelleAktiv, hbVorlauf, fotoFelderAbleitung
+  berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
 };
