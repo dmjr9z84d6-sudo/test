@@ -2442,13 +2442,22 @@ function fotoFelderAbleitung(ve, art, hausWahl, einheitWahl) {
   const verfRaeume = (() => {
     const out = [];
     const gesehen = {};
+    // Wie in `raeumeVonEinheit` (14.32): eine LEERE id ("") ist keine
+    // brauchbare Kennung. Solche Räume (Import/Teilungserklärung) wurden bis
+    // 14.31 komplett verworfen → Katalog trotz erfasster Räume (Benny 24.07.).
+    // Ohne id wird der Raum über seinen NAMEN angeboten und gespeichert
+    // (Wert "name:<Name>" → raumName, raumId bleibt null) — dieselbe Mechanik
+    // wie beim Katalog, nur mit den echten Raumnamen des Objekts. `katalog`
+    // bleibt false: es sind erfasste Räume, sie gehören unter „Erfasste Räume".
     const nimm = (r) => {
       if (!r) return;
-      const id = r.id != null ? r.id : (r.name || "");
-      const key = String(id);
-      if (!key || gesehen[key]) return;
-      gesehen[key] = true;
-      out.push({ id: id, label: r.name || "Raum", katalog: false });
+      const idOk = r.id != null && String(r.id) !== "";
+      const name = r.name || "";
+      if (!idOk && !name) return;          // ohne id UND ohne Name nicht wählbar
+      const wert = idOk ? String(r.id) : ("name:" + name);
+      if (gesehen[wert]) return;
+      gesehen[wert] = true;
+      out.push({ id: wert, label: name || "Raum", katalog: false });
     };
     if (art === "einheit") {
       if (!aktEinheit) return out;
@@ -3662,5 +3671,5 @@ export {
   HANDLUNGSBEDARF_QUELLEN, STAT_WOHN_TYPEN, STATUS_KONTEXTE, StatBalkenZeile, StatKpi, StatPanel,
   StatusLeiste, VEDetail, VEKachel, VEListenZeile, ObjekteMasterDetail, alleEinheitenVonVe,
   ObjektWahlOverlay, FotoUploadModal,
-  berechneKontaktStatus, hbQuelleAktiv, hbVorlauf
+  berechneKontaktStatus, hbQuelleAktiv, hbVorlauf, fotoFelderAbleitung
 };

@@ -2562,10 +2562,19 @@ export function findeEinheitUeberall(ve, einheitId) {
 export function raeumeVonEinheit(ve, einheitId) {
   const out = [];
   const gesehen = {};
+  // Dedup-Schlüssel: id NUR wenn sie wirklich gefüllt ist. Räume aus Import/
+  // Teilungserklärung tragen oft `id: ""` (leerer String) — bis 14.31 fiel
+  // damit `String(r.id != null ? r.id : r.name)` auf "" zurück und der
+  // anschließende `if (!key)`-Schutz verwarf JEDEN Raum. Ergebnis: leere
+  // Liste → Katalog-Rückfall, obwohl Räume erfasst sind (Benny 24.07.).
+  // Ohne brauchbare id dedupliziert der Name; fehlt auch der, zählt die
+  // Position, damit kein Raum verloren geht.
   const nimm = (r) => {
     if (!r) return;
-    const key = String(r.id != null ? r.id : (r.name || ""));
-    if (!key || gesehen[key]) return;
+    const idOk = r.id != null && String(r.id) !== "";
+    const key = idOk ? ("id:" + r.id)
+      : (r.name ? ("name:" + r.name) : ("pos:" + out.length));
+    if (gesehen[key]) return;
     gesehen[key] = true;
     out.push(r);
   };
@@ -2576,12 +2585,31 @@ export function raeumeVonEinheit(ve, einheitId) {
   });
   return out;
 }
+// Stabiler Auswahl-/Speicherwert eines Raums (§76, 14.32). Räume aus Import
+// oder Teilungserklärung tragen häufig `id: ""` — dann ist die id als Wert
+// unbrauchbar (alle Optionen hätten denselben leeren Wert). Fällt in dem Fall
+// auf "name:<Name>" zurück, dieselbe Konvention wie beim Foto-Raum-Katalog:
+// Konsumenten speichern solche Werte als raumName statt als raumId.
+export function raumWert(r) {
+  if (!r) return "";
+  if (r.id != null && String(r.id) !== "") return String(r.id);
+  return r.name ? ("name:" + r.name) : "";
+}
+// Anzeigename eines Raums — Import-Daten nutzen teils `bezeichnung`.
+export function raumLabel(r) {
+  if (!r) return "Raum";
+  return r.name || r.bezeichnung || "Raum";
+}
 // Raum per id ÜBERALL: Gemeinschaftsräume aller Karten (karte.raeume — Gebäude,
 // TG, „Eigene Karten") + SE-Räume aller Einheiten (alle Fundstellen inkl.
 // ve.einheiten). Liefert das Raum-Objekt oder null.
 export function findeRaumUeberall(ve, raumId) {
-  if (!ve || !raumId) return null;
-  const gleich = (r) => r && String(r.id) === String(raumId);
+  if (!ve || !raumId || String(raumId) === "") return null;
+  // Räume mit leerer id ("" — Import/Teilungserklärung) dürfen NIE matchen,
+  // sonst liefert die Suche den erstbesten ID-losen Raum zurück (14.32).
+  // Solche Räume werden ohnehin über raumName referenziert, nicht über raumId.
+  const gleich = (r) => r && r.id != null && String(r.id) !== ""
+    && String(r.id) === String(raumId);
   const karten = Array.isArray(ve.karten) ? ve.karten : [];
   for (let i = 0; i < karten.length; i++) {
     const r = ((karten[i] && karten[i].raeume) || []).find(gleich);

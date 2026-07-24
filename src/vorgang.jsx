@@ -29,7 +29,7 @@ import {
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
   vorlageFuerSchritt, fuelleVorlage, fotoStandorte, fotoFindeRaum,
-  alleEinheitenVonVe, raeumeVonEinheit, findeRaumUeberall,
+  alleEinheitenVonVe, raeumeVonEinheit, findeRaumUeberall, raumWert, raumLabel,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
   auftragsNummerNeu, angebotsNummerNeu,
   weltAuftragBeauftragen, weltAuftragStatus, weltAuftragAbnehmen,
@@ -276,7 +276,13 @@ function raeumeFuerWo(ve, einheitId) {
 // Raum finden — über BEIDE Welten. Seit 14.30 delegiert an den zentralen
 // Baustein `findeRaumUeberall` (datenmodell): Gemeinschaftsräume aller Karten
 // + SE-Räume aller Einheiten (Karten-Fundstellen UND ve.einheiten).
+// 14.32: Räume ohne id werden als "name:<Name>" gespeichert (raumWert) —
+// solche Werte hier als Pseudo-Raum zurückgeben, damit die Anzeige den
+// Namen zeigt statt nichts.
 function findeRaum(ve, raumId) {
+  if (typeof raumId === "string" && raumId.indexOf("name:") === 0) {
+    return { id: "", name: raumId.slice(5) };
+  }
   return findeRaumUeberall(ve, raumId);
 }
 
@@ -3064,9 +3070,12 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                       onChange={(e) => setRaumId(e.target.value)}
                       style={selectStil(t, accent, !!raumId)}>
                       <option value="">— kein bestimmter Raum —</option>
-                      {raeume.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name || r.bezeichnung || "Raum"}
+                      {/* 14.32: Wert über raumWert — Räume mit leerer id
+                          (Import/TE) würden sonst alle den Wert "" tragen
+                          und die Auswahl wirkungslos machen. */}
+                      {raeume.map((r, ri) => (
+                        <option key={raumWert(r) || ("pos" + ri)} value={raumWert(r)}>
+                          {raumLabel(r)}
                         </option>
                       ))}
                     </select>
