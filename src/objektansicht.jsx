@@ -3145,6 +3145,10 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   };
   const auswahlFotos = () => fotos.filter(f => istGewaehlt(f.id));
   const auswahlLeeren = () => { setAuswahl([]); setAlbumMenuAuf(false); setLoeschConfirm(false); };
+  // 14.34: EIN Flag für den Aktiv-Zustand der Leisten-Aktionen (Bearbeiten,
+  // Album, Löschen). Die Leiste steht seit 14.34 im ganzen Edit-Modus, ist
+  // ohne Auswahl aber wirkungslos — deshalb überall dasselbe Kriterium.
+  const hatAuswahl = auswahl.length > 0;
   // Grid-Kachelgröße + Grid/Liste-Ansicht geräteweit aus den Settings
   // (FotoAnzeigeContext) — gilt für ALLE Galerie-Instanzen (Objekt-Tab +
   // Fotos-Nav-Screen). Umgeschaltet wird seit 14.29 im Akten-Kopf
@@ -3255,16 +3259,22 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Auswahl-Aktionsleiste — erscheint, sobald im Edit-Modus mindestens
-          ein Foto markiert ist. Desktop (14.31, Benny 23.07.): fest OBEN in
-          der Foto-Karte unter dem Kopf (nahe am Geschehen). Mobil: schwebend
-          am unteren Bildschirmrand (Daumenzone), bleibt beim Scrollen sichtbar.
+      {/* Auswahl-Aktionsleiste — erscheint, sobald der Edit-Modus (Stift im
+          Akten-Kopf) aktiv ist. 14.34 (Benny 24.07.): früher kam sie erst ab
+          der ersten Auswahl — ein Tipp auf den Stift schien folgenlos, neue
+          Nutzer hielten das für einen Fehler. Jetzt zeigt sie sich sofort und
+          macht sichtbar, WO man ist; die drei Aktionen sind bei leerer Auswahl
+          deaktiviert (sichtbar blass, nicht klickbar), das ✕ bleibt aktiv.
+          Desktop (14.31, Benny 23.07.): fest OBEN in der Foto-Karte unter dem
+          Kopf (nahe am Geschehen). Mobil: schwebend am unteren Bildschirmrand
+          (Daumenzone), bleibt beim Scrollen sichtbar — bewusst OHNE Freiraum
+          darunter (Benny 24.07.: Liste lässt sich weit genug scrollen).
           Aktionen: Bearbeiten (1 Foto → voller Dialog, mehrere → gleiche
           Angaben für alle) · Album (Schnellzuweisung, Popover §2.7) ·
           Löschen (Zwei-Tipp-Bestätigung wie AktionsButton-gefahr).
           Kandidat für Baustein-Extraktion, sobald die Dokumente-Kachel das
           Muster übernimmt (§76: zweites Vorkommen → Baustein). */}
-      {editMode && auswahl.length > 0 && (
+      {editMode && (
         <div style={istDesktop ? {
           alignSelf: "flex-start", maxWidth: "100%",
           background: t.surface, border: `1px solid ${t.border}`,
@@ -3278,41 +3288,56 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
           padding: "8px 10px", display: "flex", alignItems: "center", gap: 6,
           maxWidth: "calc(100vw - 24px)" }}>
           {/* Kompakter Zähler (Badge) — "N ausgewählt" brach auf schmalen
-              iPhones die Buttons um (Benny-Screenshot 22.07.). */}
+              iPhones die Buttons um (Benny-Screenshot 22.07.).
+              14.34: bei leerer Auswahl gedämpft (grau), damit die 0 nicht
+              wie ein aktiver Wert wirkt. */}
           <span title={auswahl.length + " ausgewählt"} style={{ minWidth: 24,
             height: 24, padding: "0 7px", borderRadius: RAD.pill,
-            background: accent, color: getContrastColor(accent),
+            background: hatAuswahl ? accent : t.border,
+            color: hatAuswahl ? getContrastColor(accent) : t.sub,
             fontSize: FS.s, fontWeight: FW.heavy, display: "flex",
             alignItems: "center", justifyContent: "center", flexShrink: 0,
             boxSizing: "border-box" }}>
             {auswahl.length}
           </span>
           {/* Bearbeiten */}
-          <button onClick={() => { setLoeschConfirm(false);
+          <button onClick={() => { if (!hatAuswahl) return;
+              setLoeschConfirm(false);
               onBearbeitenAuswahl && onBearbeitenAuswahl(auswahlFotos()); }}
-            title="Bearbeiten" aria-label="Bearbeiten"
+            disabled={!hatAuswahl}
+            title={hatAuswahl ? "Bearbeiten" : "Erst Fotos auswählen"}
+            aria-label="Bearbeiten"
             style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
-              padding: "0 10px", cursor: "pointer", background: accent + "18",
-              border: `1px solid ${accent}40`, borderRadius: RAD.sm,
-              color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
+              padding: "0 10px", cursor: hatAuswahl ? "pointer" : "default",
+              background: hatAuswahl ? accent + "18" : "transparent",
+              border: `1px solid ${hatAuswahl ? accent + "40" : t.border}`,
+              borderRadius: RAD.sm, opacity: hatAuswahl ? 1 : 0.45,
+              color: hatAuswahl ? accent : t.sub,
+              fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
               whiteSpace: "nowrap", flexShrink: 0 }}>
-            <I name="pencil" size={12} color={accent}/>
+            <I name="pencil" size={12} color={hatAuswahl ? accent : t.sub}/>
             <span>Bearbeiten</span>
           </button>
           {/* Album zuweisen (Schnellaktion) — Popover mobil nach OBEN (Leiste
               unten), am Desktop nach UNTEN (Leiste oben). §2.7 */}
           <div ref={albumMenuRef} style={{ position: "relative" }}>
-            <button onClick={() => { setLoeschConfirm(false); setAlbumMenuAuf(v => !v); }}
-              title="Album zuweisen" aria-label="Album zuweisen"
+            <button onClick={() => { if (!hatAuswahl) return;
+                setLoeschConfirm(false); setAlbumMenuAuf(v => !v); }}
+              disabled={!hatAuswahl}
+              title={hatAuswahl ? "Album zuweisen" : "Erst Fotos auswählen"}
+              aria-label="Album zuweisen"
               style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
-                padding: "0 10px", cursor: "pointer", background: accent + "18",
-                border: `1px solid ${accent}40`, borderRadius: RAD.sm,
-                color: accent, fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
+                padding: "0 10px", cursor: hatAuswahl ? "pointer" : "default",
+                background: hatAuswahl ? accent + "18" : "transparent",
+                border: `1px solid ${hatAuswahl ? accent + "40" : t.border}`,
+                borderRadius: RAD.sm, opacity: hatAuswahl ? 1 : 0.45,
+                color: hatAuswahl ? accent : t.sub,
+                fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
                 whiteSpace: "nowrap", flexShrink: 0 }}>
-              <I name="list" size={12} color={accent}/>
+              <I name="list" size={12} color={hatAuswahl ? accent : t.sub}/>
               <span>Album</span>
             </button>
-            {albumMenuAuf && (
+            {albumMenuAuf && hatAuswahl && (
               <div style={{ position: "absolute", right: 0,
                 ...(istDesktop ? { top: "calc(100% + 6px)" } : { bottom: "calc(100% + 6px)" }),
                 zIndex: 910, background: t.card, border: `1px solid ${t.border}`,
@@ -3347,21 +3372,32 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
               erster Tipp füllt den Button rot (Icon weiß), zweiter löscht.
               Antippen eines Fotos oder einer anderen Aktion setzt zurück. */}
           <button onClick={() => {
+              if (!hatAuswahl) return;
               if (!loeschConfirm) { setLoeschConfirm(true); return; }
               setLoeschConfirm(false);
               onLoeschenAuswahl && onLoeschenAuswahl(auswahlFotos());
               auswahlLeeren();
             }}
-            title={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
-            aria-label={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+            disabled={!hatAuswahl}
+            title={!hatAuswahl ? "Erst Fotos auswählen"
+              : (loeschConfirm ? "Wirklich löschen?" : "Löschen")}
+            aria-label={!hatAuswahl ? "Löschen (keine Auswahl)"
+              : (loeschConfirm ? "Wirklich löschen?" : "Löschen")}
             style={{ display: "flex", alignItems: "center", justifyContent: "center",
-              width: 32, height: 32, cursor: "pointer", padding: 0, flexShrink: 0,
-              background: loeschConfirm ? "#EF4444" : "#EF444418",
-              border: "1px solid #EF444455", borderRadius: RAD.sm }}>
-            <I name="trash" size={13} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
+              width: 32, height: 32, padding: 0, flexShrink: 0,
+              cursor: hatAuswahl ? "pointer" : "default",
+              opacity: hatAuswahl ? 1 : 0.45,
+              background: !hatAuswahl ? "transparent"
+                : (loeschConfirm ? "#EF4444" : "#EF444418"),
+              border: `1px solid ${hatAuswahl ? "#EF444455" : t.border}`,
+              borderRadius: RAD.sm }}>
+            <I name="trash" size={13}
+              color={!hatAuswahl ? t.sub : (loeschConfirm ? "#FFFFFF" : "#EF4444")}/>
           </button>
-          {/* Auswahl aufheben */}
-          <button onClick={auswahlLeeren} title="Auswahl aufheben"
+          {/* Auswahl aufheben — bleibt immer aktiv. Bei leerer Auswahl gibt es
+              nichts zu leeren; der Knopf ist dann nur ein sichtbarer Ausgang. */}
+          <button onClick={auswahlLeeren}
+            title={hatAuswahl ? "Auswahl aufheben" : "Nichts ausgewählt"}
             aria-label="Auswahl aufheben"
             style={{ display: "flex", alignItems: "center", justifyContent: "center",
               width: 32, height: 32, cursor: "pointer", background: "none", flexShrink: 0,
