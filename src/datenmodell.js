@@ -339,6 +339,13 @@ const DEFAULT_SETTINGS = {
   zeitMinutenschritt: 15,    // 5 | 15
   zeitStundenModus: "arbeit", // "24h" | "arbeit"
   zeitArbeitPuffer: 1,       // Stunden vor/nach Arbeitszeit (nur bei "arbeit")
+  // ── Foto-Upload ──
+  // Qualität beim Verkleinern vor dem Speichern (14.35):
+  //   "sparsam"  → max. 1600 px / JPEG q0.75  (~150–400 KB)
+  //   "standard" → max. 2000 px / JPEG q0.85  (~300 KB–1 MB)  ← Vorgabe
+  //   "original" → kein Eingriff, Original unverändert
+  // PNG bleibt PNG bei Transparenz oder wenn kleiner als JPEG.
+  fotoQualitaet: "standard",
   farbIntensitaet: 100,    // Farb-Intensität 0..100 %. 100 = volle Akzentfarben, 0 = neutrales Grau
   systemFarbe: ACCENT,     // Akzentfarbe für System-Elemente (Logo, Zahnrad, Profil, Stift) — vom seriös-Modus mit eingegraut
   // ── Mein Profil ──

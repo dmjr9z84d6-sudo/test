@@ -4027,6 +4027,35 @@ function SektionFristenKarte({ settings, setSettings, t, accent }) {
   );
 }
 
+// ── Sektion: Fotos ───────────────────────────────────────────────────────────
+function SektionFotos({ settings, setSettings, t, accent }) {
+  const save = (partial) => setSettings(s => ({ ...s, ...partial }));
+  const q = settings.fotoQualitaet || "standard";
+  return (
+    <EinstellKarte title="Foto-Qualität beim Upload" t={t} accent={accent}>
+      <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 12, lineHeight: 1.5 }}>
+        Fotos werden vor dem Speichern automatisch verkleinert. EXIF-Daten
+        (Aufnahmedatum, GPS) werden vorher ausgelesen und bleiben erhalten.
+        PNG-Dateien bleiben PNG, wenn sie Transparenz enthalten oder kleiner
+        als das JPEG-Ergebnis wären.
+      </div>
+      {[
+        { id: "sparsam",  label: "Sparsam",  sub: "Max. 1600 px · JPEG q 0.75 · ca. 150–400 KB" },
+        { id: "standard", label: "Standard", sub: "Max. 2000 px · JPEG q 0.85 · ca. 300 KB–1 MB (empfohlen)" },
+        { id: "original", label: "Original", sub: "Keine Verkleinerung · Originaldatei wird gespeichert · Speicher wächst schnell" },
+      ].map(opt => (
+        <EinstellZeile key={opt.id} label={opt.label} sub={opt.sub} t={t}>
+          <button onClick={() => save({ fotoQualitaet: opt.id })}
+            style={{ width: 24, height: 24, borderRadius: RAD.pill, border: "none",
+              background: q === opt.id ? accent : "transparent",
+              outline: `2px solid ${q === opt.id ? accent : t.border}`,
+              cursor: "pointer", flexShrink: 0 }}/>
+        </EinstellZeile>
+      ))}
+    </EinstellKarte>
+  );
+}
+
 const SEKTIONEN = [
   { id: "profil",        icon: "user",     farbe: "#0E7490", title: "Mein Profil",       sub: "Name, Anrede, Kontaktdaten" },
   { id: "erscheinung",   icon: "paint",    farbe: "#EAB308", title: "Erscheinungsbild",  sub: "Dunkelmodus, Header, Farben, Kontrast" },
@@ -4038,6 +4067,7 @@ const SEKTIONEN = [
   { id: "filter",        icon: "search",   farbe: "#F59E0B", title: "Filter-Optionen",   sub: "Großer Filter im Header" },
   { id: "kalender",      icon: "calendar", farbe: "#F59E0B", title: "Kalender",          sub: "Wochenstart, KW, Termin-Bezeichnungen" },
   { id: "dokumente",     icon: "document", farbe: "#0E7490", title: "Dokumente",         sub: "Dokument-Karten, Anzeige" },
+  { id: "fotos",         icon: "image",    farbe: "#EC4899", title: "Fotos",             sub: "Qualität beim Upload, Speicherbedarf" },
   { id: "schnellzugriff", icon: "building", farbe: "#0080FF", title: "Schnellzugriff",     sub: "Kacheln, Reihenfolge, Farben" },
   { id: "suche",         icon: "search",   farbe: "#EC4899", title: "Suche",             sub: "Welche Bereiche durchsucht werden" },
   { id: "tastatur",      icon: "settings", farbe: "#10B981", title: "Tastatur",          sub: "Kürzel anpassen und drucken" },
@@ -4097,6 +4127,7 @@ export {
   SektionSchnellzugriff,
   SektionDaten,
   SektionDokumente,
+  SektionFotos,
   SektionErscheinungsbild,
   SektionFilterOpt,
   SektionHV,

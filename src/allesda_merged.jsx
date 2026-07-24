@@ -401,7 +401,7 @@ import {
 // Einstellungen-Modul (S8) — ausgelagert nach einstellungen.jsx. Kein Rück-
 // import aus dieser Datei nötig (EinstellungenZentrale bleibt im App-Rumpf).
 import {
-  SEKTIONEN, SektionSchnellzugriff, SektionDaten, SektionDokumente, SektionErscheinungsbild, SektionEtv, SektionFilterOpt, SektionVorgaenge,
+  SEKTIONEN, SektionSchnellzugriff, SektionDaten, SektionDokumente, SektionFotos, SektionErscheinungsbild, SektionEtv, SektionFilterOpt, SektionVorgaenge,
   SektionHV, SektionKalenderPanel, SektionKontakte, SektionObjekte, SektionProfil,
   SektionStatusleiste, SektionSuche, SektionTastatur, TASTATUR_AKTIONEN,
   dateiZuFotoDataUrl, tastaturBelegungVon, useStorageStatus
@@ -583,6 +583,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
         {s.id === "filter"      && <SektionFilterOpt settings={settings} setSettings={setSettings} t={t} accent={s.farbe} ves={ves} kontakte={kontakte}/>}
         {s.id === "kalender"    && <SektionKalenderPanel settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "dokumente"   && <SektionDokumente settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
+        {s.id === "fotos"       && <SektionFotos settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "schnellzugriff"   && <SektionSchnellzugriff settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "suche"       && <SektionSuche settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "tastatur"    && <SektionTastatur settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
@@ -3918,7 +3919,7 @@ export default function App() {
               <FotosAnsicht
                 ve={veObj} setVes={setVes} t={t}
                 accent={(effectiveSettings.kacheln.find(k => k.id === "fotos") || {}).farbe || "#EC4899"}
-                editMode={fotosEditMode} mitPlus={false}/>
+                editMode={fotosEditMode} mitPlus={false} settings={effectiveSettings}/>
             )}/>
         )}
         {/* §95: Timeline-Sicht der Legionellen-Kachel — EXAKT die Kalender-

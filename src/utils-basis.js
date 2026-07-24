@@ -450,10 +450,10 @@ export function dateinameSicher(s) {
   return x;
 }
 
-// ── fotoExifLesen: schlanker JPEG-EXIF-Reader (lizenzfrei, kein Lib-Einsatz).
-// Liest NUR DateTimeOriginal (0x9003) + GPS Lat/Lon (GPS-IFD 0x0001–0x0004).
-// Nur JPEG (APP1/Exif); PNG/HEIC/WebP → sofort null (Aufrufer nimmt Upload-
-// Datum). Robustheit vor Vollständigkeit: JEDER Parse-Fehler → still null.
+// ── fotoExifLesen: schlanker EXIF-Reader (lizenzfrei, kein Lib-Einsatz).
+// Liest DateTimeOriginal (0x9003) + GPS Lat/Lon (GPS-IFD 0x0001–0x0004).
+// Formate (14.35): JPEG (APP1-Segment) + DNG/TIFF/ARW/CR2/NEF u. a. (plain
+// TIFF, tiffStart=0). HEIC/WebP/PNG → null. Robustheit vor Vollständigkeit.
 // Promise mit { aufgenommen: "DD.MM.YYYY"|"", gps: {lat,lon}|null } oder null.
 export function fotoExifLesen(file) {
   return new Promise(function (resolve) {
@@ -463,31 +463,41 @@ export function fotoExifLesen(file) {
       const nm = (file.name || "").toLowerCase();
       const istJpeg = typ === "image/jpeg" || typ === "image/jpg"
         || /\.jpe?g$/.test(nm);
-      if (!istJpeg) { resolve(null); return; }
-      // EXIF liegt am Dateianfang — 256 KB reichen sicher.
-      const teil = file.slice(0, 262144);
+      // DNG ist TIFF-Container (Adobe-RAW); ebenso ARW/CR2/NEF/RW2/ORF u.a.
+      const istTiff = typ === "image/tiff" || typ === "image/x-tiff"
+        || /\.(dng|tiff?|arw|cr2|cr3|nef|nrw|rw2|orf|raf|pef|srw)$/.test(nm);
+      if (!istJpeg && !istTiff) { resolve(null); return; }
+      // 512 KB reichen für JPEG-APP1-Header und TIFF-IFD (DNG schreibt
+      // Metadaten bewusst an den Anfang, Bilddaten kommen später).
+      const teil = file.slice(0, 524288);
       const reader = new FileReader();
       reader.onerror = function () { resolve(null); };
       reader.onload = function () {
         try {
           const dv = new DataView(reader.result);
-          if (dv.byteLength < 12 || dv.getUint16(0) !== 0xFFD8) { resolve(null); return; }
-          // JPEG-Segmente durchlaufen, APP1 mit "Exif\0\0" suchen.
-          let off = 2, tiffStart = -1;
-          while (off + 4 <= dv.byteLength) {
-            if (dv.getUint8(off) !== 0xFF) break;
-            const marker = dv.getUint8(off + 1);
-            if (marker === 0xDA) break;                    // SOS — Bilddaten beginnen
-            if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD9)) { off += 2; continue; }
-            const len = dv.getUint16(off + 2);
-            if (len < 2) break;
-            if (marker === 0xE1 && off + 10 <= dv.byteLength
-                && dv.getUint32(off + 4) === 0x45786966   // "Exif"
-                && dv.getUint16(off + 8) === 0x0000) {
-              tiffStart = off + 10;
-              break;
+          if (dv.byteLength < 12) { resolve(null); return; }
+          let tiffStart = -1;
+          if (istJpeg) {
+            if (dv.getUint16(0) !== 0xFFD8) { resolve(null); return; }
+            let off = 2;
+            while (off + 4 <= dv.byteLength) {
+              if (dv.getUint8(off) !== 0xFF) break;
+              const marker = dv.getUint8(off + 1);
+              if (marker === 0xDA) break;
+              if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD9)) { off += 2; continue; }
+              const len = dv.getUint16(off + 2);
+              if (len < 2) break;
+              if (marker === 0xE1 && off + 10 <= dv.byteLength
+                  && dv.getUint32(off + 4) === 0x45786966   // "Exif"
+                  && dv.getUint16(off + 8) === 0x0000) {
+                tiffStart = off + 10; break;
+              }
+              off += 2 + len;
             }
-            off += 2 + len;
+          } else {
+            // DNG/TIFF: Signatur (II little / MM big) direkt am Dateianfang.
+            const sig = dv.getUint16(0);
+            if (sig === 0x4949 || sig === 0x4D4D) tiffStart = 0;
           }
           if (tiffStart < 0 || tiffStart + 8 > dv.byteLength) { resolve(null); return; }
           // TIFF-Header: Endianness (II little / MM big) + IFD0-Offset.
@@ -569,6 +579,110 @@ export function fotoExifLesen(file) {
         } catch (err) { resolve(null); }
       };
       reader.readAsArrayBuffer(teil);
+    } catch (err) { resolve(null); }
+  });
+}
+
+// ── fotoKomprimieren: Canvas-basiertes Verkleinern vor dem Upload ────────────
+// Qualitätsstufen (settings.fotoQualitaet):
+//   "sparsam"  → lange Kante max. 1600 px, JPEG q 0.75  (~150–400 KB)
+//   "standard" → lange Kante max. 2000 px, JPEG q 0.85  (~300 KB–1 MB)
+//   "original" → kein Eingriff, original File zurück
+//
+// Zielformat: JPEG für Fotos. PNG bleibt PNG wenn:
+//   (a) Transparenz im Bild vorhanden, ODER
+//   (b) PNG-Ergebnis kleiner als JPEG-Ergebnis wäre.
+// Damit werden Screenshots/Grundrisse/Formulare nicht schlechter.
+//
+// EXIF-Pflicht: Metadaten IMMER vorher mit fotoExifLesen() lesen —
+// Canvas löscht EXIF. Der Aufrufer im FotoUploadModal macht das bereits
+// (Promise.all vor dem Speichern). Hier kein EXIF-Schreiben nötig, da
+// aufgenommen/gps als eigene Felder im Datensatz gespeichert werden.
+//
+// Returns Promise<{ blob: Blob, name: string, typ: string, groesse: number }>
+// oder null bei Fehler (Aufrufer speichert dann das Original).
+export function fotoKomprimieren(file, qualitaet) {
+  return new Promise(function (resolve) {
+    try {
+      if (!file) { resolve(null); return; }
+      if (qualitaet === "original") { resolve(null); return; }
+      const maxKante = qualitaet === "sparsam" ? 1600 : 2000;
+      const jpegQ   = qualitaet === "sparsam" ? 0.75 : 0.85;
+      const typ = (file.type || "").toLowerCase();
+      const nm  = (file.name  || "").toLowerCase();
+      const istPng = typ === "image/png" || /\.png$/.test(nm);
+      // Formate, die Canvas nicht dekodieren kann (kein Codec im Browser):
+      // DNG/TIFF/ARW usw. → null (Original bleibt, EXIF schon gelesen).
+      const kannCanvas = typ === "image/jpeg" || typ === "image/jpg"
+        || /\.jpe?g$/.test(nm) || istPng
+        || typ === "image/webp" || /\.webp$/.test(nm)
+        || typ === "image/heic" || typ === "image/heif"
+        || /\.(heic|heif)$/.test(nm);
+      if (!kannCanvas) { resolve(null); return; }
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        try {
+          const w0 = img.naturalWidth  || img.width;
+          const h0 = img.naturalHeight || img.height;
+          if (!w0 || !h0) { resolve(null); return; }
+          // Skalieren — nur verkleinern, nie hochskalieren.
+          const sk = Math.min(1, maxKante / Math.max(w0, h0));
+          const w1 = Math.round(w0 * sk);
+          const h1 = Math.round(h0 * sk);
+          const canvas = document.createElement("canvas");
+          canvas.width  = w1;
+          canvas.height = h1;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w1, h1);
+          // Transparenz prüfen: stichprobenartig Eckpixel + Mitte.
+          const hatTransparenz = istPng && (function () {
+            const punkte = [
+              [0, 0], [w1 - 1, 0], [0, h1 - 1], [w1 - 1, h1 - 1],
+              [Math.floor(w1 / 2), Math.floor(h1 / 2)]
+            ];
+            return punkte.some(function (p) {
+              const d = ctx.getImageData(p[0], p[1], 1, 1).data;
+              return d[3] < 250;   // alpha < 250 = sichtbar transparent
+            });
+          })();
+          const basisName = (file.name || "foto").replace(/\.[^.]+$/, "");
+          if (hatTransparenz) {
+            // Transparenz → immer PNG behalten.
+            canvas.toBlob(function (blob) {
+              if (!blob) { resolve(null); return; }
+              if (blob.size >= file.size) { resolve(null); return; } // Original kleiner
+              resolve({ blob: blob, name: basisName + ".png",
+                        typ: "image/png", groesse: blob.size });
+            }, "image/png");
+          } else {
+            // Kein Transparenz: JPEG versuchen; wenn PNG kleiner wäre → PNG.
+            canvas.toBlob(function (jpegBlob) {
+              if (!jpegBlob) { resolve(null); return; }
+              if (istPng) {
+                canvas.toBlob(function (pngBlob) {
+                  // Kleinste Variante gewinnt; Original schlägt beide.
+                  const klein = (pngBlob && pngBlob.size < jpegBlob.size)
+                    ? pngBlob : jpegBlob;
+                  const ext  = (pngBlob && pngBlob.size < jpegBlob.size) ? ".png" : ".jpg";
+                  const mime = (pngBlob && pngBlob.size < jpegBlob.size)
+                    ? "image/png" : "image/jpeg";
+                  if (klein.size >= file.size) { resolve(null); return; }
+                  resolve({ blob: klein, name: basisName + ext,
+                            typ: mime, groesse: klein.size });
+                }, "image/png");
+              } else {
+                if (jpegBlob.size >= file.size) { resolve(null); return; }
+                resolve({ blob: jpegBlob, name: basisName + ".jpg",
+                          typ: "image/jpeg", groesse: jpegBlob.size });
+              }
+            }, "image/jpeg", jpegQ);
+          }
+        } catch (err) { resolve(null); }
+      };
+      img.src = url;
     } catch (err) { resolve(null); }
   });
 }
