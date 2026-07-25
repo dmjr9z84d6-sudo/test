@@ -3637,6 +3637,12 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true,
     return { liste: v.liste, index: neu };
   });
 
+  // eigeneAlben für die Album-Schnellzuweisung (Galerie-Chip + Aktionsleiste).
+  // Berechnung hier, da FotosAnsicht alle Fotos kennt.
+  const eigeneAlben = Array.from(new Set(
+    fotos.map(f => f.album).filter(a => a && !FOTO_ALBEN.some(k => k.id === a))
+  )).sort();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ background: t.card, border: `1px solid ${t.border}`,
