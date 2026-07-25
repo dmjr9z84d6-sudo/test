@@ -217,7 +217,16 @@ function KopfAktionsLeiste({ t, accent, editMode, onEdit, onCancel, onConfirm,
   );
 }
 
-function KopfIconButton({ icon, title, onClick, t, accent, gefahr = false, confirm = false, gefahrVoll = false }) {
+function KopfIconButton({ icon, text = null, title, onClick, t, accent, gefahr = false, confirm = false, gefahrVoll = false }) {
+  // text-Prop (25.07., Benny): kurzer Schriftzug ("ETV") oder Emoji ("💤")
+  // statt Icon — gleiche runde Form, Breite wächst mit padding. Aussagekraft
+  // schlägt Symbol, wo das Icon nicht selbsterklärend ist.
+  const inhalt = (fg) => text
+    ? <span style={{ fontSize: FS.xs, fontWeight: FW.bold, color: fg,
+        lineHeight: 1, whiteSpace: "nowrap" }}>{text}</span>
+    : <I name={icon} size={16} color={fg}/>;
+  const breite = text ? { minWidth: 36, width: "auto", padding: "0 12px" }
+    : { width: 36 };
   // gefahrVoll (§12.9): accent-Vollton, rotes Icon, KEIN Rand (wie X-Button).
   // Zwei-Stufen: confirm=true → rot gefüllt, weißes Icon (führt aus).
   if (gefahrVoll) {
@@ -225,10 +234,10 @@ function KopfIconButton({ icon, title, onClick, t, accent, gefahr = false, confi
     const fg = confirm ? "#FFFFFF" : "#EF4444";
     return (
       <button onClick={onClick} title={title} aria-label={title}
-        style={{ display: "flex", alignItems: "center", justifyContent: "center",
-          width: 36, height: 36, flexShrink: 0, background: bg, border: "none",
-          borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }}>
-        <I name={icon} size={16} color={fg}/>
+        style={Object.assign({ display: "flex", alignItems: "center", justifyContent: "center",
+          height: 36, flexShrink: 0, background: bg, border: "none",
+          borderRadius: RAD.pill, cursor: "pointer", boxShadow: `0 1px 2px ${accent}40` }, breite)}>
+        {inhalt(fg)}
       </button>
     );
   }
@@ -236,12 +245,12 @@ function KopfIconButton({ icon, title, onClick, t, accent, gefahr = false, confi
   const fg = gefahr ? (confirm ? "#FFFFFF" : "#EF4444") : getContrastColor(accent);
   return (
     <button onClick={onClick} title={title} aria-label={title}
-      style={{ display: "flex", alignItems: "center", justifyContent: "center",
-        width: 36, height: 36, flexShrink: 0, background: bg,
+      style={Object.assign({ display: "flex", alignItems: "center", justifyContent: "center",
+        height: 36, flexShrink: 0, background: bg,
         border: gefahr && !confirm ? "1px solid #EF4444" : "none",
         borderRadius: RAD.pill, cursor: "pointer",
-        boxShadow: gefahr ? "none" : `0 1px 2px ${accent}40` }}>
-      <I name={icon} size={16} color={fg}/>
+        boxShadow: gefahr ? "none" : `0 1px 2px ${accent}40` }, breite)}>
+      {inhalt(fg)}
     </button>
   );
 }

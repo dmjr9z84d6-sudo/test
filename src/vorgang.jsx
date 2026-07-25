@@ -1031,14 +1031,19 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const verlauf = baueVerlauf(vorgang, welt, kontakte);
   const einheiten = alleEinheitenVonVe(ve); // 14.30: zentrale Quelle (Karten + ve.einheiten)
   const einheit = vorgang.einheit_id
-    ? (einheiten.filter((e) => e.id === vorgang.einheit_id)[0] || null) : null;
+    ? (einheiten.filter((e) => String(e.id) === String(vorgang.einheit_id))[0] || null) : null;
   const raum = ve && vorgang.raum_id ? findeRaum(ve, vorgang.raum_id) : null;
   const woText = (einheit
     ? (einheit.bezeichnung || einheit.nr || einheit.einheitLabel || "Einheit")
     : "Ganzes Objekt / Gemeinschaft")
     + (raum ? " · " + (raum.name || raum.bezeichnung || "Raum") : "");
-  const objektText = ve ? ((ve.nr || ve.name || "") +
-    (ve.adresse && ve.adresse.strasse ? " · " + ve.adresse.strasse : "")) : "";
+  // Akten-Titel-Ortszeile (25.07.): VE-Nr + Einheit + Raum — nur Gesetztes,
+  // ohne "Ganzes Objekt"-Platzhalter (die reine Objekt-Akte zeigt nur VE-Nr).
+  const aktenOrt = [
+    ve ? (ve.nr || ve.name || "") : "",
+    einheit ? (einheit.bezeichnung || einheit.nr || einheit.einheitLabel || "") : "",
+    raum ? (raum.name || raum.bezeichnung || "") : "",
+  ].filter((x) => x).join(" · ");
   const kannFlows = !!onWelt && vorgang.status !== "geschlossen";
   const auftraege = welt.auftraege.filter((a) => a.vorgang_id === vorgang.id);
   const angebote = welt.angebote.filter((a) => a.vorgang_id === vorgang.id);
@@ -1243,15 +1248,15 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
     </div>
   );
 
-  // Kopf-Aktionen (Benny 25.07., Umbau wie Kontakt-Karte): die Fußleiste
-  // wandert als runde KopfIconButtons (§86.6) in den Kopf-Rechts-Slot —
-  // trash=Löschen (2-Stufen rot) · pencil=Bearbeiten (NEU: Overlay) ·
-  // badge=Auf ETV-Tagesordnung · moon=Ruhen bis … · check=Schließen
-  // (2-Stufen: erst accent, Confirm-Stufe rot — App-Sprache für „wirklich?")
-  // bzw. rotateLeft=Wieder öffnen bei geschlossenen Vorgängen.
+  // Kopf-Aktionen (Benny 25.07., Feinschliff 2. Runde): trash als roter
+  // UMRISS-Button (gefahr statt gefahrVoll — rotes Icon auf Accent-Rot war
+  // unsichtbar) · "ETV" als Schriftzug (aussagekräftiger als das Badge-Icon) ·
+  // 💤 statt Mond (Emoji-Sprache wie in der Kontakt-Karte) · check=Schließen
+  // (2-Stufen: erst accent, Confirm-Stufe rot) · Stift GANZ RECHTS wie überall
+  // (§86.6). Geschlossene Vorgänge: trash + rotateLeft=Wieder öffnen.
   const kopfAktionen = onWelt ? (
     <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-      <KopfIconButton icon="trash" gefahrVoll confirm={loeschConfirm}
+      <KopfIconButton icon="trash" gefahr confirm={loeschConfirm}
         title={loeschConfirm ? "Wirklich löschen?" : "Vorgang löschen"}
         t={t} accent={accent}
         onClick={() => {
@@ -1259,18 +1264,13 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
           onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
           onZurueck();
         }}/>
-      {kannFlows ? (
-        <KopfIconButton icon="pencil" title="Vorgang bearbeiten"
-          t={t} accent={accent}
-          onClick={() => setVorgangEditOffen(true)}/>
-      ) : null}
       {kannFlows && !vorgang.wartet_auf_beschluss_id ? (
-        <KopfIconButton icon="badge" title="Auf ETV-Tagesordnung"
+        <KopfIconButton text="ETV" title="Auf ETV-Tagesordnung"
           t={t} accent={accent}
           onClick={() => onWelt((w) => weltVorgangAufTagesordnung(w, vorgang.id))}/>
       ) : null}
       {kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
-        <KopfIconButton icon="moon" title="Ruhen bis …"
+        <KopfIconButton text="💤" title="Ruhen bis …"
           t={t} accent={accent}
           onClick={() => { setTab("uebersicht"); setRuhenFormOffen(true); }}/>
       ) : null}
@@ -1288,6 +1288,11 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
             setSchliessConfirm(false);
           }}/>
       )}
+      {kannFlows ? (
+        <KopfIconButton icon="pencil" title="Vorgang bearbeiten"
+          t={t} accent={accent}
+          onClick={() => setVorgangEditOffen(true)}/>
+      ) : null}
     </div>
   ) : null;
 
@@ -1302,10 +1307,9 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
           <AmpelPunkt farbe={farbe}/>
           <div style={{ fontSize: FS.xxl, fontWeight: FW.bold, color: t.text,
             letterSpacing: 0.5 }}>{vorgang.nummer || "Vorgang"}</div>
-          <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.muted,
-            overflowWrap: "anywhere" }}>
-            {(vorgang.titel || "Vorgang") + (objektText ? " · " + objektText : "")}
-          </div>
+          {/* Titel-Zeile wandert als Akten-Titel unter die Tabs (Benny 25.07.,
+              2. Runde) — hier bleibt die Nummer, sonst stünde alles doppelt. */}
+          <div style={{ flex: 1, minWidth: 0 }}/>
           {vs ? <StatusPille t={t} farbe="#0EA5E9" text="Versicherungsfall"/> : null}
           <StatusPille t={t} farbe={accent}
             text={VORGANG_STATUS_LABEL[vorgang.status] || vorgang.status}/>
@@ -1323,6 +1327,20 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 
       <div style={{ padding: "12px 14px", display: "flex",
         flexDirection: "column", gap: 10 }}>
+        {/* Akten-Titel (Benny 25.07., 2. Runde): die Karten-Überschrift aus der
+            Liste — "Was ist Sache" groß wie die Nummer im Kopf, dahinter
+            VE-Nr + Einheit + Raum (nur was gesetzt ist; keine Nummer, die
+            steht oben). Sichtbar auf allen Tabs. */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10,
+          flexWrap: "wrap" }}>
+          <div style={{ fontSize: FS.xxl, fontWeight: FW.bold, color: t.text,
+            minWidth: 0, overflowWrap: "anywhere" }}>
+            {vorgang.titel || "Vorgang"}</div>
+          {aktenOrt ? (
+            <div style={{ fontSize: FS.s, color: t.muted, minWidth: 0,
+              overflowWrap: "anywhere" }}>{aktenOrt}</div>
+          ) : null}
+        </div>
         {tab === "uebersicht" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {standKarte}
