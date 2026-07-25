@@ -701,12 +701,20 @@ export function fotoDrehen(dateiRef, richtung) {
       if (!dateiRef) { resolve(null); return; }
       dateiLaden(dateiRef).then(function (blob) {
         if (!blob) { resolve(null); return; }
-        const typ = (blob.type || "").toLowerCase();
-        const istPng = typ === "image/png";
-        // Canvas kann JPEG/PNG/WebP dekodieren; DNG/TIFF nicht → abbrechen.
-        const kann = typ === "image/jpeg" || typ === "image/jpg"
-          || istPng || typ === "image/webp";
-        if (!kann) { resolve(null); return; }
+        var typ = (blob.type || "").toLowerCase();
+        var nm = (blob.name || "").toLowerCase();
+        // Typ notfalls aus dem Dateinamen ableiten (Altbestand ohne blob.type).
+        if (!typ) {
+          if (/\.png$/.test(nm)) typ = "image/png";
+          else if (/\.webp$/.test(nm)) typ = "image/webp";
+          else if (/\.jpe?g$/.test(nm)) typ = "image/jpeg";
+        }
+        var istPng = typ === "image/png";
+        // Nur echte Rohformate ausschließen; alles andere versucht Canvas
+        // (unbekannter Typ → als JPEG behandeln, statt abzubrechen).
+        var istRoh = /\.(dng|tiff?|arw|cr2|cr3|nef|nrw|rw2|orf|raf|pef|srw|heic|heif)$/.test(nm)
+          || typ === "image/heic" || typ === "image/heif" || typ.indexOf("tiff") >= 0;
+        if (istRoh) { resolve(null); return; }
         const url = URL.createObjectURL(blob);
         const img = new Image();
         img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };

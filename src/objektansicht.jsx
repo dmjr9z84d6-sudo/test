@@ -3234,7 +3234,8 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   auswahl = [], setAuswahl, hatAuswahl = false, auswahlLeeren,
   albumMenuAuf = false, setAlbumMenuAuf, albumMenuRef,
   loeschConfirm = false, setLoeschConfirm,
-  auswahlReset = 0, einheitFilter = "", eigeneAlben: eigeneAlbenProp }) {
+  auswahlReset = 0, einheitFilter = "", eigeneAlben: eigeneAlbenProp,
+  fotoNonce = 0 }) {
   const [albumFilter, setAlbumFilter] = useState("alle");
   const [thumbUrls, setThumbUrls] = useState({});      // fotoId -> Object-URL
   const istGewaehlt = (id) => auswahl.indexOf(id) >= 0;
@@ -3324,10 +3325,14 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   const kachelRefs = useRef({});         // fotoId -> DOM-Node
   const [sichtbareIds, setSichtbareIds] = useState({}); // fotoId -> true
   const gefiltertKey = gefiltert.map(f => f.id).slice().sort().join(",");
-  // Observer neu aufsetzen, wenn sich die gefilterte Menge ändert.
+  // 14.38 Fix: Observer STABIL in einer Ref halten und Kacheln per
+  // Callback-Ref direkt beim Mounten anmelden. Vorher lief der Observer-Effekt,
+  // bevor die Kachel-refs gesetzt waren (kachelRefs.current noch leer) → es
+  // wurde nichts beobachtet, sichtbareIds blieb leer, keine Vorschau lud.
+  const obsRef = useRef(null);
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") {
-      // Fallback (alte Umgebung/JSDOM): alle als sichtbar behandeln.
+      // Fallback (JSDOM/alt): alle sichtbar.
       const alle = {}; gefiltert.forEach(f => { alle[f.id] = true; });
       setSichtbareIds(alle);
       return;
@@ -3343,12 +3348,36 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
         });
         return next;
       });
-    }, { rootMargin: "300px 0px" }); // etwas vorausladen, damit beim Scrollen nichts blinkt
+    }, { rootMargin: "300px 0px" });
+    obsRef.current = obs;
+    // Bereits gemountete Kacheln nachträglich anmelden.
     Object.keys(kachelRefs.current).forEach(id => {
       const node = kachelRefs.current[id];
       if (node) obs.observe(node);
     });
-    return () => obs.disconnect();
+    return () => { obs.disconnect(); obsRef.current = null; };
+  }, []); // EINMAL aufsetzen — Kacheln melden sich selbst an/ab (kachelRef unten)
+
+  // Callback-Ref für jede Kachel: beim Mounten am Observer anmelden, beim
+  // Unmounten abmelden. So ist das Timing garantiert (Node existiert, wenn
+  // observe läuft) — unabhängig von der Render-Reihenfolge.
+  const kachelRef = React.useCallback((node) => {
+    if (!node) return;
+    const id = node.getAttribute("data-foto-id");
+    if (!id) return;
+    kachelRefs.current[id] = node;
+    if (obsRef.current) obsRef.current.observe(node);
+  }, []);
+
+  // Wenn sich die gefilterte Menge ändert (Album-/Einheiten-Filter), sind evtl.
+  // andere Kacheln im DOM — neu gemountete melden sich über kachelRef selbst
+  // an. Zusätzlich sichtbareIds auf die aktuelle Menge eindampfen.
+  useEffect(() => {
+    setSichtbareIds(prev => {
+      const gueltig = {};
+      gefiltert.forEach(f => { if (prev[f.id]) gueltig[f.id] = true; });
+      return gueltig;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gefiltertKey]);
 
@@ -3382,6 +3411,37 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
     return () => { aktiv = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sichtbarKey, gefiltertKey]);
+
+  // 14.37 Fix: Nach dem Drehen ändert sich der Blob unter dateiRef/thumbRef,
+  // aber die id bleibt gleich — der Lade-Effekt oben würde die alte Object-URL
+  // behalten und das gedrehte Bild NICHT zeigen. fotoNonce (von FotosAnsicht
+  // nach jedem Drehen hochgezählt) verwirft daher alle geladenen URLs; der
+  // Haupt-Effekt lädt die sichtbaren danach frisch aus IndexedDB.
+  const ersterNonce = useRef(true);
+  useEffect(() => {
+    if (ersterNonce.current) { ersterNonce.current = false; return; }
+    setThumbUrls(prev => {
+      Object.keys(prev).forEach(k => { try { URL.revokeObjectURL(prev[k]); } catch (e) {} });
+      return {};
+    });
+    // sichtbareIds unverändert lassen → Haupt-Effekt lädt neu, weil thumbUrls leer.
+    // Trick: sichtbarKey ändert sich nicht, darum hier direkt nachladen.
+    const idListe = gefiltert.filter(f => sichtbareIds[f.id]);
+    let aktiv = true;
+    idListe.forEach(f => {
+      dateiBlobUrl(f.thumbRef || f.dateiRef).then(res => {
+        if (!aktiv) { if (res && res.url) { try { URL.revokeObjectURL(res.url); } catch (e) {} } return; }
+        if (res && res.url) {
+          setThumbUrls(prev => {
+            if (prev[f.id]) { try { URL.revokeObjectURL(res.url); } catch (e) {} return prev; }
+            return { ...prev, [f.id]: res.url };
+          });
+        }
+      });
+    });
+    return () => { aktiv = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fotoNonce]);
 
   // Beim Verlassen der Galerie ALLE URLs freigeben.
   useEffect(() => {
@@ -3429,8 +3489,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
             const url = thumbUrls[foto.id];
             return (
               <div key={foto.id} data-foto-id={foto.id}
-                ref={node => { if (node) kachelRefs.current[foto.id] = node;
-                  else delete kachelRefs.current[foto.id]; }}
+                ref={kachelRef}
                 style={{ minWidth: 0 }}>
                 <div onClick={() => editMode
                     ? toggleAuswahl(foto.id)
@@ -3490,8 +3549,7 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
             const url = thumbUrls[foto.id];
             return (
               <div key={foto.id} data-foto-id={foto.id}
-                ref={node => { if (node) kachelRefs.current[foto.id] = node;
-                  else delete kachelRefs.current[foto.id]; }}
+                ref={kachelRef}
                 style={{ display: "flex", alignItems: "center", gap: 10,
                 padding: "10px 2px",
                 borderTop: idx > 0 ? `1px solid ${t.border}` : "none" }}>
@@ -3993,7 +4051,8 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true,
             onLoeschenAuswahl={fotosLoeschenViele}
             auswahlReset={auswahlReset}
             einheitFilter={einheitFilter}
-            eigeneAlben={eigeneAlben}/>
+            eigeneAlben={eigeneAlben}
+            fotoNonce={fotoNonce}/>
         )}
         {/* Aktionsleiste MOBIL: fixed unten, nur im Edit-Modus. */}
         {editMode && !istDesktop && (
