@@ -28,7 +28,7 @@ import {
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
-  vorlageFuerSchritt, fuelleVorlage, fotoStandorte, fotoFindeRaum,
+  vorlageFuerSchritt, fuelleVorlage, fotoStandorte, fotoFindeRaum, FOTO_RAUM_KATALOG,
   alleEinheitenVonVe, raeumeVonEinheit, findeRaumUeberall, raumWert, raumLabel,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
   auftragsNummerNeu, angebotsNummerNeu,
@@ -288,6 +288,57 @@ function findeRaum(ve, raumId) {
     return { id: "", name: raumId.slice(5) };
   }
   return findeRaumUeberall(ve, raumId);
+}
+
+// ── RaumSelect — Raum-Wahl mit Herkunfts-Gruppen (§76-Baustein, 25.07.) ─────
+// Benny: sichtbar machen, WORAUS die Auswahl stammt — gleiches Muster wie im
+// Foto-Dialog (objektansicht 22.07.): <optgroup> „Erfasste Räume" = echte
+// Räume aus der Objekt-Struktur · „Standard-Auswahl" = FOTO_RAUM_KATALOG als
+// Rückfall, wenn an der gewählten Einheit KEIN Raum erfasst ist (Wert
+// "name:<Name>" — findeRaum löst das beim Anzeigen auf, kein Eingriff in die
+// Struktur). Ersetzt die drei uneinheitlichen Raw-Selects (Vorgang-Neu,
+// Auftrag-erfassen, AuftragEditForm) — Werte einheitlich über raumWert
+// (14.32: leere Import-/TE-ids trugen sonst alle den Wert "").
+// Ohne jegliche Räume rendert der Baustein nichts (kein leeres Pflichtfeld).
+function RaumSelect({ ve, einheitId, value, onChange, t, accent, label = "Raum (optional)" }) {
+  const erfasste = raeumeFuerWo(ve, einheitId || "");
+  const katalog = (einheitId && erfasste.length === 0)
+    ? FOTO_RAUM_KATALOG.map((n) => ({ wert: "name:" + n, label: n }))
+    : [];
+  // Gewählter "name:"-Wert, der (mehr) nicht in der Liste steht — anzeigbar
+  // halten statt still zu verwerfen (Muster aus dem Foto-Dialog).
+  const wert = value || "";
+  const bekannt = erfasste.some((r) => raumWert(r) === wert)
+    || katalog.some((k) => k.wert === wert);
+  const extra = (!bekannt && typeof wert === "string" && wert.indexOf("name:") === 0)
+    ? [{ wert, label: wert.slice(5) }] : [];
+  if (erfasste.length === 0 && katalog.length === 0 && extra.length === 0) return null;
+  return (
+    <div>
+      <label style={feldLabelStil(t)}>{label}</label>
+      <select value={wert}
+        onChange={(e) => onChange(e.target.value)}
+        style={selectStil(t, accent, !!wert)}>
+        <option value="">— kein bestimmter Raum —</option>
+        {erfasste.length > 0 ? (
+          <optgroup label="Erfasste Räume">
+            {erfasste.map((r, ri) => (
+              <option key={raumWert(r) || ("pos" + ri)} value={raumWert(r)}>
+                {raumLabel(r)}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {katalog.length > 0 || extra.length > 0 ? (
+          <optgroup label="Standard-Auswahl">
+            {katalog.concat(extra).map((k) => (
+              <option key={k.wert} value={k.wert}>{k.label}</option>
+            ))}
+          </optgroup>
+        ) : null}
+      </select>
+    </div>
+  );
 }
 
 // KontaktPicker-Adapter (§76): der kanonische Baustein erwartet ein
@@ -948,6 +999,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const [notizText, setNotizText] = useState("");
   const [schliessConfirm, setSchliessConfirm] = useState(false);
   const [loeschConfirm, setLoeschConfirm] = useState(false);
+  const [vorgangEditOffen, setVorgangEditOffen] = useState(false); // Stift (25.07.)
   const [ruhenFormOffen, setRuhenFormOffen] = useState(false);
   const [ruhenBis, setRuhenBis] = useState("");
   // Versicherungsfall (A1): Formular-State — Eigenschaft, keine Kategorie.
@@ -1191,37 +1243,45 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
     </div>
   );
 
-  const fussAktionen = onWelt ? (
-    <div style={{ display: "flex", justifyContent: "flex-end",
-      gap: 6, flexWrap: "wrap" }}>
-      {/* §76: AktionsButton (variante breit) ist der kanonische Confirm-Baustein */}
-      <div style={{ marginRight: "auto" }}>
-        <AktionsButton rolle="loeschen" variante="breit" t={t} accent={accent}
-          confirm={loeschConfirm}
-          text={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
-          onClick={() => {
-            if (!loeschConfirm) { setLoeschConfirm(true); return; }
-            onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
-            onZurueck();
-          }}/>
-      </div>
-      {kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
-        <button style={flowKnopf(t, accent, false)}
-          onClick={() => setRuhenFormOffen(true)}>Ruhen bis …</button>
+  // Kopf-Aktionen (Benny 25.07., Umbau wie Kontakt-Karte): die Fußleiste
+  // wandert als runde KopfIconButtons (§86.6) in den Kopf-Rechts-Slot —
+  // trash=Löschen (2-Stufen rot) · pencil=Bearbeiten (NEU: Overlay) ·
+  // badge=Auf ETV-Tagesordnung · moon=Ruhen bis … · check=Schließen
+  // (2-Stufen: erst accent, Confirm-Stufe rot — App-Sprache für „wirklich?")
+  // bzw. rotateLeft=Wieder öffnen bei geschlossenen Vorgängen.
+  const kopfAktionen = onWelt ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      <KopfIconButton icon="trash" gefahrVoll confirm={loeschConfirm}
+        title={loeschConfirm ? "Wirklich löschen?" : "Vorgang löschen"}
+        t={t} accent={accent}
+        onClick={() => {
+          if (!loeschConfirm) { setLoeschConfirm(true); return; }
+          onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
+          onZurueck();
+        }}/>
+      {kannFlows ? (
+        <KopfIconButton icon="pencil" title="Vorgang bearbeiten"
+          t={t} accent={accent}
+          onClick={() => setVorgangEditOffen(true)}/>
       ) : null}
       {kannFlows && !vorgang.wartet_auf_beschluss_id ? (
-        <button style={flowKnopf(t, accent, false)}
-          onClick={() => onWelt((w) => weltVorgangAufTagesordnung(w, vorgang.id))}>
-          Auf ETV-Tagesordnung</button>
+        <KopfIconButton icon="badge" title="Auf ETV-Tagesordnung"
+          t={t} accent={accent}
+          onClick={() => onWelt((w) => weltVorgangAufTagesordnung(w, vorgang.id))}/>
+      ) : null}
+      {kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
+        <KopfIconButton icon="moon" title="Ruhen bis …"
+          t={t} accent={accent}
+          onClick={() => { setTab("uebersicht"); setRuhenFormOffen(true); }}/>
       ) : null}
       {vorgang.status === "geschlossen" ? (
-        <button style={flowKnopf(t, accent, false)}
-          onClick={() => onWelt((w) => weltVorgangOeffnen(w, vorgang.id))}>
-          Wieder öffnen</button>
+        <KopfIconButton icon="rotateLeft" title="Wieder öffnen"
+          t={t} accent={accent}
+          onClick={() => onWelt((w) => weltVorgangOeffnen(w, vorgang.id))}/>
       ) : (
-        <AktionsButton rolle="loesen" variante="breit" t={t} accent={accent}
-          confirm={schliessConfirm}
-          text={schliessConfirm ? "Wirklich schließen?" : "Vorgang schließen"}
+        <KopfIconButton icon="check" gefahr={schliessConfirm} confirm={schliessConfirm}
+          title={schliessConfirm ? "Wirklich schließen?" : "Vorgang schließen"}
+          t={t} accent={accent}
           onClick={() => {
             if (!schliessConfirm) { setSchliessConfirm(true); return; }
             onWelt((w) => weltVorgangSchliessen(w, vorgang.id));
@@ -1249,11 +1309,17 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
           {vs ? <StatusPille t={t} farbe="#0EA5E9" text="Versicherungsfall"/> : null}
           <StatusPille t={t} farbe={accent}
             text={VORGANG_STATUS_LABEL[vorgang.status] || vorgang.status}/>
+          {kopfAktionen}
         </div>
         <div style={{ marginTop: 10 }}>
           <TabLeiste tabs={tabs} aktiv={tab} onWaehle={setTab} t={t} accent={accent}/>
         </div>
       </div>
+      {vorgangEditOffen && onWelt ? (
+        <VorgangBearbeitenOverlay vorgang={vorgang} welt={welt} ve={ve}
+          kontakte={kontakte} t={t} accent={accent} onWelt={onWelt}
+          onClose={() => setVorgangEditOffen(false)}/>
+      ) : null}
 
       <div style={{ padding: "12px 14px", display: "flex",
         flexDirection: "column", gap: 10 }}>
@@ -1364,7 +1430,6 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                 </div>
               </div>
             ) : null}
-            {fussAktionen}
           </div>
         ) : null}
 
@@ -1538,7 +1603,6 @@ function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
     }));
   };
   const einheitenL = alleEinheitenVonVe(ve); // 14.30: zentrale Quelle (Karten + ve.einheiten)
-  const eRaeume = raeumeFuerWo(ve, auftrag.einheit_id || "");
   return (
     <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
       <Inp t={t} accent={accent} label="Was ist Sache?" required
@@ -1565,21 +1629,10 @@ function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
           </select>
         </div>
       ) : null}
-      {eRaeume.length > 0 ? (
-        <div>
-          <label style={feldLabelStil(t)}>Raum (optional)</label>
-          <select value={auftrag.raum_id || ""}
-            onChange={(e) => setzeFeld({ raum_id: e.target.value || null })}
-            style={selectStil(t, accent, !!auftrag.raum_id)}>
-            <option value="">— kein bestimmter Raum —</option>
-            {eRaeume.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name || r.bezeichnung || "Raum"}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
+      <RaumSelect ve={ve} einheitId={auftrag.einheit_id || ""}
+        value={auftrag.raum_id || ""}
+        onChange={(v) => setzeFeld({ raum_id: v || null })}
+        t={t} accent={accent}/>
       <Inp t={t} accent={accent} label="Wo genau? (optional)"
         value={auftrag.ort || ""} onChange={(v) => setzeFeld({ ort: v })}
         placeholder="z. B. Treppenhaus 2. OG"/>
@@ -2976,6 +3029,93 @@ function KategorieWahl({ value, onChange, t, accent }) {
   );
 }
 
+// ── VorgangBearbeitenOverlay — der Stift am Vorgang-Kopf (Benny 25.07.) ─────
+// Bearbeitet die Stammfelder der Akte: Sache (Titel) · Melder · Wo (Einheit) ·
+// Raum · Kategorie — gleiche Feld-Reihenfolge und gleiche Bausteine wie das
+// Neu-Overlay (KontaktPickerMitAllen, RaumSelect, KategorieWahl §76).
+// Der Melder lebt als Beteiligung (rolle "melder") — beim Speichern wird sie
+// angeglichen: ersetzt, neu angelegt oder (bei Leerung) entfernt; zusätzlich
+// zieht ersteller_kontakt_id am Vorgang mit (wie bei der Anlage).
+function VorgangBearbeitenOverlay({ vorgang, welt, ve, kontakte, t, accent, onWelt, onClose }) {
+  const kontakteObjektOv = useObjektKontakte(kontakte, ve);
+  const melderBet = welt.beteiligungen.filter((b) =>
+    b.vorgang_id === vorgang.id && b.rolle === "melder")[0] || null;
+  const [titel, setTitel] = useState(vorgang.titel || "");
+  const [kategorie, setKategorie] = useState(vorgang.kategorie || "instandhaltung");
+  const [einheitId, setEinheitId] = useState(vorgang.einheit_id != null ? String(vorgang.einheit_id) : "");
+  const [raumId, setRaumId] = useState(vorgang.raum_id != null ? String(vorgang.raum_id) : "");
+  const [melderId, setMelderId] = useState(
+    (melderBet && melderBet.kontakt_id) || vorgang.ersteller_kontakt_id || "");
+  const [fehler, setFehler] = useState(false);
+  const einheiten = alleEinheitenVonVe(ve);
+  const speichere = () => {
+    if (!titel.trim()) { setFehler(true); return; }
+    onWelt((w) => {
+      const vorgaenge = w.vorgaenge.map((v) => v.id === vorgang.id
+        ? Object.assign({}, v, { titel: titel.trim(), kategorie: kategorie,
+            einheit_id: einheitId || null, raum_id: raumId || null,
+            ersteller_kontakt_id: melderId || null })
+        : v);
+      let beteiligungen = w.beteiligungen;
+      const vorhanden = beteiligungen.filter((b) =>
+        b.vorgang_id === vorgang.id && b.rolle === "melder")[0] || null;
+      if (melderId) {
+        beteiligungen = vorhanden
+          ? beteiligungen.map((b) => b.id === vorhanden.id
+              ? Object.assign({}, b, { kontakt_id: melderId }) : b)
+          : beteiligungen.concat([neueBeteiligung({ vorgang_id: vorgang.id,
+              kontakt_id: melderId, rolle: "melder" })]);
+      } else if (vorhanden) {
+        beteiligungen = beteiligungen.filter((b) => b.id !== vorhanden.id);
+      }
+      return Object.assign({}, w, { vorgaenge: vorgaenge, beteiligungen: beteiligungen });
+    });
+    onClose();
+  };
+  return (
+    <div style={overlayBackdrop()} onClick={onClose}>
+      <div style={overlayPanel(t)} onClick={(e) => e.stopPropagation()}>
+        <OverlayKopf t={t} icon="pencil"
+          titel={"Bearbeiten · " + (vorgang.nummer || "Vorgang")} onClose={onClose}/>
+        <div style={overlayBody()}>
+          <Inp t={t} accent={accent} label="Was ist Sache?" required
+            value={titel} onChange={setTitel}
+            invalid={fehler && !titel.trim()}/>
+          <KontaktPickerMitAllen value={melderId || null}
+            onChange={(id) => setMelderId(id || "")}
+            label="Wer meldet? (leer = ich / die Verwaltung)" t={t} accent={accent}
+            kontakteObjekt={kontakteObjektOv ? pickerListe(kontakteObjektOv) : null}
+            kontakteAlle={pickerListe(kontakte)}/>
+          {einheiten.length > 0 ? (
+            <div>
+              <label style={feldLabelStil(t)}>Wo?</label>
+              <select value={einheitId}
+                onChange={(e) => { setEinheitId(e.target.value); setRaumId(""); }}
+                style={selectStil(t, accent, true)}>
+                <option value="">Ganzes Objekt / Gemeinschaft</option>
+                {einheiten.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.bezeichnung || e.nr || e.einheitLabel || String(e.id)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <RaumSelect ve={ve} einheitId={einheitId}
+            value={raumId} onChange={setRaumId} t={t} accent={accent}/>
+          <KategorieWahl value={kategorie}
+            onChange={setKategorie} t={t} accent={accent}/>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end",
+            marginTop: 4 }}>
+            <button onClick={onClose} style={knopfStil(accent, false, t)}>Abbrechen</button>
+            <button onClick={speichere} style={knopfStil(accent, true, t)}>Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   onErfasseAuftrag, Inp, kontakteAlle = [], objektWahl = null }) {
   const kontakteObjektOv = useObjektKontakte(kontakteAlle, ve);
@@ -3023,9 +3163,6 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   };
 
   const einheiten = alleEinheitenVonVe(ve); // 14.30: zentrale Quelle (Karten + ve.einheiten)
-  // Räume für den Auftrag-Zweig (Benny 18.07.): dieselbe Wo?/Raum-Wahl wie
-  // beim Vorgang — ein Punkt sitzt genauso an Einheit/Raum.
-  const auftragRaeume = raeumeFuerWo(ve, auftragEinheitId);
 
   const legeVorgangAn = () => {
     if (!titel.trim()) { setFehler(true); return; }
@@ -3125,28 +3262,8 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
               {/* RAUM — die Verfeinerung nach Objekt/Einheit (Benny 11.07.):
                   Räume der gewählten Einheit bzw. der Standorte (Gemeinschaft).
                   Nur sichtbar, wenn es welche gibt — kein leeres Pflichtfeld. */}
-              {(() => {
-                const raeume = raeumeFuerWo(ve, einheitId);
-                if (raeume.length === 0) return null;
-                return (
-                  <div>
-                    <label style={feldLabelStil(t)}>Raum (optional)</label>
-                    <select value={raumId}
-                      onChange={(e) => setRaumId(e.target.value)}
-                      style={selectStil(t, accent, !!raumId)}>
-                      <option value="">— kein bestimmter Raum —</option>
-                      {/* 14.32: Wert über raumWert — Räume mit leerer id
-                          (Import/TE) würden sonst alle den Wert "" tragen
-                          und die Auswahl wirkungslos machen. */}
-                      {raeume.map((r, ri) => (
-                        <option key={raumWert(r) || ("pos" + ri)} value={raumWert(r)}>
-                          {raumLabel(r)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              })()}
+              <RaumSelect ve={ve} einheitId={einheitId}
+                value={raumId} onChange={setRaumId} t={t} accent={accent}/>
               {/* WAS — Sache + Kategorie (Kategorie = sanfter Vorschlag §6.2). */}
               <Inp t={t} accent={accent} label="Was ist Sache?" required
                 value={titel} onChange={setTitel}
@@ -3215,21 +3332,9 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                   </select>
                 </div>
               ) : null}
-              {auftragRaeume.length > 0 ? (
-                <div>
-                  <label style={feldLabelStil(t)}>Raum (optional)</label>
-                  <select value={auftragRaumId}
-                    onChange={(e) => setAuftragRaumId(e.target.value)}
-                    style={selectStil(t, accent, !!auftragRaumId)}>
-                    <option value="">— kein bestimmter Raum —</option>
-                    {auftragRaeume.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name || r.bezeichnung || "Raum"}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
+              <RaumSelect ve={ve} einheitId={auftragEinheitId}
+                value={auftragRaumId} onChange={setAuftragRaumId}
+                t={t} accent={accent}/>
               <Inp t={t} accent={accent} label="Wo genau? (optional)"
                 value={auftragOrt} onChange={setAuftragOrt}
                 placeholder="z. B. Treppenhaus 2. OG, vor Wohnung 5"/>
