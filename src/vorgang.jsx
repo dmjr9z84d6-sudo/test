@@ -94,8 +94,12 @@ function vorgangPhase(vorgang, welt) {
   if (status("in_arbeit") || status("nachbesserung") || status("fertiggemeldet")) {
     return "ausfuehrung";
   }
-  if (status("beauftragt")) return "beauftragung";
-  if (status("erfasst")) return "beauftragung";
+  if (status("beauftragt") || status("erfasst")) {
+    // Kategorien ohne Beauftragungs-Station (Allgemeines, §5.2 Ausbau 25.07.)
+    // zeigen laufende Aufträge als Ausführung — sonst zeigte die PhasenLeiste
+    // keinen Ist-Punkt (indexOf -1). Alle anderen Ketten kennen die Station.
+    return hat("beauftragung") ? "beauftragung" : "ausfuehrung";
+  }
   if (angebote.length > 0 && hat("angebot")) return "angebot";
   return "meldung";
 }
@@ -1899,14 +1903,8 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                 onChange={(e) => setBuendelTitel(e.target.value)}
                 placeholder={"z. B. Hausmeister-Rundgang"}
                 style={selectStil(t, accent, !!buendelTitel)}/>
-              <label style={feldLabelStil(t)}>Kategorie</label>
-              <select value={buendelKategorie}
-                onChange={(e) => setBuendelKategorie(e.target.value)}
-                style={selectStil(t, accent, true)}>
-                {VORGANG_KATEGORIEN.map((k) => (
-                  <option key={k.id} value={k.id}>{k.label}</option>
-                ))}
-              </select>
+              <KategorieWahl value={buendelKategorie}
+                onChange={setBuendelKategorie} t={t} accent={accent}/>
               {/* Direkt beauftragen (Benny 18.07./19.07.): Firma über den
                   Kontakte-Picker wählen (kein Dropdown) → die gebündelten
                   Punkte gehen SOFORT beauftragt raus. Ohne Firma: nur als
@@ -2911,6 +2909,73 @@ const selectStil = (t, accent, gesetzt) => ({
 const feldLabelStil = (t) => ({ fontSize: FS.s, fontWeight: FW.med,
   color: t.sub, display: "block", marginBottom: 4 });
 
+// ── KategorieWahl — Kategorie-Feld mit Beschreibung (§76-Baustein, 25.07.) ──
+// Benny: Label + I-Icon (klappt eine Übersicht ALLER Kategorien mit ihrer
+// Beschreibung auf — Zeile tippen wählt direkt und schließt), darunter das
+// Select und die Live-Beschreibung der gewählten Kategorie. Texte kommen aus
+// VORGANG_KATEGORIEN.beschreibung — EINE Quelle (datenmodell.js).
+// Inline-Aufklappen statt Popover/Modal-im-Modal: Mobile-tauglich, kein
+// useOutsideClick nötig (§2.7 gilt nur für Schwebendes). Der Info-Knopf ist
+// bewusst KEIN Kind des <label> (Label-Klick würde ihn sonst mit-auslösen).
+function KategorieWahl({ value, onChange, t, accent }) {
+  const [uebersicht, setUebersicht] = useState(false);
+  const kat = vorgangKategorie(value);
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6,
+        marginBottom: 4 }}>
+        <span style={{ fontSize: FS.s, fontWeight: FW.med, color: t.sub }}>
+          Kategorie
+        </span>
+        <button type="button" onClick={() => setUebersicht(!uebersicht)}
+          title="Was gehört in welche Kategorie?"
+          style={{ width: 22, height: 22, borderRadius: RAD.pill,
+            border: "1px solid " + (uebersicht ? accent : t.border),
+            background: uebersicht ? accent + "18" : "transparent",
+            color: uebersicht ? accent : t.sub, cursor: "pointer",
+            display: "inline-flex", alignItems: "center",
+            justifyContent: "center", padding: 0, flexShrink: 0 }}>
+          <I name="info" size={14}/>
+        </button>
+      </div>
+      {uebersicht ? (
+        <div style={{ border: "1px solid " + t.border, borderRadius: RAD.md,
+          background: t.card, marginBottom: 10, overflow: "hidden" }}>
+          {VORGANG_KATEGORIEN.map((k, i) => (
+            <div key={k.id}
+              onClick={() => { onChange(k.id); setUebersicht(false); }}
+              style={{ padding: "8px 10px", cursor: "pointer",
+                borderTop: i > 0 ? "1px solid " + t.border : "none",
+                background: k.id === kat.id ? accent + "10" : "transparent" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7,
+                fontSize: FS.s, fontWeight: FW.bold,
+                color: k.id === kat.id ? accent : t.text }}>
+                <I name={k.icon} size={14}/>
+                <span>{k.label}</span>
+              </div>
+              <div style={{ fontSize: FS.xs, color: t.muted, marginTop: 2,
+                lineHeight: 1.45 }}>
+                {k.beschreibung}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <select value={kat.id} onChange={(e) => onChange(e.target.value)}
+        style={Object.assign({}, selectStil(t, accent, true),
+          { marginBottom: 4 })}>
+        {VORGANG_KATEGORIEN.map((k) => (
+          <option key={k.id} value={k.id}>{k.label}</option>
+        ))}
+      </select>
+      <div style={{ fontSize: FS.xs, color: t.muted, lineHeight: 1.45,
+        margin: "0 2px 10px 2px" }}>
+        {kat.beschreibung}
+      </div>
+    </div>
+  );
+}
+
 function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   onErfasseAuftrag, Inp, kontakteAlle = [], objektWahl = null }) {
   const kontakteObjektOv = useObjektKontakte(kontakteAlle, ve);
@@ -3087,14 +3152,8 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                 value={titel} onChange={setTitel}
                 invalid={fehler && !titel.trim()}
                 placeholder="z. B. Wasserschaden Tiefgarage"/>
-              <label style={feldLabelStil(t)}>Kategorie</label>
-              <select value={kategorie}
-                onChange={(e) => setKategorie(e.target.value)}
-                style={selectStil(t, accent, true)}>
-                {VORGANG_KATEGORIEN.map((k) => (
-                  <option key={k.id} value={k.id}>{k.label}</option>
-                ))}
-              </select>
+              <KategorieWahl value={kategorie}
+                onChange={setKategorie} t={t} accent={accent}/>
               <label style={feldLabelStil(t)}>Was wurde gemeldet? (optional)</label>
               <textarea value={notiz} onChange={(e) => setNotiz(e.target.value)}
                 rows={3} placeholder="Erste Notiz in die Akte"

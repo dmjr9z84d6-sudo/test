@@ -2765,15 +2765,33 @@ const VORGANG_PHASEN_KETTE = [
 // Hausmeister). Versicherungsfall ist bewusst KEINE Kategorie — er ist eine
 // EIGENSCHAFT über der Arbeitsart (vorgang.versicherung), sonst vermischt
 // man Arbeitsart mit Kostenträger.
+// Kategorien-Ausbau (Benny 25.07.): 7 Kategorien, jede mit `beschreibung`
+// (EINE Quelle §76 — UI liest die Texte von hier: Live-Zeile unterm Select
+// + I-Icon-Übersicht in KategorieWahl, vorgang.jsx). Schadensfälle NEU als
+// Kategorie — der Versicherungs-Block bleibt trotzdem EIGENSCHAFT
+// (vorgang.versicherung) und ist bei jeder Kategorie zuschaltbar.
 const VORGANG_KATEGORIEN = [
   { id: "bewirtschaftung", label: "Bewirtschaftung", kurz: "Bewirtschaftung", icon: "sparkles",
-    phasen: ["meldung", "beauftragung", "ausfuehrung", "abschluss"] },
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "abschluss"],
+    beschreibung: "Laufender Betrieb: Reinigung, Gartenpflege, Winterdienst, Hausmeister-Aufträge (im LV enthalten oder kleine Sonderleistungen) sowie Versorger-Themen." },
   { id: "instandhaltung", label: "Instandhaltung", kurz: "Instandhaltung", icon: "wrench",
-    phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss"] },
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss"],
+    beschreibung: "Erhalten, bevor etwas kaputt geht: Wartungen, Pflege, regelmäßige Prüfungen und technische Prüfpflichten (Aufzug, Brandschutz, Elektro, Legionellen)." },
   { id: "instandsetzung", label: "Instandsetzung", kurz: "Instandsetzung", icon: "swap",
-    phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss", "gewaehrleistung"] },
-  { id: "sanierung", label: "Sanierung / Modernisierung", kurz: "Sanierung", icon: "building",
-    phasen: VORGANG_PHASEN_KETTE.slice() },
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss", "gewaehrleistung"],
+    beschreibung: "Reparatur nach Defekt: die Funktion wird wiederhergestellt — mit Abnahme, Rechnung und Gewährleistungsverfolgung." },
+  { id: "sanierung", label: "Sanierung", kurz: "Sanierung", icon: "building",
+    phasen: VORGANG_PHASEN_KETTE.slice(),
+    beschreibung: "Substanz verbessern und aufwerten: energetische Sanierung, Modernisierung, Komfortsteigerung, technische Aufwertung." },
+  { id: "schadensfall", label: "Schadensfälle", kurz: "Schaden", icon: "bell",
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "abnahme", "rechnung", "abschluss"],
+    beschreibung: "Wasser, Sturm, Vandalismus & Co. — meist mit Versicherungsabwicklung: Schadenmeldung, Deckungsprüfung, Regulierung. Der Versicherungs-Block lässt sich am Vorgang zuschalten." },
+  { id: "allgemeines", label: "Allgemeines", kurz: "Allgemein", icon: "users",
+    phasen: ["meldung", "ausfuehrung", "abschluss"],
+    beschreibung: "Anfragen und Alltagsthemen: Eigentümer- und Mieteranfragen, Beschwerden, Hausordnung, Mieterwechsel, Schlüssel, Klingel, Zählerstände und -tausch, Park- und Stellplätze." },
+  { id: "rechtliches", label: "Rechtliches", kurz: "Recht", icon: "scale",
+    phasen: ["meldung", "beauftragung", "ausfuehrung", "abschluss"],
+    beschreibung: "Rechtsthemen: Beschlussanfechtungen, Sonder-/Gemeinschaftseigentum, Sondernutzungsrechte, Haftungsfragen, Verkehrssicherungspflichten, Rechtsstreitigkeiten." },
 ];
 // Alt-Kategorien-Migration (Bestand vor v13.70): alte IDs bleiben lesbar.
 const ALT_KATEGORIE = { wartung: "instandhaltung", pflege: "bewirtschaftung" };

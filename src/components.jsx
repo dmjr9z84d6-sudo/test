@@ -1539,7 +1539,18 @@ function VerwendungenBadges({ ve, size = 20 }) {
 // Objekt-Rolle ohne Einheit → nur Objektname); mehrere Objekte mit „ — ".
 // Einheiten-Zugriff über findeEinheitUeberall (§76.7 — nie selbst scannen).
 function kontaktObjektEinheitText(k, ves) {
-  if (!k || !Array.isArray(ves) || ves.length === 0) return "";
+  const bezuege = kontaktObjektEinheitBezuege(k, ves);
+  return bezuege.map(b =>
+    [b.ve.name || "Objekt"].concat(b.nrs).join(" · ")).join(" — ");
+}
+
+// Gemeinsamer Kern (§76): sammelt aktive Bezüge je Objekt als
+// [{ ve, nrs: [Einheiten-Nrn, sortiert] }]. Von kontaktObjektEinheitText
+// (lange Zweitzeile) UND kontaktVeEinheitKurz (rechte Kurz-Kennung)
+// verwendet — die Sammel-Regeln (ehemalig/werdend draußen, §76.7-Zugriff)
+// leben nur einmal.
+function kontaktObjektEinheitBezuege(k, ves) {
+  if (!k || !Array.isArray(ves) || ves.length === 0) return [];
   const alle = [...flacheZuweisungen(k), ...belegungsRollenFuerKontakt(k, ves)];
   const proObjekt = new Map(); // objektId(String) → Set von einheitIds(String)
   alle.forEach(z => {
@@ -1551,7 +1562,7 @@ function kontaktObjektEinheitText(k, ves) {
       proObjekt.get(oid).add(String(z.einheitId));
     }
   });
-  const teile = [];
+  const out = [];
   proObjekt.forEach((einheitIds, oid) => {
     const ve = ves.find(v => v && String(v.id) === oid);
     if (!ve) return;
@@ -1561,9 +1572,30 @@ function kontaktObjektEinheitText(k, ves) {
       if (e && e.nr != null && String(e.nr) !== "") labels.push(String(e.nr));
     });
     labels.sort((a, b) => a.localeCompare(b, "de", { numeric: true }));
-    teile.push([ve.name || "Objekt"].concat(labels).join(" · "));
+    out.push({ ve, nrs: labels });
   });
-  return teile.join(" — ");
+  return out;
+}
+
+// ── kontaktVeEinheitKurz (Benny 25.07., Picker-Änderung) ────────────────────
+// Rechte Kurz-Kennung in der Picker-Zeile: „VE-001/ET 1" — VE-Nummer (ve.nr)
+// + erste Einheitsnummer. Mehrere Bezüge (weitere Einheiten oder Objekte)
+// werden als „ +n" angehängt; die volle Aufzählung steht in der Zweitzeile.
+// Ohne ve.nr fällt die Kennung auf die reine Einheitsnummer zurück; ganz
+// ohne Bezug bleibt sie leer (kein Platzhalter).
+function kontaktVeEinheitKurz(k, ves) {
+  const bezuege = kontaktObjektEinheitBezuege(k, ves);
+  if (bezuege.length === 0) return "";
+  const b = bezuege[0];
+  const veNr = (b.ve.nr != null && String(b.ve.nr) !== "") ? String(b.ve.nr) : "";
+  const erste = b.nrs.length > 0 ? b.nrs[0] : "";
+  let kurz = veNr && erste ? veNr + "/" + erste : (veNr || erste);
+  if (!kurz) return "";
+  // weitere Einheiten im selben Objekt + alle Einheiten/Objekt-Bezüge dahinter
+  let mehr = Math.max(0, b.nrs.length - 1);
+  for (let i = 1; i < bezuege.length; i++) mehr += Math.max(1, bezuege[i].nrs.length);
+  if (mehr > 0) kurz += " +" + mehr;
+  return kurz;
 }
 
 // ── KontaktPicker (aus bausteine.jsx, ?. entfernt) ──────────────────────────
@@ -1610,7 +1642,8 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
     const m = {};
     if (!offen) return m;
     (kontakte || []).forEach(k => {
-      if (k) m[k.id] = kontaktObjektEinheitText(k, alleVes);
+      if (k) m[k.id] = { text: kontaktObjektEinheitText(k, alleVes),
+        kurz: kontaktVeEinheitKurz(k, alleVes) };
     });
     return m;
   }, [offen, kontakte, alleVes]);
@@ -1911,8 +1944,13 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{formatNameMitCtx(k, anzeige) || k.name}</div>
                       {/* §Picker-Bezug: Objekt · Einheit(en); Fallback k.sub. Darf umbrechen. */}
-                      {(bezugMap[k.id] || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{bezugMap[k.id] || k.sub}</div>}
+                      {((bezugMap[k.id] && bezugMap[k.id].text) || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{(bezugMap[k.id] && bezugMap[k.id].text) || k.sub}</div>}
                     </div>
+                    {/* Kurz-Kennung rechts (Benny 25.07.): „VE-001/ET 1", weitere Bezüge als +n */}
+                    {bezugMap[k.id] && bezugMap[k.id].kurz ? (
+                      <span style={{ flexShrink: 0, fontSize: FS.xxs, color: t.muted,
+                        fontWeight: FW.medium, whiteSpace: "nowrap" }}>{bezugMap[k.id].kurz}</span>
+                    ) : null}
                   </button>
                 ))}
               </>
@@ -1935,8 +1973,13 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{k.name}</div>
                       {/* §Picker-Bezug: Objekt · Einheit(en); Fallback k.sub. Darf umbrechen. */}
-                      {(bezugMap[k.id] || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{bezugMap[k.id] || k.sub}</div>}
+                      {((bezugMap[k.id] && bezugMap[k.id].text) || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{(bezugMap[k.id] && bezugMap[k.id].text) || k.sub}</div>}
                     </div>
+                    {/* Kurz-Kennung rechts (Benny 25.07.): „VE-001/ET 1", weitere Bezüge als +n */}
+                    {bezugMap[k.id] && bezugMap[k.id].kurz ? (
+                      <span style={{ flexShrink: 0, fontSize: FS.xxs, color: t.muted,
+                        fontWeight: FW.medium, whiteSpace: "nowrap" }}>{bezugMap[k.id].kurz}</span>
+                    ) : null}
                   </button>
                 ))}
               </>
