@@ -3162,7 +3162,6 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   useEffect(() => {
     if (auswahlLeeren) auswahlLeeren();
   }, [auswahlReset]);
-  const istDesktop = useDesktop();
   // 14.35: eigeneAlben kommen als Prop (aus FotosAnsicht, die alle Fotos kennt).
   const eigeneAlben = eigeneAlbenProp || [];
 
