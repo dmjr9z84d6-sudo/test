@@ -583,7 +583,7 @@ function EinstellungenZentrale({ settings, setSettings, kontakte, setKontakte,
         {s.id === "filter"      && <SektionFilterOpt settings={settings} setSettings={setSettings} t={t} accent={s.farbe} ves={ves} kontakte={kontakte}/>}
         {s.id === "kalender"    && <SektionKalenderPanel settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "dokumente"   && <SektionDokumente settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
-        {s.id === "fotos"       && <SektionFotos settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
+        {s.id === "fotos"       && <SektionFotos settings={settings} setSettings={setSettings} t={t} accent={s.farbe} ves={ves} setVes={setVes}/>}
         {s.id === "schnellzugriff"   && <SektionSchnellzugriff settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "suche"       && <SektionSuche settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}
         {s.id === "tastatur"    && <SektionTastatur settings={settings} setSettings={setSettings} t={t} accent={s.farbe}/>}

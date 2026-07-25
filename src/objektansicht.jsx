@@ -3315,28 +3315,83 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
   // beim Wechsel freigeben — sonst Speicherfresser auf dem iPhone (§93.10).
   // Seit Mini-Vorschau in der Liste: für BEIDE Ansichten laden (gleiche
   // gefilterte Menge, gleiche Hygiene) — kein Reload beim Grid⇄Liste-Wechsel.
-  // Key ordnungsUNabhängig (ids alphabetisch) — Umsortieren lädt nichts neu.
+  // 14.37 Lazy-Loading gegen Speicherdruck (Benny 25.07.: iOS lud die Seite
+  // wegen Speicher neu). Statt ALLE gefilterten Fotos gleichzeitig als
+  // Object-URL zu halten, laden wir nur, was gerade sichtbar ist (oder kurz
+  // davor), und geben URLs frei, sobald eine Kachel weit aus dem Blick ist.
+  // sichtbareIds wird vom IntersectionObserver gepflegt; der Lade-Effekt
+  // reagiert darauf. So bleibt der Speicher unabhängig von der Fotozahl.
+  const kachelRefs = useRef({});         // fotoId -> DOM-Node
+  const [sichtbareIds, setSichtbareIds] = useState({}); // fotoId -> true
   const gefiltertKey = gefiltert.map(f => f.id).slice().sort().join(",");
+  // Observer neu aufsetzen, wenn sich die gefilterte Menge ändert.
   useEffect(() => {
-    let aktiv = true;
-    const urls = {};
-    if (gefiltert.length === 0) { setThumbUrls({}); return; }
-    Promise.all(gefiltert.map(f =>
-      // 14.36: thumbRef (300px) bevorzugen — deutlich schneller als das
-      // Vollbild. Fällt auf dateiRef zurück, wenn kein Thumbnail existiert
-      // (Altbestand oder nicht dekodierbares Format).
-      dateiBlobUrl(f.thumbRef || f.dateiRef).then(res => { if (res && res.url) urls[f.id] = res.url; })
-    )).then(() => {
-      if (aktiv) setThumbUrls(urls);
-      else Object.keys(urls).forEach(k => { try { URL.revokeObjectURL(urls[k]); } catch (e) {} });
+    if (typeof IntersectionObserver === "undefined") {
+      // Fallback (alte Umgebung/JSDOM): alle als sichtbar behandeln.
+      const alle = {}; gefiltert.forEach(f => { alle[f.id] = true; });
+      setSichtbareIds(alle);
+      return;
+    }
+    const obs = new IntersectionObserver((eintraege) => {
+      setSichtbareIds(prev => {
+        const next = { ...prev };
+        eintraege.forEach(e => {
+          const id = e.target.getAttribute("data-foto-id");
+          if (!id) return;
+          if (e.isIntersecting) next[id] = true;
+          else delete next[id];
+        });
+        return next;
+      });
+    }, { rootMargin: "300px 0px" }); // etwas vorausladen, damit beim Scrollen nichts blinkt
+    Object.keys(kachelRefs.current).forEach(id => {
+      const node = kachelRefs.current[id];
+      if (node) obs.observe(node);
     });
-    return () => {
-      aktiv = false;
-      Object.keys(urls).forEach(k => { try { URL.revokeObjectURL(urls[k]); } catch (e) {} });
-      setThumbUrls({});
-    };
+    return () => obs.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gefiltertKey]);
+
+  // Lade-Effekt: nur sichtbare Thumbnails laden, unsichtbare freigeben.
+  const sichtbarKey = Object.keys(sichtbareIds).sort().join(",");
+  useEffect(() => {
+    let aktiv = true;
+    const idListe = gefiltert.filter(f => sichtbareIds[f.id]);
+    // URLs freigeben, die nicht mehr gebraucht werden.
+    setThumbUrls(prev => {
+      const behalten = {};
+      Object.keys(prev).forEach(id => {
+        if (sichtbareIds[id]) behalten[id] = prev[id];
+        else { try { URL.revokeObjectURL(prev[id]); } catch (e) {} }
+      });
+      return behalten;
+    });
+    // Fehlende sichtbare laden.
+    idListe.forEach(f => {
+      setThumbUrls(prev => prev[f.id] ? prev : prev); // no-op read guard
+      dateiBlobUrl(f.thumbRef || f.dateiRef).then(res => {
+        if (!aktiv) { if (res && res.url) { try { URL.revokeObjectURL(res.url); } catch (e) {} } return; }
+        if (res && res.url) {
+          setThumbUrls(prev => {
+            if (prev[f.id]) { try { URL.revokeObjectURL(res.url); } catch (e) {} return prev; }
+            return { ...prev, [f.id]: res.url };
+          });
+        }
+      });
+    });
+    return () => { aktiv = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sichtbarKey, gefiltertKey]);
+
+  // Beim Verlassen der Galerie ALLE URLs freigeben.
+  useEffect(() => {
+    return () => {
+      setThumbUrls(prev => {
+        Object.keys(prev).forEach(k => { try { URL.revokeObjectURL(prev[k]); } catch (e) {} });
+        return {};
+      });
+    };
+  }, []);
 
   const unterZeile = (foto) => {
     const geraet = fotoFindeGeraet(ve, foto.geraetId);
@@ -3373,7 +3428,10 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
             const anzeigeName = fotoDateiname(ve, foto, fotos);
             const url = thumbUrls[foto.id];
             return (
-              <div key={foto.id} style={{ minWidth: 0 }}>
+              <div key={foto.id} data-foto-id={foto.id}
+                ref={node => { if (node) kachelRefs.current[foto.id] = node;
+                  else delete kachelRefs.current[foto.id]; }}
+                style={{ minWidth: 0 }}>
                 <div onClick={() => editMode
                     ? toggleAuswahl(foto.id)
                     : (onAnsehen && onAnsehen(foto, sortiert))}
@@ -3431,7 +3489,10 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
             const anzeigeName = fotoDateiname(ve, foto, fotos);
             const url = thumbUrls[foto.id];
             return (
-              <div key={foto.id} style={{ display: "flex", alignItems: "center", gap: 10,
+              <div key={foto.id} data-foto-id={foto.id}
+                ref={node => { if (node) kachelRefs.current[foto.id] = node;
+                  else delete kachelRefs.current[foto.id]; }}
+                style={{ display: "flex", alignItems: "center", gap: 10,
                 padding: "10px 2px",
                 borderTop: idx > 0 ? `1px solid ${t.border}` : "none" }}>
                 {/* Mini-Vorschau 34×34 — Icon nur als Platzhalter, bis das Thumb lädt */}
@@ -3498,7 +3559,17 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
 function AuswahlLeiste({ t, accent, auswahl, hatAuswahl, auswahlLeeren,
   loeschConfirm, setLoeschConfirm, albumMenuAuf, setAlbumMenuAuf, albumMenuRef,
   eigeneAlben = [], onBearbeitenAuswahl, onAlbumZuweisen, onLoeschenAuswahl,
-  popoverRichtung = "oben", mobil = false }) {
+  onDrehen, popoverRichtung = "oben", mobil = false }) {
+  // 14.37: Drehen direkt in der Leiste (ohne Modal). Icon-only, damit die
+  // Leiste auf dem iPhone schmal bleibt. Dreht alle ausgewählten gleich.
+  const [drehLaeuft, setDrehLaeuft] = useState(false);
+  const dreheLeiste = (richtung) => {
+    if (!onDrehen || drehLaeuft || !hatAuswahl) return;
+    setLoeschConfirm(false);
+    setDrehLaeuft(true);
+    Promise.resolve(onDrehen(richtung)).then(() => setDrehLaeuft(false))
+      .catch(() => setDrehLaeuft(false));
+  };
   return (
     <div style={mobil ? {
       position: "fixed", left: "50%", transform: "translateX(-50%)",
@@ -3520,22 +3591,50 @@ function AuswahlLeiste({ t, accent, auswahl, hatAuswahl, auswahlLeeren,
         boxSizing: "border-box" }}>
         {auswahl.length}
       </span>
-      {/* Bearbeiten */}
+      {/* Bearbeiten (14.37: Icon-only wie die anderen Aktionen) */}
       <button onClick={() => { if (!hatAuswahl) return; onBearbeitenAuswahl(); }}
         disabled={!hatAuswahl}
         title={hatAuswahl ? "Bearbeiten" : "Erst Fotos auswählen"}
         aria-label="Bearbeiten"
-        style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
-          padding: "0 10px", cursor: hatAuswahl ? "pointer" : "default",
+        style={{ display: "flex", alignItems: "center", justifyContent: "center",
+          width: 32, height: 32, padding: 0, flexShrink: 0,
+          cursor: hatAuswahl ? "pointer" : "default",
           background: hatAuswahl ? accent + "18" : "transparent",
           border: `1px solid ${hatAuswahl ? accent + "40" : t.border}`,
-          borderRadius: RAD.sm, opacity: hatAuswahl ? 1 : 0.45,
-          color: hatAuswahl ? accent : t.sub,
-          fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
-          whiteSpace: "nowrap", flexShrink: 0 }}>
-        <I name="pencil" size={12} color={hatAuswahl ? accent : t.sub}/>
-        <span>Bearbeiten</span>
+          borderRadius: RAD.sm, opacity: hatAuswahl ? 1 : 0.45 }}>
+        <I name="pencil" size={14} color={hatAuswahl ? accent : t.sub}/>
       </button>
+      {/* Drehen (14.37): dreht alle ausgewählten. Leicht gruppiert (etwas
+          Abstand vor/nach), damit sie sich von Bearbeiten/Album abheben. */}
+      {onDrehen && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6,
+          marginLeft: 2, marginRight: 2 }}>
+          <button onClick={() => dreheLeiste(-1)}
+            disabled={!hatAuswahl || drehLaeuft}
+            title={hatAuswahl ? "90° gegen den Uhrzeigersinn" : "Erst Fotos auswählen"}
+            aria-label="Nach links drehen"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              width: 32, height: 32, padding: 0, flexShrink: 0,
+              cursor: (hatAuswahl && !drehLaeuft) ? "pointer" : "default",
+              background: hatAuswahl ? accent + "18" : "transparent",
+              border: `1px solid ${hatAuswahl ? accent + "40" : t.border}`,
+              borderRadius: RAD.sm, opacity: (hatAuswahl && !drehLaeuft) ? 1 : 0.45 }}>
+            <I name="rotateLeft" size={14} color={hatAuswahl ? accent : t.sub}/>
+          </button>
+          <button onClick={() => dreheLeiste(1)}
+            disabled={!hatAuswahl || drehLaeuft}
+            title={hatAuswahl ? "90° im Uhrzeigersinn" : "Erst Fotos auswählen"}
+            aria-label="Nach rechts drehen"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center",
+              width: 32, height: 32, padding: 0, flexShrink: 0,
+              cursor: (hatAuswahl && !drehLaeuft) ? "pointer" : "default",
+              background: hatAuswahl ? accent + "18" : "transparent",
+              border: `1px solid ${hatAuswahl ? accent + "40" : t.border}`,
+              borderRadius: RAD.sm, opacity: (hatAuswahl && !drehLaeuft) ? 1 : 0.45 }}>
+            <I name="rotateRight" size={14} color={hatAuswahl ? accent : t.sub}/>
+          </button>
+        </div>
+      )}
       {/* Album (Schnellzuweisung, Popover §2.7) */}
       <div ref={albumMenuRef} style={{ position: "relative" }}>
         <button onClick={() => { if (!hatAuswahl) return;
@@ -3543,16 +3642,13 @@ function AuswahlLeiste({ t, accent, auswahl, hatAuswahl, auswahlLeeren,
           disabled={!hatAuswahl}
           title={hatAuswahl ? "Album zuweisen" : "Erst Fotos auswählen"}
           aria-label="Album zuweisen"
-          style={{ display: "flex", alignItems: "center", gap: 5, height: 32,
-            padding: "0 10px", cursor: hatAuswahl ? "pointer" : "default",
+          style={{ display: "flex", alignItems: "center", justifyContent: "center",
+            width: 32, height: 32, padding: 0, flexShrink: 0,
+            cursor: hatAuswahl ? "pointer" : "default",
             background: hatAuswahl ? accent + "18" : "transparent",
             border: `1px solid ${hatAuswahl ? accent + "40" : t.border}`,
-            borderRadius: RAD.sm, opacity: hatAuswahl ? 1 : 0.45,
-            color: hatAuswahl ? accent : t.sub,
-            fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit",
-            whiteSpace: "nowrap", flexShrink: 0 }}>
-          <I name="list" size={12} color={hatAuswahl ? accent : t.sub}/>
-          <span>Album</span>
+            borderRadius: RAD.sm, opacity: hatAuswahl ? 1 : 0.45 }}>
+          <I name="list" size={14} color={hatAuswahl ? accent : t.sub}/>
         </button>
         {albumMenuAuf && hatAuswahl && (
           <div style={{ position: "absolute", right: 0,
@@ -3698,6 +3794,42 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true,
       });
     });
   };
+  // 14.37: Mehrere Fotos über die Auswahl-Leiste drehen. Sequentiell (jedes
+  // Bild einzeln durch Canvas), Thumbnails miterneuern. Wichtig: NICHT pro
+  // Foto patchen (veralteter Closure bei schnellem setVes) — Ergebnisse
+  // sammeln, am Ende EIN funktionales setVes über die frische fotos-Liste.
+  const dreheMehrere = (liste, richtung) => {
+    const ziele = (liste || []).filter(Boolean);
+    if (ziele.length === 0) return Promise.resolve();
+    const neueThumbs = {}; // fotoId -> { thumbRef, groesse }
+    let kette = Promise.resolve();
+    ziele.forEach(foto => {
+      kette = kette.then(() =>
+        fotoDrehen(foto.dateiRef, richtung).then(res => {
+          if (!res) return;
+          return fotoThumbnailVonRef(foto.dateiRef).then(neuThumb => {
+            if (neuThumb && foto.thumbRef && neuThumb !== foto.thumbRef) {
+              dateiLoeschen(foto.thumbRef);
+            }
+            neueThumbs[foto.id] = {
+              thumbRef: neuThumb || foto.thumbRef || null,
+              groesse: res.groesse,
+            };
+          });
+        })
+      );
+    });
+    return kette.then(() => {
+      if (setVes) {
+        setVes(prev => prev.map(v => v.id === ve.id
+          ? { ...v, fotos: (v.fotos || []).map(f => neueThumbs[f.id]
+              ? { ...f, thumbRef: neueThumbs[f.id].thumbRef, groesse: neueThumbs[f.id].groesse }
+              : f) }
+          : v));
+      }
+      setFotoNonce(n => n + 1);
+    });
+  };
   // Auswahl-Aktionen der schwebenden Leiste (1..n Fotos, EIN setVes je Aktion).
   const fotosLoeschenViele = (liste) => {
     const ids = {};
@@ -3796,6 +3928,7 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true,
                   fotosLoeschenViele(auswahlFotosListe());
                   auswahlLeeren();
                 }}
+                onDrehen={(richtung) => dreheMehrere(auswahlFotosListe(), richtung)}
                 popoverRichtung="unten"/>
             )}
             {fotos.length > 0 && filterEinheiten.length > 0 && (
@@ -3883,6 +4016,7 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true,
               fotosLoeschenViele(auswahlFotosListe());
               auswahlLeeren();
             }}
+            onDrehen={(richtung) => dreheMehrere(auswahlFotosListe(), richtung)}
             popoverRichtung="oben" mobil/>
         )}
       </div>

@@ -5,7 +5,7 @@ import {
   feldInput, getContrastColor, kategorieVon, rolleBadgeSichtbar, rolleEckPosition,
   rolleEckSichtbar, toGrau, verwendungBadgeSichtbar, verwendungEckPosition, verwendungEckSichtbar
 } from "./constants.js";
-import { splitPlzOrt } from "./utils-basis.js";
+import { splitPlzOrt, fotoThumbnailVonRef, fotoKomprimieren, dateiLaden, dateiSpeichern, dateiLoeschen } from "./utils-basis.js";
 import {
   DEFAULT_SETTINGS, KONTAKTARTEN_KATEGORIEN, VERWALTUNGSARTEN,
   gruppiereDubletten, fuehreKontakteZusammen, kontaktInGruppe, normalisiereKontakte, normalisiereVes, objektInGruppe, objektOrt,
@@ -4028,10 +4028,43 @@ function SektionFristenKarte({ settings, setSettings, t, accent }) {
 }
 
 // ── Sektion: Fotos ───────────────────────────────────────────────────────────
-function SektionFotos({ settings, setSettings, t, accent }) {
+function SektionFotos({ settings, setSettings, t, accent, ves = [], setVes }) {
   const save = (partial) => setSettings(s => ({ ...s, ...partial }));
   const q = settings.fotoQualitaet || "standard";
+  // 14.37: Nachrüstung — Thumbnails für Altbestand-Fotos (thumbRef fehlt)
+  // erzeugen. Läuft über alle Objekte, sequentiell, mit Fortschritt. Senkt
+  // den Speicherbedarf der Listenansicht spürbar (300px statt Vollbild).
+  const [nachLaeuft, setNachLaeuft] = useState(false);
+  const [nachInfo, setNachInfo] = useState("");
+  const ohneThumb = [];
+  (ves || []).forEach(v => (v.fotos || []).forEach(f => {
+    if (f && f.dateiRef && !f.thumbRef) ohneThumb.push({ veId: v.id, fotoId: f.id, dateiRef: f.dateiRef });
+  }));
+  const thumbnailsNachruesten = () => {
+    if (nachLaeuft || ohneThumb.length === 0 || !setVes) return;
+    setNachLaeuft(true);
+    const neu = {}; // fotoId -> thumbRef
+    let kette = Promise.resolve();
+    ohneThumb.forEach((eintrag, i) => {
+      kette = kette.then(() => {
+        setNachInfo("Erzeuge Vorschau " + (i + 1) + " von " + ohneThumb.length + " …");
+        return fotoThumbnailVonRef(eintrag.dateiRef).then(thumbId => {
+          if (thumbId) neu[eintrag.fotoId] = thumbId;
+        }).catch(() => {});
+      });
+    });
+    kette.then(() => {
+      setVes(prev => prev.map(v => ({
+        ...v,
+        fotos: (v.fotos || []).map(f => neu[f.id] ? { ...f, thumbRef: neu[f.id] } : f),
+      })));
+      const erzeugt = Object.keys(neu).length;
+      setNachInfo(erzeugt + " von " + ohneThumb.length + " Vorschauen erstellt.");
+      setNachLaeuft(false);
+    });
+  };
   return (
+    <>
     <EinstellKarte title="Foto-Qualität beim Upload" t={t} accent={accent}>
       <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 12, lineHeight: 1.5 }}>
         Fotos werden vor dem Speichern automatisch verkleinert. EXIF-Daten
@@ -4053,6 +4086,34 @@ function SektionFotos({ settings, setSettings, t, accent }) {
         </EinstellZeile>
       ))}
     </EinstellKarte>
+
+    <EinstellKarte title="Vorschau-Bilder (Speicher)" t={t} accent={accent}>
+      <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 12, lineHeight: 1.5 }}>
+        Für eine schnelle, speicherschonende Listenansicht wird zu jedem Foto
+        eine kleine Vorschau (300 px) angelegt. Fotos, die vor diesem Update
+        hochgeladen wurden, haben noch keine — hier lassen sie sich nachträglich
+        erzeugen. Das kann bei vielen Fotos einen Moment dauern.
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <button onClick={thumbnailsNachruesten}
+          disabled={nachLaeuft || ohneThumb.length === 0}
+          style={{ display: "flex", alignItems: "center", gap: 8, height: 40,
+            padding: "0 16px", borderRadius: RAD.sm, fontFamily: "inherit",
+            fontSize: FS.m, fontWeight: FW.bold, cursor: (nachLaeuft || ohneThumb.length === 0) ? "default" : "pointer",
+            background: (nachLaeuft || ohneThumb.length === 0) ? "transparent" : accent + "18",
+            border: `1px solid ${(nachLaeuft || ohneThumb.length === 0) ? t.border : accent + "55"}`,
+            color: (nachLaeuft || ohneThumb.length === 0) ? t.sub : accent,
+            opacity: (nachLaeuft || ohneThumb.length === 0) ? 0.6 : 1 }}>
+          <I name="image" size={15} color={(nachLaeuft || ohneThumb.length === 0) ? t.sub : accent}/>
+          {ohneThumb.length === 0 ? "Alle Vorschauen vorhanden"
+            : ("Vorschauen erstellen (" + ohneThumb.length + ")")}
+        </button>
+        {(nachLaeuft || nachInfo) && (
+          <span style={{ fontSize: FS.s, color: t.sub }}>{nachInfo}</span>
+        )}
+      </div>
+    </EinstellKarte>
+    </>
   );
 }
 
