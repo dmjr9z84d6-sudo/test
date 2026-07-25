@@ -218,15 +218,15 @@ function KopfAktionsLeiste({ t, accent, editMode, onEdit, onCancel, onConfirm,
 }
 
 function KopfIconButton({ icon, text = null, title, onClick, t, accent, gefahr = false, confirm = false, gefahrVoll = false }) {
-  // text-Prop (25.07., Benny): kurzer Schriftzug ("ETV") oder Emoji ("💤")
-  // statt Icon — gleiche runde Form, Breite wächst mit padding. Aussagekraft
-  // schlägt Symbol, wo das Icon nicht selbsterklärend ist.
+  // text-Prop (25.07., Benny): kurzer Schriftzug ("ETV", "zZz") statt Icon —
+  // KREISRUND wie alle anderen (Benny 2. Runde: kein Oval), darum feste 36er
+  // Breite + kleine Schrift. Aussagekraft schlägt Symbol, wo das Icon nicht
+  // selbsterklärend ist. Schriftzug erbt die Icon-Farbe (Emoji täte das nicht).
   const inhalt = (fg) => text
-    ? <span style={{ fontSize: FS.xs, fontWeight: FW.bold, color: fg,
-        lineHeight: 1, whiteSpace: "nowrap" }}>{text}</span>
+    ? <span style={{ fontSize: 10, fontWeight: FW.bold, color: fg,
+        lineHeight: 1, whiteSpace: "nowrap", letterSpacing: 0.3 }}>{text}</span>
     : <I name={icon} size={16} color={fg}/>;
-  const breite = text ? { minWidth: 36, width: "auto", padding: "0 12px" }
-    : { width: 36 };
+  const breite = { width: 36, padding: 0 };
   // gefahrVoll (§12.9): accent-Vollton, rotes Icon, KEIN Rand (wie X-Button).
   // Zwei-Stufen: confirm=true → rot gefüllt, weißes Icon (führt aus).
   if (gefahrVoll) {

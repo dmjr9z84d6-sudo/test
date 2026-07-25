@@ -999,7 +999,8 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const [notizText, setNotizText] = useState("");
   const [schliessConfirm, setSchliessConfirm] = useState(false);
   const [loeschConfirm, setLoeschConfirm] = useState(false);
-  const [vorgangEditOffen, setVorgangEditOffen] = useState(false); // Stift (25.07.)
+  const [vorgangEditOffen, setVorgangEditOffen] = useState(false); // Stammdaten-Overlay (25.07.)
+  const [kopfEdit, setKopfEdit] = useState(false); // Lese-/Bearbeiten-Modus (25.07., 3. Runde)
   const [ruhenFormOffen, setRuhenFormOffen] = useState(false);
   const [ruhenBis, setRuhenBis] = useState("");
   // Versicherungsfall (A1): Formular-State — Eigenschaft, keine Kategorie.
@@ -1248,51 +1249,58 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
     </div>
   );
 
-  // Kopf-Aktionen (Benny 25.07., Feinschliff 2. Runde): trash als roter
-  // UMRISS-Button (gefahr statt gefahrVoll — rotes Icon auf Accent-Rot war
-  // unsichtbar) · "ETV" als Schriftzug (aussagekräftiger als das Badge-Icon) ·
-  // 💤 statt Mond (Emoji-Sprache wie in der Kontakt-Karte) · check=Schließen
-  // (2-Stufen: erst accent, Confirm-Stufe rot) · Stift GANZ RECHTS wie überall
-  // (§86.6). Geschlossene Vorgänge: trash + rotateLeft=Wieder öffnen.
+  // Kopf-Aktionen (Benny 25.07., 3. Runde — Lese-/Bearbeiten-Modus wie an der
+  // Objekt-Akte): LESEMODUS zeigt NUR den Stift. Stift schaltet den
+  // Bearbeiten-Modus (Stift↔Haken, Muster AuftraegeEdit) — erst dann
+  // erscheinen: Papierkorb (Ruhe wie alle, Confirm-Stufe rot — Rot als
+  // Dauerfarbe setzt sich vom roten Accent nicht ab) · ETV (kreisrund) ·
+  // zZz (weiß, Emoji ließe sich nicht einfärben) · × = Vorgang schließen
+  // (Sprache des alten Fußleisten-Buttons „× Vorgang schließen"; der Haken
+  // beendet jetzt den Modus) bzw. rotateLeft = Wieder öffnen. marginLeft:auto
+  // rückt die Gruppe beim Handy-Umbruch nach RECHTS (Benny-Screenshot).
   const kopfAktionen = onWelt ? (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-      <KopfIconButton icon="trash" gefahr confirm={loeschConfirm}
-        title={loeschConfirm ? "Wirklich löschen?" : "Vorgang löschen"}
-        t={t} accent={accent}
-        onClick={() => {
-          if (!loeschConfirm) { setLoeschConfirm(true); return; }
-          onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
-          onZurueck();
-        }}/>
-      {kannFlows && !vorgang.wartet_auf_beschluss_id ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+      marginLeft: "auto" }}>
+      {kopfEdit ? (
+        <KopfIconButton icon="trash" gefahr={loeschConfirm} confirm={loeschConfirm}
+          title={loeschConfirm ? "Wirklich löschen?" : "Vorgang löschen"}
+          t={t} accent={accent}
+          onClick={() => {
+            if (!loeschConfirm) { setLoeschConfirm(true); return; }
+            onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
+            onZurueck();
+          }}/>
+      ) : null}
+      {kopfEdit && kannFlows && !vorgang.wartet_auf_beschluss_id ? (
         <KopfIconButton text="ETV" title="Auf ETV-Tagesordnung"
           t={t} accent={accent}
           onClick={() => onWelt((w) => weltVorgangAufTagesordnung(w, vorgang.id))}/>
       ) : null}
-      {kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
-        <KopfIconButton text="💤" title="Ruhen bis …"
+      {kopfEdit && kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
+        <KopfIconButton text="zZz" title="Ruhen bis …"
           t={t} accent={accent}
           onClick={() => { setTab("uebersicht"); setRuhenFormOffen(true); }}/>
       ) : null}
-      {vorgang.status === "geschlossen" ? (
+      {kopfEdit && vorgang.status === "geschlossen" ? (
         <KopfIconButton icon="rotateLeft" title="Wieder öffnen"
           t={t} accent={accent}
           onClick={() => onWelt((w) => weltVorgangOeffnen(w, vorgang.id))}/>
-      ) : (
-        <KopfIconButton icon="check" gefahr={schliessConfirm} confirm={schliessConfirm}
+      ) : null}
+      {kopfEdit && vorgang.status !== "geschlossen" ? (
+        <KopfIconButton icon="x" gefahr={schliessConfirm} confirm={schliessConfirm}
           title={schliessConfirm ? "Wirklich schließen?" : "Vorgang schließen"}
           t={t} accent={accent}
           onClick={() => {
             if (!schliessConfirm) { setSchliessConfirm(true); return; }
             onWelt((w) => weltVorgangSchliessen(w, vorgang.id));
-            setSchliessConfirm(false);
+            setSchliessConfirm(false); setKopfEdit(false);
           }}/>
-      )}
-      {kannFlows ? (
-        <KopfIconButton icon="pencil" title="Vorgang bearbeiten"
-          t={t} accent={accent}
-          onClick={() => setVorgangEditOffen(true)}/>
       ) : null}
+      <KopfIconButton icon={kopfEdit ? "check" : "pencil"}
+        title={kopfEdit ? "Bearbeiten beenden" : "Bearbeiten"}
+        t={t} accent={accent}
+        onClick={() => { setKopfEdit(!kopfEdit);
+          setLoeschConfirm(false); setSchliessConfirm(false); }}/>
     </div>
   ) : null;
 
@@ -1331,14 +1339,20 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
             Liste — "Was ist Sache" groß wie die Nummer im Kopf, dahinter
             VE-Nr + Einheit + Raum (nur was gesetzt ist; keine Nummer, die
             steht oben). Sichtbar auf allen Tabs. */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10,
-          flexWrap: "wrap" }}>
+        <div onClick={kopfEdit && kannFlows ? () => setVorgangEditOffen(true) : undefined}
+          style={{ display: "flex", alignItems: "baseline", gap: 10,
+            flexWrap: "wrap", cursor: kopfEdit && kannFlows ? "pointer" : "default" }}>
           <div style={{ fontSize: FS.xxl, fontWeight: FW.bold, color: t.text,
             minWidth: 0, overflowWrap: "anywhere" }}>
             {vorgang.titel || "Vorgang"}</div>
           {aktenOrt ? (
             <div style={{ fontSize: FS.s, color: t.muted, minWidth: 0,
               overflowWrap: "anywhere" }}>{aktenOrt}</div>
+          ) : null}
+          {/* Bearbeiten-Modus: Titel antippen öffnet die Stammdaten
+              (Muster „Auftrag antippen zum Bearbeiten"); Stift als Hinweis. */}
+          {kopfEdit && kannFlows ? (
+            <I name="pencil" size={14} color={accent}/>
           ) : null}
         </div>
         {tab === "uebersicht" ? (
@@ -1428,7 +1442,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                 </div>
               </BausteinKarte>
             ) : null}
-            {kannFlows ? (
+            {kannFlows && kopfEdit ? (
               <NeueKarteMenu t={t} accent={accent} onAdd={bausteinAdd} optionen={katalog}/>
             ) : null}
             {kannFlows && ruhenFormOffen ? (
