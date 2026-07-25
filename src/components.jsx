@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useContext, createContext, Fragment } from "react";
+import React, { useState, useRef, useEffect, useContext, useMemo, createContext, Fragment } from "react";
 import {
   ACCENT, FS, FW, KONTAKTE_FARBE, RAD, effColor, effKuerzel, getContrastColor,
   rolleEckPosition, rolleEckSichtbar, sortKontakte, toGrau, verwendungBadgeSichtbar,
@@ -13,7 +13,8 @@ import {
   eigStatus, findeEinheitUeberall, findeKontaktKandidaten, findeRaumUeberall, verwendungenVon
 } from "./datenmodell.js";
 import {
-  I, StickySectionHeader, formatNameMitCtx, passendeMasterSpalten, useAvatarIcons,
+  I, StickySectionHeader, belegungsRollenFuerKontakt, flacheZuweisungen,
+  formatNameMitCtx, passendeMasterSpalten, useAlleVes, useAvatarIcons,
   useContentWidth, useFirmenRollen, useKartenIcons, useKategorien,
   useKontaktAnzeige, useKontaktFarbe, useLeistungen, useOutsideClick, useRollen, useVerwendungen,
   useZeitPicker, zuweisungenFuerAvatar
@@ -1528,6 +1529,43 @@ function VerwendungenBadges({ ve, size = 20 }) {
   );
 }
 
+// ── kontaktObjektEinheitText (§Picker-Bezug, Benny 25.07.) ──────────────────
+// „Wo gehört dieser Kontakt hin?" — Objektname + Einheit(en) als Zweitzeile
+// für die KontaktPicker-Auswahlliste. Quellen: flacheZuweisungen (besitz /
+// zustaendigkeit / firmenRollen / alt) + belegungsRollenFuerKontakt (Mieter &
+// Co. LIVE aus den Belegungen — dieselben Quellen wie das Avatar-Badge).
+// Ehemalige/werdende Bezüge bleiben draußen (wie objektBezugInfo).
+// Format: je Objekt „Objektname · WE 03 · WE 07" (Einheiten ·-getrennt,
+// Objekt-Rolle ohne Einheit → nur Objektname); mehrere Objekte mit „ — ".
+// Einheiten-Zugriff über findeEinheitUeberall (§76.7 — nie selbst scannen).
+function kontaktObjektEinheitText(k, ves) {
+  if (!k || !Array.isArray(ves) || ves.length === 0) return "";
+  const alle = [...flacheZuweisungen(k), ...belegungsRollenFuerKontakt(k, ves)];
+  const proObjekt = new Map(); // objektId(String) → Set von einheitIds(String)
+  alle.forEach(z => {
+    if (!z || z.objektId == null || String(z.objektId) === "") return;
+    if (z.status === "ehemalig" || z.status === "werdend") return;
+    const oid = String(z.objektId);
+    if (!proObjekt.has(oid)) proObjekt.set(oid, new Set());
+    if (z.einheitId != null && String(z.einheitId) !== "") {
+      proObjekt.get(oid).add(String(z.einheitId));
+    }
+  });
+  const teile = [];
+  proObjekt.forEach((einheitIds, oid) => {
+    const ve = ves.find(v => v && String(v.id) === oid);
+    if (!ve) return;
+    const labels = [];
+    einheitIds.forEach(eid => {
+      const e = findeEinheitUeberall(ve, eid);
+      if (e && e.nr != null && String(e.nr) !== "") labels.push(String(e.nr));
+    });
+    labels.sort((a, b) => a.localeCompare(b, "de", { numeric: true }));
+    teile.push([ve.name || "Objekt"].concat(labels).join(" · "));
+  });
+  return teile.join(" — ");
+}
+
 // ── KontaktPicker (aus bausteine.jsx, ?. entfernt) ──────────────────────────
 // ── KontaktPickerMitAllen (§76-Kanonisierung des Kalender-Musters):
 // Standard = nur Kontakte MIT Objektbezug, Checkbox „Alle Kontakte
@@ -1562,6 +1600,20 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
   const rollen = useRollen();
   const farben = useKontaktFarbe();
   const anzeige = useKontaktAnzeige();
+  const alleVes = useAlleVes();
+
+  // §Picker-Bezug (Benny 25.07.): Objekt·Einheit-Zweitzeile je Kontakt.
+  // Nur bei geöffneter Liste rechnen (Map kontaktId → Text), memoisiert —
+  // belegungsRollenFuerKontakt scannt alle Objekte, das soll nicht bei jedem
+  // Tastendruck für jeden Kontakt neu laufen.
+  const bezugMap = useMemo(() => {
+    const m = {};
+    if (!offen) return m;
+    (kontakte || []).forEach(k => {
+      if (k) m[k.id] = kontaktObjektEinheitText(k, alleVes);
+    });
+    return m;
+  }, [offen, kontakte, alleVes]);
 
   // Sortier-Reihenfolge folgt dem Name-Format-Setting
   const sortierSettings = { kontakteNameFormat: anzeige.nameFormat };
@@ -1858,7 +1910,8 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                       zuweisungen={zuweisungenFuerAvatar(k)}/>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{formatNameMitCtx(k, anzeige) || k.name}</div>
-                      {k.sub && <div style={{ fontSize: FS.xs, color: t.sub }}>{k.sub}</div>}
+                      {/* §Picker-Bezug: Objekt · Einheit(en); Fallback k.sub. Darf umbrechen. */}
+                      {(bezugMap[k.id] || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{bezugMap[k.id] || k.sub}</div>}
                     </div>
                   </button>
                 ))}
@@ -1881,7 +1934,8 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                     <Avatar name={k.name} firma size={26} accent={farben.firma}/>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{k.name}</div>
-                      {k.sub && <div style={{ fontSize: FS.xs, color: t.sub }}>{k.sub}</div>}
+                      {/* §Picker-Bezug: Objekt · Einheit(en); Fallback k.sub. Darf umbrechen. */}
+                      {(bezugMap[k.id] || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{bezugMap[k.id] || k.sub}</div>}
                     </div>
                   </button>
                 ))}
@@ -3946,7 +4000,7 @@ export {
   VerwendungBadge,
   aggregiereObjektVerwendungen,
   VerwendungenBadges,
-  KontaktPicker, KontaktPickerMitAllen,
+  KontaktPicker, KontaktPickerMitAllen, kontaktObjektEinheitText,
   EckPille,
   EigentumBlock,
   EigentumswechselVorgang,
