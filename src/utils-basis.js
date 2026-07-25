@@ -686,3 +686,134 @@ export function fotoKomprimieren(file, qualitaet) {
     } catch (err) { resolve(null); }
   });
 }
+
+// ── fotoDrehen: Bild-Blob um 90° drehen (Weg B — Pixel echt drehen) ──────────
+// Liest die Datei zu einer dateiRef, dreht die Pixel per Canvas um +90 (im
+// Uhrzeigersinn) oder -90 (gegen), schreibt das Ergebnis als NEUEN Blob unter
+// DERSELBEN dateiRef zurück (überschreibt in-place). JPEG bleibt JPEG, PNG
+// bleibt PNG (Transparenz erhalten). Qualität wie beim Upload (q0.85), damit
+// wiederholtes Drehen nicht stärker verlustet als nötig.
+// Returns Promise<{ groesse, typ, name } | null>. null = Fehler (Aufrufer
+// lässt das Foto dann unverändert).
+export function fotoDrehen(dateiRef, richtung) {
+  return new Promise(function (resolve) {
+    try {
+      if (!dateiRef) { resolve(null); return; }
+      dateiLaden(dateiRef).then(function (blob) {
+        if (!blob) { resolve(null); return; }
+        const typ = (blob.type || "").toLowerCase();
+        const istPng = typ === "image/png";
+        // Canvas kann JPEG/PNG/WebP dekodieren; DNG/TIFF nicht → abbrechen.
+        const kann = typ === "image/jpeg" || typ === "image/jpg"
+          || istPng || typ === "image/webp";
+        if (!kann) { resolve(null); return; }
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
+        img.onload = function () {
+          URL.revokeObjectURL(url);
+          try {
+            const w0 = img.naturalWidth || img.width;
+            const h0 = img.naturalHeight || img.height;
+            if (!w0 || !h0) { resolve(null); return; }
+            // Nach 90°-Drehung tauschen Breite/Höhe.
+            const canvas = document.createElement("canvas");
+            canvas.width = h0;
+            canvas.height = w0;
+            const ctx = canvas.getContext("2d");
+            // +90 (im UZS): um (h0,0) verschieben, dann 90° drehen.
+            // -90 (gegen): um (0,w0) verschieben, dann -90° drehen.
+            if (richtung < 0) {
+              ctx.translate(0, w0);
+              ctx.rotate(-Math.PI / 2);
+            } else {
+              ctx.translate(h0, 0);
+              ctx.rotate(Math.PI / 2);
+            }
+            ctx.drawImage(img, 0, 0);
+            const mime = istPng ? "image/png" : "image/jpeg";
+            const name = (blob.name || "foto");
+            canvas.toBlob(function (out) {
+              if (!out) { resolve(null); return; }
+              // Neuen Blob unter DERSELBEN id zurückschreiben.
+              dateiDbOeffnen().then(function (db) {
+                const tx = db.transaction(DATEI_DB_STORE, "readwrite");
+                const store = tx.objectStore(DATEI_DB_STORE);
+                const getReq = store.get(dateiRef);
+                getReq.onsuccess = function () {
+                  const e = getReq.result;
+                  if (!e) { db.close(); resolve(null); return; }
+                  e.blob = new File([out], e.name || name, { type: mime });
+                  e.typ = mime;
+                  e.groesse = out.size;
+                  store.put(e);
+                };
+                tx.oncomplete = function () {
+                  db.close();
+                  resolve({ groesse: out.size, typ: mime, name: name });
+                };
+                tx.onerror = function () { db.close(); resolve(null); };
+              }).catch(function () { resolve(null); });
+            }, mime, istPng ? undefined : 0.85);
+          } catch (err) { resolve(null); }
+        };
+        img.src = url;
+      }).catch(function () { resolve(null); });
+    } catch (err) { resolve(null); }
+  });
+}
+
+// ── fotoThumbnail: kleine Vorschau-Kopie (max. 300px) als eigener Blob ───────
+// Erzeugt aus einer Datei eine verkleinerte JPEG-Vorschau und speichert sie
+// als EIGENEN Eintrag in IndexedDB. Gibt die neue thumbRef-id zurück (oder
+// null bei Fehler/nicht dekodierbar → Liste fällt auf das Original zurück).
+// So lädt die Listenansicht 300px statt Vollbild → deutlich schneller.
+export function fotoThumbnail(file) {
+  return new Promise(function (resolve) {
+    try {
+      if (!file) { resolve(null); return; }
+      const typ = (file.type || "").toLowerCase();
+      const nm = (file.name || "").toLowerCase();
+      const kann = typ === "image/jpeg" || typ === "image/jpg"
+        || /\.jpe?g$/.test(nm) || typ === "image/png" || /\.png$/.test(nm)
+        || typ === "image/webp" || /\.webp$/.test(nm);
+      if (!kann) { resolve(null); return; }
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        try {
+          const w0 = img.naturalWidth || img.width;
+          const h0 = img.naturalHeight || img.height;
+          if (!w0 || !h0) { resolve(null); return; }
+          const sk = Math.min(1, 300 / Math.max(w0, h0));
+          const w1 = Math.round(w0 * sk), h1 = Math.round(h0 * sk);
+          const canvas = document.createElement("canvas");
+          canvas.width = w1; canvas.height = h1;
+          canvas.getContext("2d").drawImage(img, 0, 0, w1, h1);
+          canvas.toBlob(function (blob) {
+            if (!blob) { resolve(null); return; }
+            const thumbFile = new File([blob], "thumb.jpg", { type: "image/jpeg" });
+            dateiSpeichern(thumbFile).then(function (meta) {
+              resolve(meta ? meta.id : null);
+            }).catch(function () { resolve(null); });
+          }, "image/jpeg", 0.7);
+        } catch (err) { resolve(null); }
+      };
+      img.src = url;
+    } catch (err) { resolve(null); }
+  });
+}
+
+// Erzeugt aus einem bereits gespeicherten Blob (dateiRef) ein Thumbnail —
+// für Fotos, die schon ohne thumbRef in der DB liegen (Nachrüstung/Drehen).
+export function fotoThumbnailVonRef(dateiRef) {
+  return new Promise(function (resolve) {
+    if (!dateiRef) { resolve(null); return; }
+    dateiLaden(dateiRef).then(function (blob) {
+      if (!blob) { resolve(null); return; }
+      fotoThumbnail(blob).then(resolve).catch(function () { resolve(null); });
+    }).catch(function () { resolve(null); });
+  });
+}

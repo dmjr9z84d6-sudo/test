@@ -7332,7 +7332,21 @@ function DateiZeile({ meta, t, accent, onAnsehen, onDownload, onEntfernen }) {
 // null. Gesetzte Richtungen rendern schwebende Pfeil-Buttons über dem Inhalt;
 // auf Desktop blättern zusätzlich die Pfeiltasten. Dokument-Aufrufer ohne die
 // Props bleiben unverändert.
-function DateiViewerModal({ t, accent, datei, onClose, onVor = null, onZurueck = null }) {
+function DateiViewerModal({ t, accent, datei, onClose, onVor = null, onZurueck = null,
+  onDrehen = null, onLoeschen = null }) {
+  // Foto-Aktionen (14.36): onDrehen(richtung)/onLoeschen als optionale
+  // Callbacks — nur Foto-Aufrufer setzen sie, Dokument-Aufrufer bleiben
+  // unberührt. richtung: -1 = gegen UZS, +1 = im UZS.
+  const [drehLaeuft, setDrehLaeuft] = useState(false);
+  const [loeschConfirm, setLoeschConfirm] = useState(false);
+  const drehen = function (richtung) {
+    if (!onDrehen || drehLaeuft) return;
+    setLoeschConfirm(false);
+    setDrehLaeuft(true);
+    Promise.resolve(onDrehen(richtung)).then(function () {
+      setDrehLaeuft(false);
+    }).catch(function () { setDrehLaeuft(false); });
+  };
   const [zustand, setZustand] = useState({ url: null, typ: "", name: "", laedt: true, fehler: false });
   // Hintergrund-Variante aus den Einstellungen.
   //   "modus"       → folgt dem Hell-/Dunkel-Modus (Overlay + Inhaltsfläche aus t).
@@ -7444,6 +7458,43 @@ function DateiViewerModal({ t, accent, datei, onClose, onVor = null, onZurueck =
           <I name="document" size={15} color={accent}/>
           <span style={{ flex: 1, minWidth: 0, fontSize: FS.m, fontWeight: FW.bold, color: t.text,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{anzeigeName}</span>
+          {/* Foto-Aktionen (14.36): Drehen links/rechts + Löschen — nur wenn
+              die Callbacks gesetzt sind (Foto-Viewer, nicht Dokumente). */}
+          {onDrehen && (
+            <>
+              <button onClick={function () { drehen(-1); }} disabled={drehLaeuft}
+                title="90° gegen den Uhrzeigersinn" aria-label="Nach links drehen"
+                style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, background: "transparent",
+                  border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  cursor: drehLaeuft ? "default" : "pointer", opacity: drehLaeuft ? 0.5 : 1 }}>
+                <I name="rotateLeft" size={16} color={t.sub}/>
+              </button>
+              <button onClick={function () { drehen(1); }} disabled={drehLaeuft}
+                title="90° im Uhrzeigersinn" aria-label="Nach rechts drehen"
+                style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, background: "transparent",
+                  border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                  cursor: drehLaeuft ? "default" : "pointer", opacity: drehLaeuft ? 0.5 : 1 }}>
+                <I name="rotateRight" size={16} color={t.sub}/>
+              </button>
+            </>
+          )}
+          {onLoeschen && (
+            <button onClick={function () {
+                if (!loeschConfirm) { setLoeschConfirm(true); return; }
+                setLoeschConfirm(false); onLoeschen();
+              }}
+              title={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+              aria-label={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+              style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                width: 32, height: 32,
+                background: loeschConfirm ? "#EF4444" : "transparent",
+                border: `1px solid ${loeschConfirm ? "#EF4444" : t.border}`,
+                borderRadius: RAD.sm, cursor: "pointer" }}>
+              <I name="trash" size={16} color={loeschConfirm ? "#FFFFFF" : t.sub}/>
+            </button>
+          )}
           <button onClick={function () { dateiOeffnen(datei.id, anzeigeName); }}
             title="Herunterladen" aria-label="Herunterladen"
             style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",

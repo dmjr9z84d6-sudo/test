@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, kartenGridStyle, feldInput, feldLabel, getContrastColor } from "./constants.js";
-import { parseDatumWert, dateiBlobUrl, dateiSpeichern, dateiLoeschen, fotoExifLesen, fotoKomprimieren } from "./utils-basis.js";
+import { parseDatumWert, dateiBlobUrl, dateiSpeichern, dateiLoeschen, dateiLaden, fotoExifLesen, fotoKomprimieren, fotoDrehen, fotoThumbnail, fotoThumbnailVonRef } from "./utils-basis.js";
 import {
   FOTO_ALBEN, FOTO_RAUM_KATALOG, flaecheVon, fotoAlbumLabel, fotoDateiname, fotoFindeGeraet,
   alleEinheitenVonVe, fotoZuordnungLabel, isStellplatzTyp, istAnonymesMitglied, raeumeVonEinheit, raumWert, raumLabel, sammlungFuerObjekt, teileVon
@@ -2758,25 +2758,31 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null, se
             ? new File([komprimiert.blob], komprimiert.name, { type: komprimiert.typ })
             : f;
           return dateiSpeichern(ziel).then(meta => {
-            eintraege.push({
-              id: "foto_" + Date.now().toString(36) + "_" + i + "_" + Math.random().toString(36).slice(2, 8),
-              dateiRef: meta.id,
-              name: meta.name, typ: meta.typ, groesse: meta.groesse,
-              album: albumWert,
-              zuordnung: {
-                art: art,
-                hausId: effHausId || null,
-                einheitId: art === "einheit" ? einheitWahl : null,
-                raumId: raumWahl && raumWahl.indexOf("name:") !== 0 ? raumWahl : null,
-                raumName: raumWahl && raumWahl.indexOf("name:") === 0
-                  ? raumWahl.slice(5) : null,
-              },
-              geraetId: art === "gemeinschaft" ? (geraetWahl || null) : null,
-              aufgenommen: info.aufgenommen || heuteDE,
-              exifQuelle: info.aufgenommen ? "exif" : "upload",
-              gps: info.gps || null,
-              notiz: notiz.trim(),
-              angelegt: new Date().toISOString(),
+            // Thumbnail (300px) für schnelle Listenvorschau — aus dem
+            // komprimierten Ziel. Schlägt es fehl (DNG/HEIC nicht dekodierbar),
+            // bleibt thumbRef null und die Liste nimmt das Original.
+            return fotoThumbnail(ziel).then(thumbId => {
+              eintraege.push({
+                id: "foto_" + Date.now().toString(36) + "_" + i + "_" + Math.random().toString(36).slice(2, 8),
+                dateiRef: meta.id,
+                thumbRef: thumbId || null,
+                name: meta.name, typ: meta.typ, groesse: meta.groesse,
+                album: albumWert,
+                zuordnung: {
+                  art: art,
+                  hausId: effHausId || null,
+                  einheitId: art === "einheit" ? einheitWahl : null,
+                  raumId: raumWahl && raumWahl.indexOf("name:") !== 0 ? raumWahl : null,
+                  raumName: raumWahl && raumWahl.indexOf("name:") === 0
+                    ? raumWahl.slice(5) : null,
+                },
+                geraetId: art === "gemeinschaft" ? (geraetWahl || null) : null,
+                aufgenommen: info.aufgenommen || heuteDE,
+                exifQuelle: info.aufgenommen ? "exif" : "upload",
+                gps: info.gps || null,
+                notiz: notiz.trim(),
+                angelegt: new Date().toISOString(),
+              });
             });
           });
         }).catch(() => {
@@ -2943,9 +2949,30 @@ function FotoUploadModal({ ve, t, accent, onClose, onSave, objektWahl = null, se
 // MEHRERE Fotos (Auswahl-Modus): gleiche Angaben für alle — exakt das
 // Upload-Modell rückwärts; Datum bleibt dann unangetastet. Der Dateiname
 // baut sich aus Album/Zuordnung/Datum automatisch neu zusammen (§93.4).
-function FotoBearbeitenModal({ ve, fotos, t, accent, onClose, onSave }) {
+function FotoBearbeitenModal({ ve, fotos, t, accent, onClose, onSave, onDrehen, onLoeschen }) {
   const foto = (fotos && fotos[0]) || {};
   const mehrfach = (fotos || []).length > 1;
+  const anzahl = (fotos || []).length;
+  // 14.36: Drehen/Löschen direkt im Modal. Drehen wirkt auf ALLE Fotos der
+  // Auswahl gleich (Benny: viele gedrehte Pläne auf einmal). Fortschritt bei
+  // Mehrfach, da jedes Bild einzeln durch Canvas läuft.
+  const [drehLaeuft, setDrehLaeuft] = useState(false);
+  const [drehFortschritt, setDrehFortschritt] = useState("");
+  const [loeschConfirm, setLoeschConfirm] = useState(false);
+  const dreheAlle = (richtung) => {
+    if (!onDrehen || drehLaeuft) return;
+    setLoeschConfirm(false);
+    setDrehLaeuft(true);
+    const liste = fotos || [];
+    let kette = Promise.resolve();
+    liste.forEach((f, i) => {
+      kette = kette.then(() => {
+        if (liste.length > 1) setDrehFortschritt("Drehe " + (i + 1) + " von " + liste.length + " …");
+        return onDrehen(f, richtung);
+      });
+    });
+    kette.then(() => { setDrehLaeuft(false); setDrehFortschritt(""); });
+  };
   const labelStyle = { fontSize: FS.s, fontWeight: FW.bold, color: t.sub,
     textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 };
   const inputStyle = { width: "100%", padding: "8px 10px",
@@ -3028,6 +3055,65 @@ function FotoBearbeitenModal({ ve, fotos, t, accent, onClose, onSave }) {
         </div>
 
         <div style={{ padding: 16 }}>
+          {/* 14.36: Foto-Aktionen — Drehen (auf alle der Auswahl) + Löschen.
+              Drehen dreht die echten Pixel (Weg B), damit versendete Bilder
+              korrekt liegen. */}
+          {(onDrehen || onLoeschen) && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8,
+              marginBottom: 16, paddingBottom: 14, borderBottom: `1px solid ${t.border}`,
+              flexWrap: "wrap" }}>
+              {onDrehen && (
+                <>
+                  <button onClick={() => dreheAlle(-1)} disabled={drehLaeuft}
+                    title="90° gegen den Uhrzeigersinn" aria-label="Nach links drehen"
+                    style={{ display: "flex", alignItems: "center", gap: 6, height: 36,
+                      padding: "0 12px", background: "transparent",
+                      border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                      cursor: drehLaeuft ? "default" : "pointer",
+                      opacity: drehLaeuft ? 0.5 : 1, color: t.text,
+                      fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit" }}>
+                    <I name="rotateLeft" size={15} color={t.sub}/>
+                    <span>Links</span>
+                  </button>
+                  <button onClick={() => dreheAlle(1)} disabled={drehLaeuft}
+                    title="90° im Uhrzeigersinn" aria-label="Nach rechts drehen"
+                    style={{ display: "flex", alignItems: "center", gap: 6, height: 36,
+                      padding: "0 12px", background: "transparent",
+                      border: `1px solid ${t.border}`, borderRadius: RAD.sm,
+                      cursor: drehLaeuft ? "default" : "pointer",
+                      opacity: drehLaeuft ? 0.5 : 1, color: t.text,
+                      fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit" }}>
+                    <I name="rotateRight" size={15} color={t.sub}/>
+                    <span>Rechts</span>
+                  </button>
+                </>
+              )}
+              {drehFortschritt && (
+                <span style={{ fontSize: FS.s, color: t.sub }}>{drehFortschritt}</span>
+              )}
+              <div style={{ flex: 1 }}/>
+              {onLoeschen && (
+                <button onClick={() => {
+                    if (!loeschConfirm) { setLoeschConfirm(true); return; }
+                    setLoeschConfirm(false);
+                    onLoeschen(fotos);
+                    onClose();
+                  }}
+                  title={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+                  aria-label={loeschConfirm ? "Wirklich löschen?" : "Löschen"}
+                  style={{ display: "flex", alignItems: "center", gap: 6, height: 36,
+                    padding: "0 12px",
+                    background: loeschConfirm ? "#EF4444" : "#EF444418",
+                    border: `1px solid ${loeschConfirm ? "#EF4444" : "#EF444455"}`,
+                    borderRadius: RAD.sm, cursor: "pointer",
+                    color: loeschConfirm ? "#FFFFFF" : "#EF4444",
+                    fontSize: FS.s, fontWeight: FW.bold, fontFamily: "inherit" }}>
+                  <I name="trash" size={15} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
+                  <span>{loeschConfirm ? "Wirklich?" : (mehrfach ? "Alle löschen" : "Löschen")}</span>
+                </button>
+              )}
+            </div>
+          )}
           <FotoFelderBlock ve={ve} t={t} accent={accent}
             album={album} setAlbum={setAlbum}
             eigenAlbum={eigenAlbum} setEigenAlbum={setEigenAlbum}
@@ -3236,7 +3322,10 @@ function FotoGalerie({ ve, fotos, t, accent, editMode = false, onAnsehen,
     const urls = {};
     if (gefiltert.length === 0) { setThumbUrls({}); return; }
     Promise.all(gefiltert.map(f =>
-      dateiBlobUrl(f.dateiRef).then(res => { if (res && res.url) urls[f.id] = res.url; })
+      // 14.36: thumbRef (300px) bevorzugen — deutlich schneller als das
+      // Vollbild. Fällt auf dateiRef zurück, wenn kein Thumbnail existiert
+      // (Altbestand oder nicht dekodierbares Format).
+      dateiBlobUrl(f.thumbRef || f.dateiRef).then(res => { if (res && res.url) urls[f.id] = res.url; })
     )).then(() => {
       if (aktiv) setThumbUrls(urls);
       else Object.keys(urls).forEach(k => { try { URL.revokeObjectURL(urls[k]); } catch (e) {} });
@@ -3579,14 +3668,40 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true,
   const fotosHinzu = (eintraege) => patch(fotos.concat(eintraege));
   const fotoLoeschen = (foto) => {
     dateiLoeschen(foto.dateiRef); // Blob asynchron weg; Eintrag sofort raus
+    if (foto.thumbRef) dateiLoeschen(foto.thumbRef); // 14.36: Thumbnail mit weg
     patch(fotos.filter(f => f.id !== foto.id));
     // Falls das Foto gerade im Viewer offen ist: Viewer schließen.
     setViewer(v => (v && v.liste[v.index] && v.liste[v.index].id === foto.id) ? null : v);
   };
+  // 14.36: EINZELNES Foto im Viewer drehen (Weg B — Pixel echt drehen). Dreht
+  // Original-Blob + erneuert das Thumbnail, dann Zwang zum Neuladen des Bildes
+  // (fotoNonce hochzählen → Viewer-Datei-id ändert sich scheinbar → useEffect
+  // lädt neu). Der Datensatz selbst bleibt gleich (dateiRef/thumbRef stabil).
+  const [fotoNonce, setFotoNonce] = useState(0);
+  const dreheFoto = (foto, richtung) => {
+    if (!foto) return Promise.resolve();
+    return fotoDrehen(foto.dateiRef, richtung).then(res => {
+      if (!res) return;
+      // Thumbnail neu aus dem gedrehten Blob — sonst zeigt die Liste alt.
+      return fotoThumbnailVonRef(foto.dateiRef).then(neuThumb => {
+        if (neuThumb && foto.thumbRef && neuThumb !== foto.thumbRef) {
+          dateiLoeschen(foto.thumbRef);
+        }
+        if (neuThumb) {
+          patch(fotos.map(f => f.id === foto.id
+            ? { ...f, thumbRef: neuThumb, groesse: res.groesse } : f));
+        } else {
+          patch(fotos.map(f => f.id === foto.id
+            ? { ...f, groesse: res.groesse } : f));
+        }
+        setFotoNonce(n => n + 1);
+      });
+    });
+  };
   // Auswahl-Aktionen der schwebenden Leiste (1..n Fotos, EIN setVes je Aktion).
   const fotosLoeschenViele = (liste) => {
     const ids = {};
-    (liste || []).forEach(f => { if (f) { ids[f.id] = true; dateiLoeschen(f.dateiRef); } });
+    (liste || []).forEach(f => { if (f) { ids[f.id] = true; dateiLoeschen(f.dateiRef); if (f.thumbRef) dateiLoeschen(f.thumbRef); } });
     patch(fotos.filter(f => !ids[f.id]));
     setViewer(v => (v && v.liste[v.index] && ids[v.liste[v.index].id]) ? null : v);
   };
@@ -3778,13 +3893,18 @@ function FotosAnsicht({ ve, setVes, t, accent, editMode = false, mitPlus = true,
       )}
       {bearbFotos && bearbFotos.length > 0 && (
         <FotoBearbeitenModal ve={ve} fotos={bearbFotos} t={t} accent={accent}
-          onClose={() => setBearbFotos(null)} onSave={fotosBearbeitenSpeichern}/>
+          onClose={() => setBearbFotos(null)} onSave={fotosBearbeitenSpeichern}
+          onDrehen={(foto, richtung) => dreheFoto(foto, richtung)}
+          onLoeschen={(liste) => fotosLoeschenViele(liste)}/>
       )}
       {viewerDatei && (
-        <DateiViewerModal t={t} accent={accent} datei={viewerDatei}
+        <DateiViewerModal key={viewerFoto.id + "_" + fotoNonce}
+          t={t} accent={accent} datei={viewerDatei}
           onClose={() => setViewer(null)}
           onZurueck={viewer.index > 0 ? () => blaettern(-1) : null}
-          onVor={viewer.index < viewer.liste.length - 1 ? () => blaettern(1) : null}/>
+          onVor={viewer.index < viewer.liste.length - 1 ? () => blaettern(1) : null}
+          onDrehen={(richtung) => dreheFoto(viewerFoto, richtung)}
+          onLoeschen={() => fotoLoeschen(viewerFoto)}/>
       )}
     </div>
   );
