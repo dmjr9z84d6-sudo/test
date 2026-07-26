@@ -249,12 +249,18 @@ function VorlagenFeld({ schritt, kategorieId = null, value, onChange, placeholde
 // Ohne Firma bleibt er „erfasst" (Entwurf); mit Firma wird direkt beauftragt.
 function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt = null, t, accent, onWelt, DatumFeld, onFertig }) {
   const vorlagenCtx = useVorlagen();
-  // Standard-Vorlage (26.07., Benny): Kontext „Auftrag erfassen" — vorbefüllt,
-  // frei überschreibbar; weitere Vorlagen über die Auswahl am Feld.
+  // Standard-Vorlage (26.07., Benny): gemeinsamer Kontext „Was ist Sache /
+  // Was ist zu tun" — vorbefüllt, frei überschreibbar; Auswahl am Feld.
   const [beschreibung, setBeschreibung] = useState(() => {
     const st = standardVorlage(vorlagenCtx, "auftrag_erfassen", kategorieId);
     return st ? (st.text || "") : "";
   });
+  // Umschalter (Benny 26.07., 3. Runde): in der AKTE ist „Beauftragen" der
+  // Normalfall — Firma Pflicht, Anschreiben-Kette läuft. „Nur erfassen"
+  // (Eigentümer kümmert sich selbst) blendet das Firma-Feld aus. Der
+  // Beschreibungs-Text bleibt beim Umschalten stehen — einmal sagen reicht.
+  const [modus, setModus] = useState("beauftragen");
+  const [firmaFehler, setFirmaFehler] = useState(false);
   const [firmaId, setFirmaId] = useState("");
   // §4.3: Ausführungsfrist-Default aus den Einstellungen — der am häufigsten
   // pro Fall überschriebene Wert, darum vorbelegt statt erzwungen.
@@ -265,20 +271,22 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt 
   const [abnahme, setAbnahme] = useState(kategorieHatPhase(kategorieId, "abnahme"));
   const legeAn = () => {
     if (!beschreibung.trim()) return;
+    if (modus === "beauftragen" && !firmaId) { setFirmaFehler(true); return; }
+    const wirdBeauftragt = modus === "beauftragen" ? firmaId : "";
     const d = { vorgang_id: vorgangId, beschreibung: beschreibung.trim(),
       abnahme_noetig: abnahme };
     onWelt((w) => {
       const a = neuerAuftrag(Object.assign({}, d,
         { nummer: auftragsNummerNeu(w, vorgangId) }));
       let neu = Object.assign({}, w, { auftraege: [...w.auftraege, a] });
-      if (firmaId) {
+      if (wirdBeauftragt) {
         neu = weltAuftragBeauftragen(neu, a.id,
-          { firma_kontakt_id: firmaId, frist: frist || null,
+          { firma_kontakt_id: wirdBeauftragt, frist: frist || null,
             nachfass_ab: fristMinusTage(frist, fristen.nachfass_vorlauf_tage) });
         // Beauftragung → Kommunikation (dokumentiert + hält nach)
         neu = logBeauftragung(neu, { vorgangId: vorgangId, nummer: a.nummer,
-          beschreibung: a.beschreibung, firmaId: firmaId,
-          firmaName: nameVon(firmen, firmaId), frist: frist || null,
+          beschreibung: a.beschreibung, firmaId: wirdBeauftragt,
+          firmaName: nameVon(firmen, wirdBeauftragt), frist: frist || null,
           vorlagen: vorlagen, rueckmeldungTage: fristen.rueckmeldung_tage });
       }
       return neu;
@@ -287,17 +295,30 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt 
   };
   return (
     <div style={flowZeileStil(t)}>
+      <SegmentControl t={t} accent={accent} value={modus}
+        onChange={(m) => { setModus(m); setFirmaFehler(false); }}
+        options={[{ id: "beauftragen", label: "Beauftragen" },
+          { id: "erfassen", label: "Nur erfassen" }]}/>
       <label style={feldLabelStil(t)}>Was ist zu tun?</label>
       <VorlagenFeld schritt="auftrag_erfassen" kategorieId={kategorieId}
         value={beschreibung} onChange={setBeschreibung}
         placeholder="z. B. Dach decken (abgegrenzter Leistungsteil)"
         t={t} accent={accent}/>
-      <KontaktPickerMitAllen value={firmaId || null}
-        onChange={(id) => setFirmaId(id || "")}
-        label="An wen (Firma) — leer = nur erfassen" t={t} accent={accent} nurFirmen
-        kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
-        kontakteAlle={pickerListe(firmen)}/>
-      {firmaId && DatumFeld ? (
+      {modus === "beauftragen" ? (
+        <KontaktPickerMitAllen value={firmaId || null}
+          onChange={(id) => { setFirmaId(id || ""); if (id) setFirmaFehler(false); }}
+          label="An wen (Firma) — Pflicht" t={t} accent={accent} nurFirmen
+          kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
+          kontakteAlle={pickerListe(firmen)}/>
+      ) : null}
+      {modus === "beauftragen" && firmaFehler ? (
+        <div style={{ fontSize: FS.xs, color: "#EF4444", marginTop: -4,
+          marginBottom: 6 }}>
+          Ohne Firma keine Beauftragung — bitte einen Empfänger wählen
+          (oder auf „Nur erfassen" wechseln).
+        </div>
+      ) : null}
+      {modus === "beauftragen" && DatumFeld ? (
         <DatumFeld t={t} accent={accent} label="Bis wann (Ausführungsfrist)"
           value={frist} onChange={setFrist} iso defaultHeute={false}/>
       ) : null}
@@ -311,7 +332,7 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt 
       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
         <button onClick={onFertig} style={flowKnopf(t, accent, false)}>Abbrechen</button>
         <button onClick={legeAn} style={flowKnopf(t, accent, true)}>
-          {firmaId ? "Beauftragen" : "Erfassen"}</button>
+          {modus === "beauftragen" ? "Beauftragen" : "Erfassen"}</button>
       </div>
     </div>
   );
@@ -1189,7 +1210,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   // Schalter „Symbole an Karten" (NeueKarteMenu). Unter dem Trenner folgen
   // die VORGANGS-AKTIONEN (aus dem Kopf hierher gewandert) mit Erklärung.
   const katalog = [
-    { id: "auftraege", iconName: "wrench", label: "Auftrag", sub: "An wen · was · bis wann" },
+    { id: "auftraege", iconName: "wrench", label: "Auftrag", sub: "Firma beauftragen — oder nur erfassen" },
     { id: "angebote", iconName: "document", label: "Angebot", sub: "Eigener Tab — anfragen oder erfassen" },
     { id: "aufgaben", iconName: "check", label: "Aufgabe", sub: "Delegieren + nachhalten" },
     { id: "rechnungen", iconName: "calc", label: "Rechnung", sub: "Eigener Tab — Betrag + Prüfung" },
