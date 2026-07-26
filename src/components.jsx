@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useContext, useMemo, createContext, Fragment } from "react";
 import {
-  ACCENT, FS, FW, KONTAKTE_FARBE, RAD, effColor, effKuerzel, getContrastColor,
+  ACCENT, FS, FW, KONTAKTE_FARBE, RAD, effColor, effKuerzel, getContrastColor, sichtbareFarbe,
   rolleEckPosition, rolleEckSichtbar, sortKontakte, toGrau, verwendungBadgeSichtbar,
   verwendungEckPosition, verwendungEckSichtbar
 } from "./constants.js";
@@ -191,11 +191,13 @@ function KopfAktionsLeiste({ t, accent, editMode, onEdit, onCancel, onConfirm,
           <button onClick={onDelete}
             title={loeschConfirm ? "Wirklich löschen?" : "Löschen"} aria-label="Löschen"
             style={{ ...rund, background: loeschConfirm ? "#EF4444" : accent }}>
-            <I name="trash" size={16} color={loeschConfirm ? "#FFFFFF" : "#EF4444"}/>
+            {/* sichtbareFarbe (26.07.): Rot fällt auf Kontrast zurück, wenn
+                der Accent selbst rot ist — systemweite Regel, constants.js */}
+            <I name="trash" size={16} color={loeschConfirm ? "#FFFFFF" : sichtbareFarbe("#EF4444", accent)}/>
           </button>
         ) : null}
         <button onClick={onCancel} title="Abbrechen — Änderungen verwerfen" aria-label="Abbrechen" style={rund}>
-          <I name="x" size={16} color="#EF4444"/>
+          <I name="x" size={16} color={sichtbareFarbe("#EF4444", accent)}/>
         </button>
         <button onClick={onConfirm} title="Fertig — Änderungen behalten" aria-label="Fertig" style={rund}>
           <I name="check" size={14} color="#FFFFFF"/>
@@ -231,7 +233,7 @@ function KopfIconButton({ icon, text = null, title, onClick, t, accent, gefahr =
   // Zwei-Stufen: confirm=true → rot gefüllt, weißes Icon (führt aus).
   if (gefahrVoll) {
     const bg = confirm ? "#EF4444" : accent;
-    const fg = confirm ? "#FFFFFF" : "#EF4444";
+    const fg = confirm ? "#FFFFFF" : sichtbareFarbe("#EF4444", accent); // 26.07.
     return (
       <button onClick={onClick} title={title} aria-label={title}
         style={Object.assign({ display: "flex", alignItems: "center", justifyContent: "center",

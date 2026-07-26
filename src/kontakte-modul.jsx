@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  ACCENT, FS, FW, RAD, kartenGridStyle, feldInput, getContrastColor, rolleBadgeSichtbar, sortKontakte
+  ACCENT, FS, FW, RAD, kartenGridStyle, feldInput, getContrastColor, rolleBadgeSichtbar, sichtbareFarbe, sortKontakte
 } from "./constants.js";
 import {
   datumDe, istEmailGueltig, istPlzGueltig, istTelefonGueltig, istUrlGueltig, joinPlzOrt, listeBreiteAus
@@ -221,6 +221,10 @@ function AktionsButton({ rolle, onClick, farbe, confirm = false, label = null,
   else { bg = ruheBg; border = ruheBorder; }
   if (istConfirm) iconFarbe = "#FFFFFF";
   else if (rolle === "bestaetigen") iconFarbe = getContrastColor(tint || accent);
+  // sichtbareFarbe (Benny 26.07., systemweit): rotes X/Papierkorb-Icon fällt
+  // auf Kontrast zurück, wenn der gefüllte Knopf (Accent/Theme) zu ähnlich
+  // ist — z. B. roter Accent im Bündel-Modus („Auswahl löschen").
+  iconFarbe = sichtbareFarbe(iconFarbe, bg);
   const iconSize = Math.round(size * 0.39);
   return (
     <button onClick={onClick} disabled={disabled} title={title}

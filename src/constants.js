@@ -134,7 +134,7 @@ export function feldLabel(t, opts) {
 
 // Version-Stempel — wird unter dem Logo als kleine Subline angezeigt.
 // Bei jedem Build auch in index.html (Title, Lade-Indikator, ?v=) mitziehen.
-export const APP_VERSION = "14.43";
+export const APP_VERSION = "14.44";
 export const FIRMEN_FARBE   = KONTAKTE_FARBE; // identisch — Unterscheidung erfolgt über Avatar-Form + Inhalt
 
 // ── Handlungs-Ampel-Farbtöne (§96) ───────────────────────────────────────────
@@ -202,6 +202,25 @@ export function getContrastColor(hex) {
   } catch (e) {
     return "#FFFFFF";
   }
+}
+
+// ── sichtbareFarbe — SYSTEMWEITER Sichtbarkeits-Rückfall (Benny 26.07.) ─────
+// Problem: Semantik-Farben (z. B. Gefahr-Rot #EF4444) verschwinden, wenn der
+// Hintergrund zufällig ähnlich ist (roter Accent → roter Papierkorb auf rotem
+// Knopf). Diese Funktion prüft das WCAG-Kontrastverhältnis zwischen
+// Wunschfarbe und Hintergrund; reicht es nicht (Standard min 2.0), fällt sie
+// auf getContrastColor(hintergrund) zurück (Weiß/Schwarz — immer lesbar).
+// REGEL: Überall wo ein farbiges Icon/Text auf einer GEFÜLLTEN Fläche sitzt,
+// die Farbe durch sichtbareFarbe(wunsch, flaechenFarbe) schicken — nicht die
+// Wunschfarbe direkt. Nicht-Hex-Hintergründe ("transparent", Theme-Sonderfälle)
+// lassen den Wunsch unverändert (keine Aussage möglich).
+export function sichtbareFarbe(wunsch, hintergrund, min = 2) {
+  if (!wunsch || wunsch[0] !== "#" || wunsch.length < 7) return wunsch;
+  if (!hintergrund || hintergrund[0] !== "#" || hintergrund.length < 7) return wunsch;
+  const lw = relLuminanz(wunsch);
+  const lh = relLuminanz(hintergrund);
+  const verhaeltnis = (Math.max(lw, lh) + 0.05) / (Math.min(lw, lh) + 0.05);
+  return verhaeltnis >= min ? wunsch : getContrastColor(hintergrund);
 }
 
 // ── relLuminanz: WCAG-relative Luminance einer Hex-Farbe (0=schwarz, 1=weiß).
