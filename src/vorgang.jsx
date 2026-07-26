@@ -3471,7 +3471,7 @@ function VorgangBearbeitenOverlay({ vorgang, welt, ve, kontakte, t, accent, onWe
 }
 
 function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
-  onErfasseAuftrag, Inp, kontakteAlle = [], objektWahl = null }) {
+  onErfasseAuftrag, Inp, kontakteAlle = [], objektWahl = null, DatumFeld = null }) {
   const kontakteObjektOv = useObjektKontakte(kontakteAlle, ve);
   const [raumId, setRaumId] = useState("");
   const [modus, setModus] = useState("vorgang"); // "vorgang" | "auftrag"
@@ -3484,6 +3484,16 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   const [titel, setTitel] = useState("");
   const [kategorie, setKategorie] = useState("instandhaltung");
   const [notiz, setNotiz] = useState("");
+  // Direkt beauftragen (Benny 26.07.): Haken gibt die Beauftragungs-Felder
+  // frei — Vorgang + Auftrag + Vergabe in EINEM Rutsch. „Was ist zu tun"
+  // leer = Titel („Was ist Sache") wird übernommen (nichts doppelt sagen).
+  const fristenOv = useFristen();
+  const [direktBeauftragen, setDirektBeauftragen] = useState(false);
+  const [dbBeschreibung, setDbBeschreibung] = useState("");
+  const [dbFirmaId, setDbFirmaId] = useState("");
+  const [dbFirmaFehler, setDbFirmaFehler] = useState(false);
+  const [dbFrist, setDbFrist] = useState(isoInTagen(fristenOv.ausfuehrung_tage));
+  const [dbAbnahme, setDbAbnahme] = useState(true);
   // Auftrag-Felder + Begehungszähler (Begehung 18.07.: + Wo genau, Notizen,
   // Fotos direkt bei der Aufnahme — Fotos landen in der Foto-Zentrale des
   // Objekts, am Punkt hängen nur Referenzen).
@@ -3520,11 +3530,17 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
 
   const legeVorgangAn = () => {
     if (!titel.trim()) { setFehler(true); return; }
+    if (direktBeauftragen && !dbFirmaId) { setDbFirmaFehler(true); return; }
     onAnlegenVorgang({
       titel: titel.trim(), kategorie: kategorie,
       einheit_id: einheitId || null, raum_id: raumId || null,
       notiz: notiz.trim(),
       melder_kontakt_id: melderId || null,
+      auftrag: direktBeauftragen ? {
+        beschreibung: (dbBeschreibung.trim() || titel.trim()),
+        firma_kontakt_id: dbFirmaId, frist: dbFrist || null,
+        abnahme_noetig: dbAbnahme,
+      } : null,
     });
     onClose();
   };
@@ -3630,10 +3646,63 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                 rows={3} placeholder="Erste Notiz in die Akte"
                 style={Object.assign({}, selectStil(t, accent, !!notiz),
                   { resize: "vertical", minHeight: 60 })}/>
+              {/* Direkt beauftragen (Benny 26.07.): Haken → Beauftragungs-
+                  Felder klappen auf; „Anlegen" macht Vorgang + Auftrag +
+                  Vergabe (inkl. Anschreiben in die Kommunikation) in EINEM
+                  Rutsch. Kette in allesda_merged (onAnlegenVorgang). */}
+              <label style={{ display: "flex", alignItems: "center", gap: 8,
+                fontSize: FS.s, color: t.text, cursor: "pointer",
+                margin: "4px 0 8px" }}>
+                <input type="checkbox" checked={direktBeauftragen}
+                  onChange={(e) => {
+                    setDirektBeauftragen(e.target.checked);
+                    setDbFirmaFehler(false);
+                    if (e.target.checked) {
+                      setDbAbnahme(kategorieHatPhase(kategorie, "abnahme"));
+                    }
+                  }}
+                  style={{ width: 18, height: 18 }}/>
+                Auftrag direkt vergeben
+              </label>
+              {direktBeauftragen ? (
+                <div style={{ border: "1px solid " + accent + "40",
+                  borderRadius: RAD.md, padding: "10px 12px", marginBottom: 8 }}>
+                  <label style={feldLabelStil(t)}>Was ist zu tun? (leer = wie „Was ist Sache")</label>
+                  <VorlagenFeld schritt="auftrag_erfassen" kategorieId={kategorie}
+                    value={dbBeschreibung} onChange={setDbBeschreibung}
+                    placeholder={titel.trim() || "z. B. Meldung prüfen und instandsetzen"}
+                    t={t} accent={accent}/>
+                  <div style={{ height: 8 }}/>
+                  <KontaktPickerMitAllen value={dbFirmaId || null}
+                    onChange={(id) => { setDbFirmaId(id || ""); if (id) setDbFirmaFehler(false); }}
+                    label="An wen (Firma) — Pflicht" t={t} accent={accent} nurFirmen
+                    kontakteObjekt={kontakteObjektOv ? pickerListe(kontakteObjektOv) : null}
+                    kontakteAlle={pickerListe((kontakteAlle || []).filter((k) => k && k.typ === "firma"))}/>
+                  {dbFirmaFehler ? (
+                    <div style={{ fontSize: FS.xs, color: "#EF4444",
+                      margin: "2px 0 6px" }}>
+                      Ohne Firma keine Beauftragung — bitte einen Empfänger
+                      wählen (oder den Haken entfernen).
+                    </div>
+                  ) : null}
+                  {DatumFeld ? (
+                    <DatumFeld t={t} accent={accent} label="Bis wann (Ausführungsfrist)"
+                      value={dbFrist} onChange={setDbFrist} iso defaultHeute={false}/>
+                  ) : null}
+                  <label style={{ display: "flex", alignItems: "center", gap: 8,
+                    fontSize: FS.s, color: t.text, cursor: "pointer", marginTop: 4 }}>
+                    <input type="checkbox" checked={dbAbnahme}
+                      onChange={(e) => setDbAbnahme(e.target.checked)}
+                      style={{ width: 18, height: 18 }}/>
+                    Abnahme erforderlich
+                  </label>
+                </div>
+              ) : null}
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end",
                 marginTop: 4 }}>
                 <button onClick={onClose} style={knopfStil(accent, false, t)}>Abbrechen</button>
-                <button onClick={legeVorgangAn} style={knopfStil(accent, true, t)}>Anlegen</button>
+                <button onClick={legeVorgangAn} style={knopfStil(accent, true, t)}>
+                  {direktBeauftragen ? "Anlegen + beauftragen" : "Anlegen"}</button>
               </div>
             </div>
           ) : (
@@ -3877,6 +3946,7 @@ export {
   VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma,
   vorgangAnzahlFuerObjekt,
   SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay, AuftragFlowAktionen,
+  logBeauftragung, fristMinusTage, nameVon,
   TimelineBereich, DemoHinweis,
   VORGANG_STATUS_LABEL, AUFTRAG_STATUS_LABEL,
 };

@@ -219,14 +219,14 @@ import {
   neuerVorgang, vorgangsNummerNeu,
   neueBeteiligung,
   neueNachricht,
-  neuerAuftrag,
+  neuerAuftrag, auftragsNummerNeu, weltAuftragBeauftragen,
   weltAuftragFotoRefs, weltAuftragFotoRefEntfernen
 } from "./datenmodell.js";
 
 import {
   VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma, VorgangDetail, vorgangAnzahlFuerObjekt,
   SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay,
-  TimelineBereich, DemoHinweis
+  TimelineBereich, DemoHinweis, logBeauftragung, fristMinusTage, nameVon
 } from "./vorgang.jsx";
 
 import { EtvBereichFuerObjekt, VersammlungNeuOverlay } from "./etv.jsx";
@@ -3427,7 +3427,7 @@ export default function App() {
           // setzt zugleich die Objekt-Sicht (Akte hinter dem Dialog).
           const auftragNeuOverlay = auftragNeuOffen ? (
             <VorgangNeuOverlay ve={anlegenVe} t={t} accent={aAccent}
-              Inp={Inp} kontakteAlle={kontakteSichtbar}
+              Inp={Inp} DatumFeld={DatumFeld} kontakteAlle={kontakteSichtbar}
               objektWahl={{ ves: vesSichtbar, aktivId: auftragViewVEId,
                 onWaehle: (id) => {
                   setAuftragView("objekt");
@@ -3455,11 +3455,39 @@ export default function App() {
                       von_kontakt_id: d.melder_kontakt_id || null,
                       inhalt: d.notiz })
                   : null;
-                setVorgangsWelt(prev => ({ ...prev,
-                  vorgaenge: [...prev.vorgaenge, v],
-                  beteiligungen: [...prev.beteiligungen, ...bets],
-                  nachrichten: nachricht ? [...prev.nachrichten, nachricht] : prev.nachrichten,
-                }));
+                setVorgangsWelt(prev => {
+                  let neu = { ...prev,
+                    vorgaenge: [...prev.vorgaenge, v],
+                    beteiligungen: [...prev.beteiligungen, ...bets],
+                    nachrichten: nachricht ? [...prev.nachrichten, nachricht] : prev.nachrichten,
+                  };
+                  // Direkt beauftragen (Benny 26.07.): Auftrag anlegen + sofort
+                  // vergeben — exakt die Kette des Akte-Formulars (Nummer,
+                  // Status, Fristen, Anschreiben → ausgehende Kommunikation).
+                  if (d.auftrag && d.auftrag.firma_kontakt_id) {
+                    const fr = Object.assign({ nachfass_vorlauf_tage: 7,
+                      rueckmeldung_tage: 3 }, settings.fristen || {});
+                    const a = neuerAuftrag({ vorgang_id: v.id,
+                      beschreibung: d.auftrag.beschreibung,
+                      abnahme_noetig: !!d.auftrag.abnahme_noetig,
+                      nummer: auftragsNummerNeu(neu, v.id) });
+                    neu = { ...neu, auftraege: [...neu.auftraege, a] };
+                    neu = weltAuftragBeauftragen(neu, a.id, {
+                      firma_kontakt_id: d.auftrag.firma_kontakt_id,
+                      frist: d.auftrag.frist || null,
+                      nachfass_ab: fristMinusTage(d.auftrag.frist, fr.nachfass_vorlauf_tage) });
+                    neu = logBeauftragung(neu, { vorgangId: v.id,
+                      nummer: a.nummer, beschreibung: a.beschreibung,
+                      firmaId: d.auftrag.firma_kontakt_id,
+                      firmaName: nameVon(kontakteSichtbar, d.auftrag.firma_kontakt_id),
+                      frist: d.auftrag.frist || null,
+                      vorlagen: (Array.isArray(settings.vorgangsVorlagen)
+                        && settings.vorgangsVorlagen.length > 0)
+                        ? settings.vorgangsVorlagen : DEFAULT_SETTINGS.vorgangsVorlagen,
+                      rueckmeldungTage: fr.rueckmeldung_tage });
+                  }
+                  return neu;
+                });
               }}
               onErfasseAuftrag={(d) => {
                 const a = neuerAuftrag({ objekt_id: anlegenVe.id,
