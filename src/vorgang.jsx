@@ -667,6 +667,18 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
   const rolleToggle = (kontaktId, rolleId) => {
     const hat = aktiveRollenVon(kontaktId)[rolleId];
     if (hat) { beende(hat); return; }
+    // Reaktivieren statt stapeln (26.07.): gab es die Rolle schon (beendet),
+    // wird DIESELBE Beteiligung wieder aktiv — keine Duplikat-Karten.
+    const fruehere = beteiligungen.filter((b) => b.vorgang_id === vorgang.id
+      && b.kontakt_id === kontaktId && b.rolle === rolleId
+      && b.status === "beendet")[0];
+    if (fruehere) {
+      onWelt((w) => Object.assign({}, w, {
+        beteiligungen: w.beteiligungen.map((x) => x.id === fruehere.id
+          ? Object.assign({}, x, { status: "aktiv", bis: null }) : x),
+      }));
+      return;
+    }
     onWelt((w) => Object.assign({}, w, {
       beteiligungen: [...w.beteiligungen, neueBeteiligung({
         vorgang_id: vorgang.id, kontakt_id: kontaktId, rolle: rolleId })],
@@ -801,12 +813,34 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
   // Rollen-Gruppen wie im Objekt-Kontakte-Tab: Kopf mit Icon · Label · Zähler,
   // beendete Beteiligungen grau in ihrer Gruppe (Akte vergisst nichts).
   // „Ausführender" zeigt zusätzlich die abgeleiteten Auftragsfirmen.
-  const gruppen = BETEILIGUNG_ROLLEN.map((r) => ({
-    rolle: r,
-    aktive: aktive.filter((b) => b.rolle === r.id),
-    beendete: beendete.filter((b) => b.rolle === r.id),
-    abgeleitet: r.id === "ausfuehrender" ? ausfAbgeleitet : [],
-  })).filter((g) => g.aktive.length + g.beendete.length + g.abgeleitet.length > 0);
+  // Dedupe (Benny 26.07., 2. Runde): JEDE PERSON MAX. EINMAL pro Gruppe —
+  // mehrfaches An-/Abhaken darf keine Karten-Stapel erzeugen. Aktiv gewinnt;
+  // gibt es nur Beendete, zählt die jüngste (spätestes „bis").
+  const dedupe = (liste) => {
+    const map = {};
+    liste.forEach((b) => {
+      const key = b.kontakt_id == null ? "verwaltung" : String(b.kontakt_id);
+      const alt2 = map[key];
+      if (!alt2) { map[key] = b; return; }
+      const altBeendet = alt2.status === "beendet";
+      const neuBeendet = b.status === "beendet";
+      if (altBeendet && !neuBeendet) { map[key] = b; return; }
+      if (altBeendet === neuBeendet
+        && String(b.bis || b.von || "") > String(alt2.bis || alt2.von || "")) {
+        map[key] = b;
+      }
+    });
+    return Object.keys(map).map((k) => map[k]);
+  };
+  const gruppen = BETEILIGUNG_ROLLEN.map((r) => {
+    const alleRolle = dedupe(beteiligungen.filter((b) => b.rolle === r.id));
+    return {
+      rolle: r,
+      aktive: alleRolle.filter((b) => b.status !== "beendet"),
+      beendete: alleRolle.filter((b) => b.status === "beendet"),
+      abgeleitet: r.id === "ausfuehrender" ? ausfAbgeleitet : [],
+    };
+  }).filter((g) => g.aktive.length + g.beendete.length + g.abgeleitet.length > 0);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {gruppen.map((g) => (
