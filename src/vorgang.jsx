@@ -1835,6 +1835,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const [buendelIds, setBuendelIds] = useState([]);
   const [buendelZiel, setBuendelZiel] = useState(null); // null | "neu" | "bestehend"
   const [buendelTitel, setBuendelTitel] = useState("");
+  const [buendelTitelFehler, setBuendelTitelFehler] = useState(false); // 26.07.
   const [buendelKategorie, setBuendelKategorie] = useState("bewirtschaftung");
   const [buendelVorgangId, setBuendelVorgangId] = useState("");
   const [buendelFirmaId, setBuendelFirmaId] = useState("");   // Direkt beauftragen (18.07.)
@@ -1880,7 +1881,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
     // beauftragt (status, Datum, Firma) — z. B. drei Punkte an den Hausmeister.
     const beauftragen = buendelFirmaId ? { firma_kontakt_id: buendelFirmaId } : null;
     if (buendelZiel === "neu") {
-      if (!buendelTitel.trim()) return;
+      if (!buendelTitel.trim()) { setBuendelTitelFehler(true); return; }
       onWelt((w) => weltAuftraegeBuendeln(w, buendelIds,
         { neu: { titel: buendelTitel.trim(), kategorie: buendelKategorie, objekt_id: veId },
           beauftragen }));
@@ -1984,10 +1985,17 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
           </div>
           {buendelZiel === "neu" ? (
             <div>
-              <input value={buendelTitel}
-                onChange={(e) => setBuendelTitel(e.target.value)}
+              {/* Titel des NEUEN Vorgangs (Benny 26.07.: Feld war ohne Label
+                  unverständlich) — Inp-Baustein §76 mit Pflicht-Stern; bei
+                  leerem Titel blockte buendle() bisher STILL, jetzt mit
+                  rotem Rand + Hinweis. Wortlaut wie überall: „Was ist Sache?" */}
+              <Inp t={t} accent={accent} label="Was ist Sache?" required
+                value={buendelTitel} onChange={(v) => {
+                  setBuendelTitel(v); if (v.trim()) setBuendelTitelFehler(false); }}
                 placeholder={"z. B. Hausmeister-Rundgang"}
-                style={selectStil(t, accent, !!buendelTitel)}/>
+                invalid={buendelTitelFehler}
+                hinweis={buendelTitelFehler
+                  ? "Bitte einen Titel für den neuen Vorgang vergeben." : ""}/>
               <KategorieWahl value={buendelKategorie}
                 onChange={setBuendelKategorie} t={t} accent={accent}/>
               {/* Direkt beauftragen (Benny 18.07./19.07.): Firma über den
