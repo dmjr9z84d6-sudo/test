@@ -2185,12 +2185,25 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
             {onWelt && buendelModus ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-                  disabled={buendelIds.length === 0} icon={false}
-                  onClick={() => { setLoeschAlleConfirm(false); setBuendelZiel("neu"); }}
+                  umriss disabled={buendelIds.length === 0} icon={false}
+                  onClick={() => {
+                    setLoeschAlleConfirm(false); setBuendelZiel("neu");
+                    // Vorbefüllung (Benny 26.07.): 1 Punkt = dessen Sache,
+                    // mehrere = zusammengeführt — nichts doppelt eintippen.
+                    // Bereits Getipptes wird nie überschrieben.
+                    if (!buendelTitel.trim()) {
+                      const texte = lose.filter((a) => buendelIds.indexOf(a.id) >= 0)
+                        .map((a) => (a.beschreibung || "").trim()).filter((x) => x);
+                      if (texte.length > 0) {
+                        setBuendelTitel(texte.join(" · "));
+                        setBuendelTitelFehler(false);
+                      }
+                    }
+                  }}
                   text={"Beauftragen (" + buendelIds.length + ")"}/>
                 {offeneVorgaenge.length > 0 ? (
                   <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-                    disabled={buendelIds.length === 0} icon={false}
+                    umriss disabled={buendelIds.length === 0} icon={false}
                     onClick={() => { setLoeschAlleConfirm(false); setBuendelZiel("bestehend"); }}
                     text={"+ zum Vorgang (" + buendelIds.length + ")"}/>
                 ) : null}

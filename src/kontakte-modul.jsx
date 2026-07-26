@@ -165,7 +165,7 @@ const AKTION_FARBEN = {
 };
 function AktionsButton({ rolle, onClick, farbe, confirm = false, label = null,
   disabled = false, size = 36, title, t, accent,
-  variante = "rund", text = null, icon = true, flex = null }) {
+  variante = "rund", text = null, icon = true, flex = null, umriss = false }) {
   const def = AKTION_FARBEN[rolle] || AKTION_FARBEN.abbrechen;
   const tint = farbe || accent;
   const istConfirm = confirm && def.confirmBg;
@@ -176,9 +176,17 @@ function AktionsButton({ rolle, onClick, farbe, confirm = false, label = null,
     let bg, border, farbeTxt;
     if (rolle === "bestaetigen") {
       const aktiv = !disabled;
-      bg = aktiv ? (tint || accent) : t.muted;
-      border = "none";
-      farbeTxt = getContrastColor(aktiv ? (tint || accent) : t.muted);
+      if (umriss) {
+        // umriss (Benny 26.07.): Rand + Schrift in Accent, kein Vollton —
+        // ruhigere Zweit-Ebene neben den runden Icon-Buttons (Bündel-Kopf).
+        bg = "transparent";
+        border = `1px solid ${aktiv ? (tint || accent) : t.border}`;
+        farbeTxt = aktiv ? (tint || accent) : t.muted;
+      } else {
+        bg = aktiv ? (tint || accent) : t.muted;
+        border = "none";
+        farbeTxt = getContrastColor(aktiv ? (tint || accent) : t.muted);
+      }
     } else if (rolle === "loeschen") {
       bg = istConfirm ? "#EF4444" : "transparent";
       border = `1px solid ${istConfirm ? "#EF4444" : "#EF444455"}`;
