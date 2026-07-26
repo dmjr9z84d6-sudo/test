@@ -592,7 +592,7 @@ function baueVerlauf(vorgang, welt, kontakte) {
 function findeHausverwaltung(liste) {
   return (liste || []).filter(istHausverwaltung)[0] || null;
 }
-function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, kontakteObjekt = null, ve = null, t, accent, kannFlows, onWelt, onInformieren }) {
+function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, kontakteObjekt = null, ve = null, t, accent, kannFlows, kopfEdit = false, onWelt, onInformieren }) {
   const [formOffen, setFormOffen] = useState(false);
   const [kontaktId, setKontaktId] = useState("");
   const [rolle, setRolle] = useState("betroffener");
@@ -643,6 +643,48 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
         ? Object.assign({}, x, { status: "beendet", bis: isoHeute() }) : x),
     }));
   };
+  // Rollen per Haken (Benny 26.07.): im Bearbeiten-Modus trägt die Zeile über
+  // jeder Personen-Karte Rollen-Chips. Anhaken = zusätzliche Beteiligung
+  // derselben Person (z. B. Melder + Prüfer, Eigentümer → Mitinformiert);
+  // Abhaken = BEENDEN („bis heute", Akte vergisst nichts — Bennys Wahl).
+  // Fallführer (eiserne Regel) und Ausführender (aus Aufträgen abgeleitet)
+  // sind keine Haken-Rollen.
+  const HAKEN_ROLLEN = BETEILIGUNG_ROLLEN.filter((r) =>
+    r.id !== "fallfuehrer" && r.id !== "ausfuehrender");
+  const aktiveRollenVon = (kontaktId) => {
+    const map = {};
+    aktive.forEach((b) => { if (b.kontakt_id === kontaktId) map[b.rolle] = b; });
+    return map;
+  };
+  const rolleToggle = (kontaktId, rolleId) => {
+    const hat = aktiveRollenVon(kontaktId)[rolleId];
+    if (hat) { beende(hat); return; }
+    onWelt((w) => Object.assign({}, w, {
+      beteiligungen: [...w.beteiligungen, neueBeteiligung({
+        vorgang_id: vorgang.id, kontakt_id: kontaktId, rolle: rolleId })],
+    }));
+  };
+  const rollenChips = (kontaktId) => (
+    <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
+      {HAKEN_ROLLEN.map((r) => {
+        const an = !!aktiveRollenVon(kontaktId)[r.id];
+        return (
+          <button key={r.id} type="button"
+            onClick={(e) => { e.stopPropagation(); rolleToggle(kontaktId, r.id); }}
+            title={an ? (r.label + " beenden") : (r.label + " hinzufügen")}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4,
+              padding: "2px 8px", borderRadius: RAD.pill,
+              border: "1px solid " + (an ? accent : t.border),
+              background: an ? accent + "18" : "transparent",
+              color: an ? accent : t.muted, fontSize: FS.xxs,
+              fontWeight: FW.bold, cursor: "pointer", fontFamily: "inherit" }}>
+            {an ? <I name="check" size={9}/> : null}
+            {r.label}
+          </button>
+        );
+      })}
+    </span>
+  );
   // Beteiligungs-Zeile im Objekt-Kontakte-Muster: kleine KontaktZeile,
   // Klick klappt die echte KontaktDetailKarte auf (derselbe Baustein wie im
   // Objekt-Kontakte-Tab — direkter Griff zu Telefon & Co.).
@@ -650,9 +692,17 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
     const k = b.kontakt_id ? (kontakte || []).filter((x) => x && x.id === b.kontakt_id)[0] : null;
     const seitBis = beendet && b.bis ? "bis " + datumDe(b.bis)
       : (b.von ? "seit " + datumDe(b.von) : "");
+    // Info-Zeile ÜBER der Karte (Benny 26.07.): nichts steht mehr hinter der
+    // Karte — alle Karten enden bündig. Links Rollen-Chips (nur im
+    // Bearbeiten-Modus, nur echte Kontakte), rechts seit/bis + Beenden.
     const rechts = (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        <span style={{ fontSize: FS.xs, color: t.muted, whiteSpace: "nowrap" }}>{seitBis}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+        margin: "0 2px 4px", minHeight: 18 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {kopfEdit && kannFlows && b.kontakt_id ? rollenChips(b.kontakt_id) : null}
+        </div>
+        <span style={{ fontSize: FS.xs, color: t.muted, whiteSpace: "nowrap",
+          flexShrink: 0 }}>{seitBis}</span>
         {kannFlows && !beendet && b.rolle !== "fallfuehrer" ? (
           <button onClick={(e) => { e.stopPropagation(); beende(b); }}
             style={flowKnopf(t, accent, false)}>Beenden</button>
@@ -666,38 +716,33 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
     const kEff = k || findeHausverwaltung(kontakteObjekt) || findeHausverwaltung(kontakte);
     if (!kEff) {
       return (
-        <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10,
-          padding: "6px 2px", opacity: beendet ? 0.6 : 1 }}>
-          <Avatar name="die Verwaltung" size={30} accent={accent}/>
-          <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text }}>
-            die Verwaltung</div>
+        <div key={b.id} style={{ opacity: beendet ? 0.6 : 1 }}>
           {rechts}
+          <div style={{ display: "flex", alignItems: "center", gap: 10,
+            padding: "6px 2px" }}>
+            <Avatar name="die Verwaltung" size={30} accent={accent}/>
+            <div style={{ flex: 1, minWidth: 0, fontSize: FS.s, color: t.text }}>
+              die Verwaltung</div>
+          </div>
         </div>
       );
     }
     const k2 = kEff;
     const offen = offenerKontakt === b.id;
     return (
-      <div key={b.id} style={{ opacity: beendet ? 0.6 : 1 }}>
+      <div key={b.id} style={{ opacity: beendet ? 0.6 : 1, marginTop: 4 }}>
+        {rechts}
         {offen ? (
-          <div style={{ margin: "6px 0 10px" }}>
+          <div style={{ margin: "0 0 10px" }}>
             <KontaktDetailKarte k={k2} t={t} accent={accent}
               kategorieFarbe={accent} ves={ve ? [ve] : []} kontakte={kontakte}
               setKontakte={null} embedded
               onKopfClick={() => setOffenerKontakt(null)}/>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
-              {rechts}
-            </div>
           </div>
         ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <KontaktZeile k={k2} ve={ve} t={t} accent={accent}
-                highlightAccent={accent} isActive={false}
-                onClick={() => setOffenerKontakt(b.id)}/>
-            </div>
-            {rechts}
-          </div>
+          <KontaktZeile k={k2} ve={ve} t={t} accent={accent}
+            highlightAccent={accent} isActive={false}
+            onClick={() => setOffenerKontakt(b.id)}/>
         )}
       </div>
     );
@@ -1739,7 +1784,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
           <BeteiligtenBlock vorgang={vorgang} beteiligungen={beteiligungen}
             auftraege={auftraege}
             kontakte={kontakte} kontakteObjekt={kontakteObjekt} ve={ve}
-            t={t} accent={accent} kannFlows={kannFlows}
+            t={t} accent={accent} kannFlows={kannFlows} kopfEdit={kopfEdit}
             onWelt={onWelt}
             onInformieren={(kid) => {
               setInformierenKontakt(kid);
@@ -3510,8 +3555,9 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   const [erfasstZahl, setErfasstZahl] = useState(0);
   const [fehler, setFehler] = useState(false);
 
+  const [vorgangFotos, setVorgangFotos] = useState([]);   // Fotos zur Meldung (26.07.)
   const [fotoHeicHinweis, setFotoHeicHinweis] = useState(false);
-  const fotosWaehlen = () => {
+  const fotosWaehlen = (zielSetter) => {
     const input = document.createElement("input");
     input.type = "file"; input.accept = "image/*"; input.multiple = true;
     input.style.display = "none";
@@ -3524,7 +3570,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
       // Thumbnails (Lehre 18.07.).
       const ok = fl.filter((f) => !istHeicDatei(f));
       setFotoHeicHinweis(ok.length < fl.length);
-      if (ok.length) setAuftragFotos((alt) => [...alt, ...ok]);
+      if (ok.length) zielSetter((alt) => [...alt, ...ok]);
     };
     document.body.appendChild(input);
     input.click();
@@ -3541,6 +3587,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
       einheit_id: einheitId || null, raum_id: raumId || null,
       notiz: notiz.trim(),
       melder_kontakt_id: melderId || null,
+      fotos: vorgangFotos,
       auftrag: direktBeauftragen ? {
         beschreibung: dbBeschreibung.trim(),
         firma_kontakt_id: dbFirmaId, frist: dbFrist || null,
@@ -3651,6 +3698,31 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                 rows={3} placeholder="Erste Notiz in die Akte"
                 style={Object.assign({}, selectStil(t, accent, !!notiz),
                   { resize: "vertical", minHeight: 60 })}/>
+              {/* Fotos zur Meldung (Benny 26.07.): gleicher Weg wie beim
+                  Erfassen — landen in der Foto-Zentrale des Objekts (mit
+                  Einheit-/Raum-Bezug); bei Direkt-Vergabe zusätzlich als
+                  Referenz am Auftrag (AuftragFotoLeiste in der Akte). */}
+              <label style={feldLabelStil(t)}>Fotos (optional)</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                {vorgangFotos.map((f, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center",
+                    gap: 6, fontSize: FS.s, color: t.text, background: t.card,
+                    border: "1px solid " + t.border, borderRadius: RAD.pill,
+                    padding: "4px 10px", maxWidth: "100%" }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis",
+                      whiteSpace: "nowrap", maxWidth: 160 }}>{f.name || "Foto"}</span>
+                    <span onClick={() => setVorgangFotos(vorgangFotos.filter((_, j) => j !== i))}
+                      style={{ cursor: "pointer", color: "#EF4444", fontWeight: FW.bold }}>×</span>
+                  </span>
+                ))}
+                <button onClick={() => fotosWaehlen(setVorgangFotos)}
+                  style={knopfStil(accent, false, t)}>+ Foto</button>
+              </div>
+              {fotoHeicHinweis ? (
+                <div style={{ fontSize: FS.xs, color: t.muted, marginTop: -4, marginBottom: 8 }}>
+                  HEIC-Bilder kann der Browser nicht anzeigen — bitte als JPEG aufnehmen/teilen (§93.10).
+                </div>
+              ) : null}
               {/* Direkt beauftragen (Benny 26.07.): Haken → Beauftragungs-
                   Felder klappen auf; „Anlegen" macht Vorgang + Auftrag +
                   Vergabe (inkl. Anschreiben in die Kommunikation) in EINEM
@@ -3750,8 +3822,8 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                       style={{ cursor: "pointer", color: "#EF4444", fontWeight: FW.bold }}>×</span>
                   </span>
                 ))}
-                <button onClick={fotosWaehlen} style={knopfStil(accent, false, t)}>
-                  + Foto</button>
+                <button onClick={() => fotosWaehlen(setAuftragFotos)}
+                  style={knopfStil(accent, false, t)}>+ Foto</button>
               </div>
               {fotoHeicHinweis ? (
                 <div style={{ fontSize: FS.xs, color: t.muted, marginTop: -4, marginBottom: 8 }}>

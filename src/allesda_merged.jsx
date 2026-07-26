@@ -3455,29 +3455,32 @@ export default function App() {
                       von_kontakt_id: d.melder_kontakt_id || null,
                       inhalt: d.notiz })
                   : null;
+                // Direkt beauftragen (Benny 26.07.): Auftrag VOR dem Setter
+                // anlegen — seine ID braucht auch die (asynchrone) Foto-Kette.
+                const direktAuftrag = (d.auftrag && d.auftrag.firma_kontakt_id)
+                  ? neuerAuftrag({ vorgang_id: v.id,
+                      beschreibung: d.auftrag.beschreibung,
+                      abnahme_noetig: !!d.auftrag.abnahme_noetig,
+                      nummer: auftragsNummerNeu(vorgangsWelt, v.id) })
+                  : null;
                 setVorgangsWelt(prev => {
                   let neu = { ...prev,
                     vorgaenge: [...prev.vorgaenge, v],
                     beteiligungen: [...prev.beteiligungen, ...bets],
                     nachrichten: nachricht ? [...prev.nachrichten, nachricht] : prev.nachrichten,
                   };
-                  // Direkt beauftragen (Benny 26.07.): Auftrag anlegen + sofort
-                  // vergeben — exakt die Kette des Akte-Formulars (Nummer,
-                  // Status, Fristen, Anschreiben → ausgehende Kommunikation).
-                  if (d.auftrag && d.auftrag.firma_kontakt_id) {
+                  // Vergabe-Kette wie im Akte-Formular (Nummer, Status,
+                  // Fristen, Anschreiben → ausgehende Kommunikation).
+                  if (direktAuftrag) {
                     const fr = Object.assign({ nachfass_vorlauf_tage: 7,
                       rueckmeldung_tage: 3 }, settings.fristen || {});
-                    const a = neuerAuftrag({ vorgang_id: v.id,
-                      beschreibung: d.auftrag.beschreibung,
-                      abnahme_noetig: !!d.auftrag.abnahme_noetig,
-                      nummer: auftragsNummerNeu(neu, v.id) });
-                    neu = { ...neu, auftraege: [...neu.auftraege, a] };
-                    neu = weltAuftragBeauftragen(neu, a.id, {
+                    neu = { ...neu, auftraege: [...neu.auftraege, direktAuftrag] };
+                    neu = weltAuftragBeauftragen(neu, direktAuftrag.id, {
                       firma_kontakt_id: d.auftrag.firma_kontakt_id,
                       frist: d.auftrag.frist || null,
                       nachfass_ab: fristMinusTage(d.auftrag.frist, fr.nachfass_vorlauf_tage) });
                     neu = logBeauftragung(neu, { vorgangId: v.id,
-                      nummer: a.nummer, beschreibung: a.beschreibung,
+                      nummer: direktAuftrag.nummer, beschreibung: direktAuftrag.beschreibung,
                       firmaId: d.auftrag.firma_kontakt_id,
                       firmaName: nameVon(kontakteSichtbar, d.auftrag.firma_kontakt_id),
                       frist: d.auftrag.frist || null,
@@ -3488,6 +3491,42 @@ export default function App() {
                   }
                   return neu;
                 });
+                // Fotos zur Meldung (Benny 26.07.): in die Foto-Zentrale des
+                // Objekts (§93) MIT Einheit-/Raum-Bezug aus dem Formular; bei
+                // Direkt-Vergabe zusätzlich Referenzen an den Auftrag.
+                const files = Array.isArray(d.fotos) ? d.fotos : [];
+                if (files.length > 0) {
+                  const p2 = (n) => String(n).padStart(2, "0");
+                  const h = new Date();
+                  const heuteDE = p2(h.getDate()) + "." + p2(h.getMonth() + 1) + "." + h.getFullYear();
+                  const eintraege = [];
+                  let kette = Promise.resolve();
+                  files.forEach((f, i) => {
+                    kette = kette.then(() => dateiSpeichern(f).then(meta => {
+                      eintraege.push({
+                        id: "foto_" + Date.now().toString(36) + "_" + i + "_" + Math.random().toString(36).slice(2, 8),
+                        dateiRef: meta.id, name: meta.name, typ: meta.typ, groesse: meta.groesse,
+                        album: "sonstiges",
+                        zuordnung: { art: d.einheit_id ? "einheit" : "gemeinschaft",
+                          hausId: null, einheitId: d.einheit_id || null,
+                          raumId: d.raum_id || null },
+                        geraetId: null, aufgenommen: heuteDE, exifQuelle: "upload",
+                        gps: null, notiz: d.titel || "Meldungsfoto",
+                        angelegt: new Date().toISOString(),
+                      });
+                    }));
+                  });
+                  kette.then(() => {
+                    if (eintraege.length === 0) return;
+                    setVes(prev => prev.map(x => x.id === anlegenVe.id
+                      ? { ...x, fotos: [...(Array.isArray(x.fotos) ? x.fotos : []), ...eintraege] }
+                      : x));
+                    if (direktAuftrag) {
+                      setVorgangsWelt(prev => weltAuftragFotoRefs(prev,
+                        direktAuftrag.id, eintraege.map(e => e.id)));
+                    }
+                  }).catch(() => {});
+                }
               }}
               onErfasseAuftrag={(d) => {
                 const a = neuerAuftrag({ objekt_id: anlegenVe.id,
