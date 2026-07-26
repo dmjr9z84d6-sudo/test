@@ -1676,7 +1676,12 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
   // Sortier-Reihenfolge folgt dem Name-Format-Setting
   const sortierSettings = { kontakteNameFormat: anzeige.nameFormat };
   const liste = sortKontakte(kontakte.filter(k => nurFirmen ? k.typ === "firma" : true), sortierSettings);
-  const gefunden = liste.find(k => k.id === value);
+  // Anzeige-Lookup mit Bestand-Fallback (Fix 26.07.): der gewählte Kontakt
+  // muss auch dann angezeigt werden, wenn er nicht in der aktuell
+  // eingeschränkten Liste (Objektkreis) steht — z. B. die beauftragte Firma
+  // im Auftrag-Edit. gewerkQuelle trägt bei MitAllen den Gesamtbestand.
+  const gefunden = (kontakte.find(k => k && k.id === value)
+    || (gewerkQuelle || []).find(k => k && k.id === value)) || null;
 
   // Gemeinsame Zeilen-Renderer (26.07.): identisches Markup für die normalen
   // Gruppen UND den Schnellzugriff (Beirat/Verwaltung) — ein Bau (§76).

@@ -274,7 +274,10 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt 
     if (modus === "beauftragen" && !firmaId) { setFirmaFehler(true); return; }
     const wirdBeauftragt = modus === "beauftragen" ? firmaId : "";
     const d = { vorgang_id: vorgangId, beschreibung: beschreibung.trim(),
-      abnahme_noetig: abnahme };
+      abnahme_noetig: abnahme,
+      // 26.07.: nie im Erfasst-Zustand gewesen → Verlauf zeigt nur den
+      // Beauftragt-Eintrag (Bennys Regel: Erfasst = vor dem Vorgang).
+      direkt_vergeben: modus === "beauftragen" };
     onWelt((w) => {
       const a = neuerAuftrag(Object.assign({}, d,
         { nummer: auftragsNummerNeu(w, vorgangId) }));
@@ -544,11 +547,16 @@ function baueVerlauf(vorgang, welt, kontakte) {
   const auftraege = welt.auftraege.filter((a) => a.vorgang_id === vorgang.id);
   for (let i = 0; i < auftraege.length; i++) {
     const a = auftraege[i];
-    dazu(a.erfasst_am, "Erfasst: " + (a.beschreibung || "Auftrag"));
+    // 26.07. (Benny): „Erfasst" ist NUR der echte Erfassen-Moment (loser
+    // Punkt vor dem Vorgang / „Nur erfassen"). Direkt-Vergabe = EIN Eintrag
+    // „Beauftragt … mit ‚…'" — kein künstlicher Erfasst-Schritt davor.
+    if (!a.direkt_vergeben) {
+      dazu(a.erfasst_am, "Erfasst: " + (a.beschreibung || "Auftrag"));
+    }
     if (a.beauftragt_am) {
       const wer = nameVon(kontakte, a.firma_kontakt_id);
       dazu(a.beauftragt_am, "Beauftragt" + (wer ? ": " + wer : "")
-        + " — " + (AUFTRAG_STATUS_LABEL[a.status] || a.status));
+        + " — mit „" + (a.beschreibung || "Auftrag") + "\u201c");
     }
     const abnahmen = welt.abnahmen.filter((ab) => ab.auftrag_id === a.id);
     for (let j = 0; j < abnahmen.length; j++) {
@@ -1941,13 +1949,38 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 // Notizen · Fotos. extraAktion = optionaler Zusatz-Button unten
 // (z. B. „Zurück zu Erfasst").
 function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
+  kontakteObjekt = null, DatumFeld = null,
   onFotoHinzu = null, onFotoEntfernen = null, onFertig = null, extraAktion = null }) {
+  const fristen = useFristen();
+  const vorlagen = useVorlagen();
   const setzeFeld = (aenderung) => {
     if (!onWelt) return;
     onWelt((w) => Object.assign({}, w, {
       auftraege: w.auftraege.map((a) => a.id === auftrag.id
         ? Object.assign({}, a, aenderung) : a),
     }));
+  };
+  // Firmenwechsel (Benny 26.07., besprochen): Wechsel = NEU-VERGABE — die
+  // Beauftragungs-Kette läuft erneut (Status, Fristen, Anschreiben an die
+  // neue Firma als ausgehende Kommunikation). Die alte Beauftragungs-
+  // Nachricht bleibt in der Akte (vergisst nichts); der abgeleitete
+  // Ausführende folgt der einen Wahrheit firma_kontakt_id automatisch.
+  // Lokale Wahl (Fix 26.07.): der Picker braucht Freiheit zum Leeren/Suchen —
+  // erst eine ANDERE gewählte Firma löst die Neu-Vergabe aus.
+  const [firmaWahl, setFirmaWahl] = useState(auftrag.firma_kontakt_id || null);
+  const wechsleFirma = (id) => {
+    if (!id || id === auftrag.firma_kontakt_id || !onWelt) return;
+    onWelt((w) => {
+      let neu = weltAuftragBeauftragen(w, auftrag.id, {
+        firma_kontakt_id: id, frist: auftrag.frist || null,
+        nachfass_ab: fristMinusTage(auftrag.frist, fristen.nachfass_vorlauf_tage) });
+      neu = logBeauftragung(neu, { vorgangId: auftrag.vorgang_id,
+        nummer: auftrag.nummer, beschreibung: auftrag.beschreibung,
+        firmaId: id, firmaName: nameVon(kontakte, id),
+        frist: auftrag.frist || null, vorlagen: vorlagen,
+        rueckmeldungTage: fristen.rueckmeldung_tage });
+      return neu;
+    });
   };
   const einheitenL = alleEinheitenVonVe(ve); // 14.30: zentrale Quelle (Karten + ve.einheiten)
   return (
@@ -1983,6 +2016,29 @@ function AuftragEditForm({ auftrag, t, accent, onWelt, ve = null, kontakte = [],
       <Inp t={t} accent={accent} label="Wo genau? (optional)"
         value={auftrag.ort || ""} onChange={(v) => setzeFeld({ ort: v })}
         placeholder="z. B. Treppenhaus 2. OG"/>
+      {/* 26.07. (Benny): der GANZE Anlege-Dialog bleibt bearbeitbar —
+          Frist, Abnahme und (bei vergebenen Aufträgen) die Firma. */}
+      {DatumFeld ? (
+        <DatumFeld t={t} accent={accent} label="Bis wann (Ausführungsfrist)"
+          value={auftrag.frist || ""} iso defaultHeute={false}
+          onChange={(v) => setzeFeld({ frist: v || null,
+            nachfass_ab: fristMinusTage(v, fristen.nachfass_vorlauf_tage) })}/>
+      ) : null}
+      <label style={{ display: "flex", alignItems: "center", gap: 8,
+        fontSize: FS.s, color: t.text, cursor: "pointer", margin: "2px 0 8px" }}>
+        <input type="checkbox" checked={!!auftrag.abnahme_noetig}
+          onChange={(e) => setzeFeld({ abnahme_noetig: e.target.checked })}
+          style={{ width: 18, height: 18 }}/>
+        Abnahme erforderlich
+      </label>
+      {auftrag.firma_kontakt_id ? (
+        <KontaktPickerMitAllen value={firmaWahl}
+          onChange={(id) => { setFirmaWahl(id || null); wechsleFirma(id); }}
+          label="Beauftragt an (Wechsel = Neu-Vergabe)" t={t} accent={accent}
+          nurFirmen
+          kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
+          kontakteAlle={pickerListe((kontakte || []).filter((k) => k && k.typ === "firma"))}/>
+      ) : null}
       <label style={feldLabelStil(t)}>Notizen (optional)</label>
       <textarea value={auftrag.notiz || ""}
         onChange={(e) => setzeFeld({ notiz: e.target.value })}
@@ -2096,7 +2152,8 @@ function LoseAuftragKarte({ auftrag, t, kontakte = [], accent = "#888", onWelt =
       ) : null}
       {edit ? (
         <AuftragEditForm auftrag={auftrag} t={t} accent={accent} onWelt={onWelt}
-          ve={ve} kontakte={kontakte}
+          ve={ve} kontakte={kontakte} kontakteObjekt={null}
+          DatumFeld={DatumFeld}
           onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
           onFertig={() => { setEdit(false); setOffen(false); }}/>
       ) : null}
@@ -2666,7 +2723,8 @@ function AuftragFlowZeile({ auftrag, kategorieId = null, firmen, kontakte, konta
       ) : null}
       {editModus && zeileEdit ? (
         <AuftragEditForm auftrag={auftrag} t={t} accent={accent} onWelt={onWelt}
-          ve={ve} kontakte={kontakte}
+          ve={ve} kontakte={kontakte} kontakteObjekt={kontakteObjekt}
+          DatumFeld={DatumFeld}
           onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
           onFertig={() => { setZeileEdit(false); setLoesConfirm(false); }}
           extraAktion={

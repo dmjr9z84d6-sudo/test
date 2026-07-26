@@ -3461,6 +3461,7 @@ export default function App() {
                   ? neuerAuftrag({ vorgang_id: v.id,
                       beschreibung: d.auftrag.beschreibung,
                       abnahme_noetig: !!d.auftrag.abnahme_noetig,
+                      direkt_vergeben: true,
                       nummer: auftragsNummerNeu(vorgangsWelt, v.id) })
                   : null;
                 setVorgangsWelt(prev => {
