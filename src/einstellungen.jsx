@@ -3864,13 +3864,18 @@ function SektionEtvOrtAnfrageKarte({ settings, setSettings, t, accent }) {
 }
 
 // ── Karte: Vorlagen (Textbausteine) je Arbeitsschritt ───────────────────────
+// 26.07. (Benny, 2. Runde): zwei GRUPPEN, damit die Textsorte beim Anlegen
+// klar ist — Formular-Felder (kurze Feldtexte, ohne Platzhalter-Zwang) vs.
+// Anschreiben (komplette Nachrichtentexte, die die App füllt und als
+// ausgehende Kommunikation in die Akte schreibt).
 const VORLAGEN_SCHRITTE = [
-  { id: "auftrag_erfassen", label: "Auftrag erfassen (Was ist zu tun?)" }, // 26.07.
-  { id: "angebotsanfrage", label: "Angebotsanfrage" },
-  { id: "beauftragung", label: "Auftragsvergabe" },
-  { id: "angebot_freigabe", label: "Angebot-Freigabe" }, // 26.07.
-  { id: "frei", label: "Frei / Sonstiges" },
+  { id: "auftrag_erfassen", label: "Auftrag erfassen (Was ist zu tun?)", gruppe: "Formular-Felder" },
+  { id: "angebotsanfrage", label: "Angebotsanfrage", gruppe: "Anschreiben (Kommunikation)" },
+  { id: "beauftragung", label: "Auftragsvergabe", gruppe: "Anschreiben (Kommunikation)" },
+  { id: "angebot_freigabe", label: "Angebot-Freigabe", gruppe: "Anschreiben (Kommunikation)" },
+  { id: "frei", label: "Frei / Sonstiges", gruppe: "Sonstiges" },
 ];
+const VORLAGEN_GRUPPEN = ["Formular-Felder", "Anschreiben (Kommunikation)", "Sonstiges"];
 function SektionVorlagenKarte({ settings, setSettings, t, accent }) {
   const vorlagen = Array.isArray(settings.vorgangsVorlagen) && settings.vorgangsVorlagen.length > 0
     ? settings.vorgangsVorlagen : DEFAULT_SETTINGS.vorgangsVorlagen;
@@ -3934,7 +3939,12 @@ function SektionVorlagenKarte({ settings, setSettings, t, accent }) {
       <input value={fTitel} onChange={e => setFTitel(e.target.value)}
         placeholder="Titel der Vorlage" style={eingabeStil}/>
       <select value={fSchritt} onChange={e => setFSchritt(e.target.value)} style={eingabeStil}>
-        {VORLAGEN_SCHRITTE.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
+        {VORLAGEN_GRUPPEN.map(g => (
+          <optgroup key={g} label={g}>
+            {VORLAGEN_SCHRITTE.filter(x => x.gruppe === g).map(x =>
+              <option key={x.id} value={x.id}>{x.label}</option>)}
+          </optgroup>
+        ))}
       </select>
       {/* Kategorie-Bezug (26.07.): keine gewählt = gilt für alle. */}
       <div>
@@ -3985,10 +3995,12 @@ function SektionVorlagenKarte({ settings, setSettings, t, accent }) {
   return (
     <EinstellKarte title="Vorlagen (Textbausteine)" t={t} accent={accent}>
       <div style={{ fontSize: FS.m, color: t.sub, marginBottom: 8, lineHeight: 1.4 }}>
-        Ein Textbaustein je Arbeitsschritt — z. B. Angebotsanfrage oder
-        Auftragsvergabe. Platzhalter wie {"{nummer}"} oder {"{frist}"} füllt
-        die App beim Verwenden automatisch. Die Beauftragung schreibt damit
-        ihren Eintrag in die Kommunikation des Vorgangs.
+        Zwei Textsorten: <strong>Formular-Felder</strong> sind kurze Texte,
+        die im jeweiligen Feld (z. B. „Was ist zu tun?") vorgeschlagen und
+        vorbefüllt werden. <strong>Anschreiben</strong> sind die kompletten
+        Nachrichtentexte — Platzhalter wie {"{nummer}"} oder {"{frist}"} füllt
+        die App automatisch und schreibt den fertigen Text als ausgehende
+        Kommunikation in die Akte (z. B. bei der Beauftragung).
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {vorlagen.map(v => (

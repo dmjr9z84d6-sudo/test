@@ -15,14 +15,14 @@
 //   VorgangsBereichFuerObjekt / …FuerFirma · fertige Detail-Inhalte für die
 //                       beiden Achsen der Vorgänge-Kachel (Objekte | Firmen)
 // ═══════════════════════════════════════════════════════════════════════════
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor, sichtbareFarbe } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
 import { Avatar, HeaderZurueck, Inp, KontaktPicker, KontaktPickerMitAllen, KopfIconButton, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu, DateiViewerModal } from "./liegenschaft.jsx";
 import { KontaktDetailKarte, KontaktZeile, objektBezugInfo } from "./kontakte.jsx";
 import { AktionsButton } from "./kontakte-modul.jsx";
-import { DESKTOP_MIN_WIDTH, I, useFristen, useVorlagen, useWindowWidth, useRollen, useFirmenRollen, useKontaktFarbe } from "./utils-icons.jsx";
+import { DESKTOP_MIN_WIDTH, I, useFristen, useVorlagen, useWindowWidth, useRollen, useFirmenRollen, useKontaktFarbe, useOutsideClick } from "./utils-icons.jsx";
 import {
   VORGANG_KATEGORIEN, ampelFarbe, ampelFarbeAuftrag, auftragLaeuft,
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
@@ -187,32 +187,62 @@ function BausteinKarte({ titel, anzahl, sub, punktFarbe, offen, onToggle, t, acc
 
 // ── AuftragNeuForm — Auftrag im Vorgang anlegen (§6b: an wen/was/bis wann) ──
 // „Womit" (zugrundeliegendes Angebot) kommt mit der Angebots-Verbreiterung.
-// ── VorlagenWahl — Vorlagen-Auswahl an Textfeldern (§76-Baustein, 26.07.) ──
-// Zeigt (nur wenn es für Kontext+Kategorie Vorlagen gibt) ein kompaktes
-// Select „Vorlage einfügen …" über dem Feld. Auswahl ÜBERSCHREIBT den
-// Feldtext (onUebernehmen) — danach frei editierbar. Der Standard ist
-// bereits vorbefüllt (standardVorlage an der Aufrufstelle); die Auswahl
-// dient dem Wechsel auf eine andere Vorlage. Texte: Einstellungen →
-// Vorgänge → „Vorlagen (Textbausteine)".
-function VorlagenWahl({ schritt, kategorieId = null, onUebernehmen, t, accent }) {
+// ── VorlagenFeld — Textfeld mit integriertem Vorlagen-Dropdown (§76, 26.07.) ─
+// Benny (2. Runde): KEIN separates Select mehr — das Feld selbst ist die
+// Auswahl. Verhalten: Standard-Vorlage ist vorbefüllt (Aufrufstelle) · Klick/
+// Fokus klappt die Vorlagenliste auf (Titel + Textvorschau, Standard
+// markiert, Chevron rechts als Hinweis) · Auswahl ERSETZT den Text · sobald
+// getippt wird, schließt die Liste und es gilt Freitext. §2.7-Popover
+// (useOutsideClick). Ohne passende Vorlagen: normales Textfeld ohne Chevron.
+function VorlagenFeld({ schritt, kategorieId = null, value, onChange, placeholder, t, accent }) {
   const vorlagen = useVorlagen();
+  const [auf, setAuf] = useState(false);
+  const ref = useRef(null);
+  useOutsideClick(ref, () => setAuf(false), auf);
   const passend = vorlagenFuerKontext(vorlagen, schritt, kategorieId);
-  if (passend.length === 0) return null;
+  const hatVorlagen = passend.length > 0;
   return (
-    <select value=""
-      onChange={(e) => {
-        const v = passend.filter((x) => x.id === e.target.value)[0];
-        if (v) onUebernehmen(v.text || "");
-      }}
-      style={Object.assign({}, selectStil(t, accent, false),
-        { marginBottom: 6, fontSize: FS.s })}>
-      <option value="">Vorlage einfügen …</option>
-      {passend.map((v) => (
-        <option key={v.id} value={v.id}>
-          {(v.titel || "Vorlage") + (v.standard ? " (Standard)" : "")}
-        </option>
-      ))}
-    </select>
+    <div ref={ref} style={{ position: "relative" }}>
+      <input value={value}
+        onFocus={() => { if (hatVorlagen) setAuf(true); }}
+        onClick={() => { if (hatVorlagen) setAuf(true); }}
+        onChange={(e) => { onChange(e.target.value); setAuf(false); }}
+        placeholder={placeholder}
+        style={Object.assign({}, selectStil(t, accent, !!value),
+          { marginBottom: 0, paddingRight: hatVorlagen ? 30 : undefined })}/>
+      {hatVorlagen ? (
+        <span onClick={() => setAuf(!auf)} title="Vorlagen anzeigen"
+          style={{ position: "absolute", right: 9, top: 0, height: "100%",
+            display: "inline-flex", alignItems: "center", cursor: "pointer",
+            color: t.sub }}>
+          <I name="chevD" size={13}/>
+        </span>
+      ) : null}
+      {auf ? (
+        <div style={{ position: "absolute", left: 0, right: 0, top: "100%",
+          zIndex: 30, background: t.card, border: "1px solid " + t.border,
+          borderRadius: RAD.md, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          maxHeight: 220, overflowY: "auto", padding: 4, marginTop: 3 }}>
+          {passend.map((v) => (
+            <button key={v.id} type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onChange(v.text || ""); setAuf(false); }}
+              style={{ display: "block", width: "100%", textAlign: "left",
+                background: "none", border: "none", cursor: "pointer",
+                fontFamily: "inherit", padding: "7px 8px", borderRadius: RAD.sm }}>
+              <div style={{ fontSize: FS.s, fontWeight: FW.bold, color: t.text }}>
+                {v.titel || "Vorlage"}
+                {v.standard ? (
+                  <span style={{ color: accent }}>{" · Standard"}</span>
+                ) : null}
+              </div>
+              <div style={{ fontSize: FS.xs, color: t.muted, overflow: "hidden",
+                textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.text}</div>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -258,11 +288,10 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt 
   return (
     <div style={flowZeileStil(t)}>
       <label style={feldLabelStil(t)}>Was ist zu tun?</label>
-      <VorlagenWahl schritt="auftrag_erfassen" kategorieId={kategorieId}
-        t={t} accent={accent} onUebernehmen={setBeschreibung}/>
-      <input value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)}
+      <VorlagenFeld schritt="auftrag_erfassen" kategorieId={kategorieId}
+        value={beschreibung} onChange={setBeschreibung}
         placeholder="z. B. Dach decken (abgegrenzter Leistungsteil)"
-        style={Object.assign({}, selectStil(t, accent, !!beschreibung), { marginBottom: 0 })}/>
+        t={t} accent={accent}/>
       <KontaktPickerMitAllen value={firmaId || null}
         onChange={(id) => setFirmaId(id || "")}
         label="An wen (Firma) — leer = nur erfassen" t={t} accent={accent} nurFirmen
