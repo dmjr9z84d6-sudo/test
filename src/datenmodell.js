@@ -2963,6 +2963,25 @@ function etvOrtAnfrageVon(settings) {
 function vorlageFuerSchritt(vorlagen, schritt) {
   return (vorlagen || []).filter((v) => v.schritt === schritt)[0] || null;
 }
+// ── Gremium-/Verwaltungs-Erkennung (Benny 26.07., Schnellzugriff) ───────────
+// Beirat: Person mit aktiver Gremium-Zuständigkeit „Beirat" (Migrations-
+// Struktur: zustaendigkeiten[].leistung). Hausverwaltung: Firma mit Rolle
+// „Hausverwaltung" — je nach Datenstand in firmenRollen (global) ODER als
+// objektbezogene Zuständigkeit.
+export function istBeirat(k) {
+  if (!k || k.typ === "firma") return false;
+  return Array.isArray(k.zustaendigkeiten) && k.zustaendigkeiten.some((z) => z
+    && String(z.leistung || "").toLowerCase() === "beirat"
+    && z.status !== "beendet");
+}
+export function istHausverwaltung(k) {
+  if (!k || k.typ !== "firma") return false;
+  const passt = (n) => String(n || "").toLowerCase() === "hausverwaltung";
+  if (Array.isArray(k.firmenRollen) && k.firmenRollen.some((r) => r && passt(r.rolle))) return true;
+  return Array.isArray(k.zustaendigkeiten) && k.zustaendigkeiten.some((z) => z
+    && passt(z.leistung) && z.status !== "beendet");
+}
+
 // 26.07. (Benny): Vorlagen mit Kategorie-Bezug. kategorien leer/fehlend =
 // gilt für alle Vorgangs-Kategorien; sonst nur für die gelisteten.
 function vorlagenFuerKontext(vorlagen, schritt, kategorieId) {

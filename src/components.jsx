@@ -10,7 +10,7 @@ import {
 } from "./utils-basis.js";
 import {
   ANLEGE_FELDTYPEN, EIG_STATUS, FIELD_TYPES, SUGGESTIONS, aktiverHaushalt,
-  eigStatus, findeEinheitUeberall, findeKontaktKandidaten, findeRaumUeberall, verwendungenVon
+  eigStatus, findeEinheitUeberall, findeKontaktKandidaten, findeRaumUeberall, istBeirat, istHausverwaltung, verwendungenVon
 } from "./datenmodell.js";
 import {
   I, StickySectionHeader, belegungsRollenFuerKontakt, flacheZuweisungen,
@@ -1623,6 +1623,8 @@ function KontaktPickerMitAllen({ kontakteObjekt, kontakteAlle, t, accent, ...res
   return (
     <KontaktPicker t={t} accent={accent} {...rest}
       kontakte={alleZeigen || !Array.isArray(kontakteObjekt) ? (kontakteAlle || []) : kontakteObjekt}
+      gewerkQuelle={kontakteAlle || []}
+      onGewerkWahl={(g) => { if (g) setAlleZeigen(true); }}
       alleOption={hatFilter ? { aktiv: alleZeigen,
         onToggle: () => setAlleZeigen(!alleZeigen),
         label: "Alle Kontakte durchsuchen" } : null}/>
@@ -1636,7 +1638,7 @@ function kontaktGewerkNamen(k) {
     .filter((x) => x);
 }
 
-function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = true, nurFirmen = false, kontakte = [], setKontakte, onCreate, alleOption = null }) {
+function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = true, nurFirmen = false, kontakte = [], setKontakte, onCreate, alleOption = null, gewerkQuelle = null, onGewerkWahl = null }) {
   const [offen, setOffen] = useState(false);
   const [suche, setSuche] = useState("");
   // Gewerk-Filter (Benny 26.07., nurFirmen; 2. Runde: „richtiges Dropdown"
@@ -1676,8 +1678,59 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
   const liste = sortKontakte(kontakte.filter(k => nurFirmen ? k.typ === "firma" : true), sortierSettings);
   const gefunden = liste.find(k => k.id === value);
 
+  // Gemeinsame Zeilen-Renderer (26.07.): identisches Markup für die normalen
+  // Gruppen UND den Schnellzugriff (Beirat/Verwaltung) — ein Bau (§76).
+  const personZeile = (k, key) => (
+    <button key={key || k.id} onClick={() => waehle(k)} style={{
+      width: "100%", display: "flex", alignItems: "center", gap: 10,
+      background: "none", border: "none",
+      borderBottom: `1px solid ${t.border}20`, padding: "8px 12px",
+      cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
+      onMouseEnter={e => e.currentTarget.style.background = `${accent}0C`}
+      onMouseLeave={e => e.currentTarget.style.background = "none"}>
+      <Avatar name={k.name} size={26} accent={accent}
+        zuweisungen={zuweisungenFuerAvatar(k)}/>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{formatNameMitCtx(k, anzeige) || k.name}</div>
+        {((bezugMap[k.id] && bezugMap[k.id].text) || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{(bezugMap[k.id] && bezugMap[k.id].text) || k.sub}</div>}
+      </div>
+      {bezugMap[k.id] && bezugMap[k.id].kurz ? (
+        <span style={{ flexShrink: 0, fontSize: FS.xxs, color: t.muted,
+          fontWeight: FW.medium, whiteSpace: "nowrap" }}>{bezugMap[k.id].kurz}</span>
+      ) : null}
+    </button>
+  );
+  const firmaZeile = (k, key) => (
+    <button key={key || k.id} onClick={() => waehle(k)} style={{
+      width: "100%", display: "flex", alignItems: "center", gap: 10,
+      background: "none", border: "none",
+      borderBottom: `1px solid ${t.border}20`, padding: "8px 12px",
+      cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
+      onMouseEnter={e => e.currentTarget.style.background = `${farben.firma}0C`}
+      onMouseLeave={e => e.currentTarget.style.background = "none"}>
+      <Avatar name={k.name} firma size={26} accent={farben.firma}/>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{k.name}</div>
+        {((bezugMap[k.id] && bezugMap[k.id].text) || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{(bezugMap[k.id] && bezugMap[k.id].text) || k.sub}</div>}
+      </div>
+      {bezugMap[k.id] && bezugMap[k.id].kurz ? (
+        <span style={{ flexShrink: 0, fontSize: FS.xxs, color: t.muted,
+          fontWeight: FW.medium, whiteSpace: "nowrap" }}>{bezugMap[k.id].kurz}</span>
+      ) : null}
+    </button>
+  );
+  // Schnellzugriff (Benny 26.07.): Beirat + Verwaltung mit EINEM Tipp — aus
+  // dem größten verfügbaren Bestand (gewerkQuelle = kontakteAlle bei
+  // MitAllen), nur solange nicht gesucht wird.
+  const schnellQuelle = gewerkQuelle || kontakte;
+  const schnellBeirat = !nurFirmen ? schnellQuelle.filter(istBeirat) : [];
+  const schnellVerwaltung = !nurFirmen ? schnellQuelle.filter(istHausverwaltung) : [];
+
+  // 26.07. (3. Runde): Optionen aus gewerkQuelle (z. B. GESAMTBESTAND bei
+  // MitAllen) — sonst fehlte der Filter, wenn der Objektkreis nur Mieter-
+  // Firmen ohne Gewerke enthält, die Handwerker aber im Bestand stehen.
   const verfuegbareGewerke = nurFirmen
-    ? Array.from(new Set(liste.flatMap((k) => kontaktGewerkNamen(k))))
+    ? Array.from(new Set((gewerkQuelle || liste).flatMap((k) => kontaktGewerkNamen(k))))
         .sort((a, b) => a.localeCompare(b, "de"))
     : [];
   const gewerkVor = liste.filter((k) => gewerkFilter.length === 0
@@ -1855,7 +1908,11 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
             {nurFirmen && verfuegbareGewerke.length > 0 ? (
               <div style={{ padding: "7px 12px", borderBottom: `1px solid ${t.border}` }}>
                 <select value={gewerkFilter[0] || ""}
-                  onChange={(e) => setGewerkFilter(e.target.value ? [e.target.value] : [])}
+                  onChange={(e) => {
+                    const g = e.target.value;
+                    setGewerkFilter(g ? [g] : []);
+                    if (onGewerkWahl) onGewerkWahl(g || null);
+                  }}
                   style={{ width: "100%", boxSizing: "border-box",
                     padding: "9px 11px", fontSize: 16, fontFamily: "inherit",
                     borderRadius: RAD.md, color: t.text, background: t.surface,
@@ -1970,6 +2027,24 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                 </div>
               </div>
             )}
+            {/* Schnellzugriff Beirat/Verwaltung (26.07.): vor den normalen
+                Gruppen, nur ohne Suchtext. Ein Tipp wählt aus. */}
+            {suche.trim() === "" && !neuOffen && schnellBeirat.length > 0 ? (
+              <>
+                <div style={{ padding: "5px 12px 3px", fontSize: FS.xxs, fontWeight: FW.bold,
+                  color: accent, textTransform: "uppercase", letterSpacing: "0.1em",
+                  background: t.surface }}>Beirat</div>
+                {schnellBeirat.map((k) => personZeile(k, "beirat" + k.id))}
+              </>
+            ) : null}
+            {suche.trim() === "" && !neuOffen && schnellVerwaltung.length > 0 ? (
+              <>
+                <div style={{ padding: "5px 12px 3px", fontSize: FS.xxs, fontWeight: FW.bold,
+                  color: accent, textTransform: "uppercase", letterSpacing: "0.1em",
+                  background: t.surface }}>Verwaltung</div>
+                {schnellVerwaltung.map((k) => firmaZeile(k, "hv" + k.id))}
+              </>
+            ) : null}
             {/* Kein Treffer */}
             {treffer.length === 0 && (
               <div style={{ padding: "12px", fontSize: FS.s, color: t.muted, fontStyle: "italic" }}>„{suche}" nicht gefunden</div>
@@ -1980,28 +2055,7 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                 <div style={{ padding: "5px 12px 3px", fontSize: FS.xxs, fontWeight: FW.bold,
                   color: t.muted, textTransform: "uppercase", letterSpacing: "0.1em",
                   background: t.surface }}>Personen</div>
-                {personen.map(k => (
-                  <button key={k.id} onClick={() => waehle(k)} style={{
-                    width: "100%", display: "flex", alignItems: "center", gap: 10,
-                    background: "none", border: "none",
-                    borderBottom: `1px solid ${t.border}20`, padding: "8px 12px",
-                    cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
-                    onMouseEnter={e => e.currentTarget.style.background = `${accent}0C`}
-                    onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                    <Avatar name={k.name} size={26} accent={accent}
-                      zuweisungen={zuweisungenFuerAvatar(k)}/>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{formatNameMitCtx(k, anzeige) || k.name}</div>
-                      {/* §Picker-Bezug: Objekt · Einheit(en); Fallback k.sub. Darf umbrechen. */}
-                      {((bezugMap[k.id] && bezugMap[k.id].text) || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{(bezugMap[k.id] && bezugMap[k.id].text) || k.sub}</div>}
-                    </div>
-                    {/* Kurz-Kennung rechts (Benny 25.07.): „VE-001/ET 1", weitere Bezüge als +n */}
-                    {bezugMap[k.id] && bezugMap[k.id].kurz ? (
-                      <span style={{ flexShrink: 0, fontSize: FS.xxs, color: t.muted,
-                        fontWeight: FW.medium, whiteSpace: "nowrap" }}>{bezugMap[k.id].kurz}</span>
-                    ) : null}
-                  </button>
-                ))}
+                {personen.map((k) => personZeile(k))}
               </>
             )}
             {/* Firmen */}
@@ -2010,27 +2064,7 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                 <div style={{ padding: "5px 12px 3px", fontSize: FS.xxs, fontWeight: FW.bold,
                   color: t.muted, textTransform: "uppercase", letterSpacing: "0.1em",
                   background: t.surface }}>Firmen</div>
-                {firmen.map(k => (
-                  <button key={k.id} onClick={() => waehle(k)} style={{
-                    width: "100%", display: "flex", alignItems: "center", gap: 10,
-                    background: "none", border: "none",
-                    borderBottom: `1px solid ${t.border}20`, padding: "8px 12px",
-                    cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
-                    onMouseEnter={e => e.currentTarget.style.background = `${farben.firma}0C`}
-                    onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                    <Avatar name={k.name} firma size={26} accent={farben.firma}/>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{k.name}</div>
-                      {/* §Picker-Bezug: Objekt · Einheit(en); Fallback k.sub. Darf umbrechen. */}
-                      {((bezugMap[k.id] && bezugMap[k.id].text) || k.sub) && <div style={{ fontSize: FS.xs, color: t.sub }}>{(bezugMap[k.id] && bezugMap[k.id].text) || k.sub}</div>}
-                    </div>
-                    {/* Kurz-Kennung rechts (Benny 25.07.): „VE-001/ET 1", weitere Bezüge als +n */}
-                    {bezugMap[k.id] && bezugMap[k.id].kurz ? (
-                      <span style={{ flexShrink: 0, fontSize: FS.xxs, color: t.muted,
-                        fontWeight: FW.medium, whiteSpace: "nowrap" }}>{bezugMap[k.id].kurz}</span>
-                    ) : null}
-                  </button>
-                ))}
+                {firmen.map((k) => firmaZeile(k))}
               </>
             )}
           </div>

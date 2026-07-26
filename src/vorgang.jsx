@@ -29,7 +29,7 @@ import {
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
   vorlageFuerSchritt, vorlagenFuerKontext, standardVorlage, fuelleVorlage, fotoStandorte, fotoFindeRaum, FOTO_RAUM_KATALOG,
-  einheitLageText,
+  einheitLageText, istHausverwaltung,
   alleEinheitenVonVe, raeumeVonEinheit, findeRaumUeberall, raumWert, raumLabel,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
   auftragsNummerNeu, angebotsNummerNeu,
@@ -590,10 +590,7 @@ function baueVerlauf(vorgang, welt, kontakte) {
 // Hausverwaltungs-Firma im Bestand finden (firmenRollen-Eintrag mit rolle
 // „Hausverwaltung"). Für die „die Verwaltung"-Beteiligung (26.07.).
 function findeHausverwaltung(liste) {
-  return (liste || []).filter((x) => x && x.typ === "firma"
-    && Array.isArray(x.firmenRollen)
-    && x.firmenRollen.some((r) => r && String(r.rolle || "").toLowerCase() === "hausverwaltung"))[0]
-    || null;
+  return (liste || []).filter(istHausverwaltung)[0] || null;
 }
 function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, kontakteObjekt = null, ve = null, t, accent, kannFlows, onWelt, onInformieren }) {
   const [formOffen, setFormOffen] = useState(false);
