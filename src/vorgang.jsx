@@ -587,10 +587,14 @@ function baueVerlauf(vorgang, welt, kontakte) {
 // bietet danach DEZENT „auch informieren?" an: zwei bewusste Handgriffe.
 // ═════════════════════════════════════════════════════════════════════════
 // Rollen-Gruppen-Optik (Icons analog KONTAKT_KATEGORIEN im Objekt-Kontakte-Tab)
-const BETEILIGTE_GRUPPEN_ICON = {
-  fallfuehrer: "🧭", melder: "📣", betroffener: "🏠", mitinformiert: "👥",
-  extern: "🌐", ausfuehrender: "🛠", pruefer: "✓",
-};
+// Hausverwaltungs-Firma im Bestand finden (firmenRollen-Eintrag mit rolle
+// „Hausverwaltung"). Für die „die Verwaltung"-Beteiligung (26.07.).
+function findeHausverwaltung(liste) {
+  return (liste || []).filter((x) => x && x.typ === "firma"
+    && Array.isArray(x.firmenRollen)
+    && x.firmenRollen.some((r) => r && String(r.rolle || "").toLowerCase() === "hausverwaltung"))[0]
+    || null;
+}
 function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, kontakteObjekt = null, ve = null, t, accent, kannFlows, onWelt, onInformieren }) {
   const [formOffen, setFormOffen] = useState(false);
   const [kontaktId, setKontaktId] = useState("");
@@ -615,13 +619,15 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
   (auftraege || []).forEach((a) => {
     if (!a || !a.firma_kontakt_id || echteAusfIds[a.firma_kontakt_id]) return;
     const e = abgeleiteteMap[a.firma_kontakt_id]
-      || { kontakt_id: a.firma_kontakt_id, nummern: [], seit: null };
-    if (a.nummer) {
-      const kurz = a.nummer.indexOf("-") >= 0
-        ? a.nummer.slice(a.nummer.lastIndexOf("-") + 1) : a.nummer;
-      if (e.nummern.indexOf(kurz) < 0) e.nummern.push(kurz);
-    }
-    if (a.beauftragt_am && (!e.seit || a.beauftragt_am < e.seit)) e.seit = a.beauftragt_am;
+      || { kontakt_id: a.firma_kontakt_id, auftraege: [] };
+    const kurz = a.nummer
+      ? (a.nummer.indexOf("-") >= 0
+        ? a.nummer.slice(a.nummer.lastIndexOf("-") + 1) : a.nummer)
+      : "";
+    // 26.07. (Benny): pro Auftrag Nummer + Beschreibung + seit — wird als
+    // Zeile ÜBER der Kontaktkarte gezeigt (wer führt WAS aus).
+    e.auftraege.push({ kurz: kurz, beschreibung: a.beschreibung || "",
+      seit: a.beauftragt_am || null });
     abgeleiteteMap[a.firma_kontakt_id] = e;
   });
   const ausfAbgeleitet = Object.keys(abgeleiteteMap).map((k) => abgeleiteteMap[k]);
@@ -656,8 +662,12 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
         ) : null}
       </div>
     );
-    if (!k) {
-      // die Verwaltung (kein Kontakt-Datensatz) — schlichte Zeile
+    // 26.07. (Benny): „die Verwaltung" (kontakt_id null) wird — wenn möglich —
+    // als ECHTE Kontaktkarte der Hausverwaltungs-Firma gezeigt (firmenRollen-
+    // Eintrag „Hausverwaltung" im Objekt-Kontaktkreis, sonst im Gesamtbestand):
+    // direkter Griff zu Telefon + Ansprechperson. Ohne Treffer: schlichte Zeile.
+    const kEff = k || findeHausverwaltung(kontakteObjekt) || findeHausverwaltung(kontakte);
+    if (!kEff) {
       return (
         <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10,
           padding: "6px 2px", opacity: beendet ? 0.6 : 1 }}>
@@ -668,12 +678,13 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
         </div>
       );
     }
+    const k2 = kEff;
     const offen = offenerKontakt === b.id;
     return (
       <div key={b.id} style={{ opacity: beendet ? 0.6 : 1 }}>
         {offen ? (
           <div style={{ margin: "6px 0 10px" }}>
-            <KontaktDetailKarte k={k} t={t} accent={accent}
+            <KontaktDetailKarte k={k2} t={t} accent={accent}
               kategorieFarbe={accent} ves={ve ? [ve] : []} kontakte={kontakte}
               setKontakte={null} embedded
               onKopfClick={() => setOffenerKontakt(null)}/>
@@ -684,7 +695,7 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <KontaktZeile k={k} ve={ve} t={t} accent={accent}
+              <KontaktZeile k={k2} ve={ve} t={t} accent={accent}
                 highlightAccent={accent} isActive={false}
                 onClick={() => setOffenerKontakt(b.id)}/>
             </div>
@@ -699,39 +710,40 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
   const abgeleiteteZeile = (e) => {
     const k = (kontakte || []).filter((x) => x && x.id === e.kontakt_id)[0];
     const schluessel = "auf:" + e.kontakt_id;
-    const rechts = (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        {e.nummern.length > 0 ? (
-          <span style={{ fontSize: FS.xs, color: t.muted, whiteSpace: "nowrap" }}>
-            {e.nummern.join(", ")}</span>
-        ) : null}
-        <span style={{ fontSize: FS.xs, color: t.muted, whiteSpace: "nowrap" }}>
-          {e.seit ? "seit " + datumDe(e.seit) : ""}</span>
+    if (!k) return null;
+    // Auftrags-Zeilen ÜBER der Karte (Benny 26.07.): je Auftrag Nummer +
+    // „Was ist Sache" links, seit-Datum rechts — bei mehreren Ausführenden
+    // steht damit unmissverständlich, wer was ausführt.
+    const auftragsZeilen = (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2,
+        margin: "0 2px 4px" }}>
+        {e.auftraege.map((a, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: FS.xs, fontWeight: FW.bold, color: accent,
+              flexShrink: 0 }}>{a.kurz}</span>
+            <span style={{ fontSize: FS.xs, color: t.sub, minWidth: 0, flex: 1,
+              overflowWrap: "anywhere" }}>{a.beschreibung}</span>
+            <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
+              whiteSpace: "nowrap" }}>{a.seit ? "seit " + datumDe(a.seit) : ""}</span>
+          </div>
+        ))}
       </div>
     );
-    if (!k) return null;
     const offen = offenerKontakt === schluessel;
     return (
-      <div key={schluessel}>
+      <div key={schluessel} style={{ marginTop: 4 }}>
+        {auftragsZeilen}
         {offen ? (
-          <div style={{ margin: "6px 0 10px" }}>
+          <div style={{ margin: "0 0 10px" }}>
             <KontaktDetailKarte k={k} t={t} accent={accent}
               kategorieFarbe={accent} ves={ve ? [ve] : []} kontakte={kontakte}
               setKontakte={null} embedded
               onKopfClick={() => setOffenerKontakt(null)}/>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
-              {rechts}
-            </div>
           </div>
         ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <KontaktZeile k={k} ve={ve} t={t} accent={accent}
-                highlightAccent={accent} isActive={false}
-                onClick={() => setOffenerKontakt(schluessel)}/>
-            </div>
-            {rechts}
-          </div>
+          <KontaktZeile k={k} ve={ve} t={t} accent={accent}
+            highlightAccent={accent} isActive={false}
+            onClick={() => setOffenerKontakt(schluessel)}/>
         )}
       </div>
     );
@@ -751,8 +763,8 @@ function BeteiligtenBlock({ vorgang, beteiligungen, auftraege = [], kontakte, ko
         <div key={g.rolle.id} style={{ background: t.card,
           border: "1px solid " + t.border, borderRadius: RAD.lg,
           padding: "10px 12px" }}>
+          {/* 26.07. (Benny): keine Gruppen-Icons mehr — nur Label + Zähler. */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 16 }}>{BETEILIGTE_GRUPPEN_ICON[g.rolle.id] || "👤"}</span>
             <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
               {g.rolle.label}
               <span style={{ color: t.muted, fontWeight: FW.med }}>
@@ -2184,10 +2196,17 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
             ) : null}
             {onWelt && buendelModus ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {/* Ein-Button-Führung (Benny 26.07., 3. Runde): das Formular
+                    hat KEINE eigenen Buttons mehr — dieser Kopf-Button öffnet
+                    es und führt danach aus; das Label sagt immer ehrlich, was
+                    beim Tippen passiert (Beauftragen / Anlegen + beauftragen /
+                    Vorgang anlegen). × schließt das Formular (zweistufig). */}
                 <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
                   umriss disabled={buendelIds.length === 0} icon={false}
                   onClick={() => {
-                    setLoeschAlleConfirm(false); setBuendelZiel("neu");
+                    setLoeschAlleConfirm(false);
+                    if (buendelZiel === "neu") { buendle(); return; }
+                    setBuendelZiel("neu");
                     // Vorbefüllung (Benny 26.07.): 1 Punkt = dessen Sache,
                     // mehrere = zusammengeführt — nichts doppelt eintippen.
                     // Bereits Getipptes wird nie überschrieben.
@@ -2200,12 +2219,24 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                       }
                     }
                   }}
-                  text={"Beauftragen (" + buendelIds.length + ")"}/>
+                  text={buendelZiel === "neu"
+                    ? (buendelFirmaId
+                      ? "Anlegen + beauftragen (" + buendelIds.length + ")"
+                      : "Vorgang anlegen (" + buendelIds.length + ")")
+                    : "Beauftragen (" + buendelIds.length + ")"}/>
                 {offeneVorgaenge.length > 0 ? (
                   <AktionsButton rolle="bestaetigen" variante="breit" t={t} accent={accent}
-                    umriss disabled={buendelIds.length === 0} icon={false}
-                    onClick={() => { setLoeschAlleConfirm(false); setBuendelZiel("bestehend"); }}
-                    text={"+ zum Vorgang (" + buendelIds.length + ")"}/>
+                    umriss icon={false}
+                    disabled={buendelIds.length === 0
+                      || (buendelZiel === "bestehend" && !buendelVorgangId)}
+                    onClick={() => {
+                      setLoeschAlleConfirm(false);
+                      if (buendelZiel === "bestehend") { buendle(); return; }
+                      setBuendelZiel("bestehend");
+                    }}
+                    text={buendelZiel === "bestehend"
+                      ? "Zuordnen (" + buendelIds.length + ")"
+                      : "+ zum Vorgang (" + buendelIds.length + ")"}/>
                 ) : null}
                 <div style={{ position: "relative", flexShrink: 0 }}>
                   <KopfIconButton icon="trash" gefahrVoll confirm={loeschAlleConfirm}
@@ -2228,8 +2259,16 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                       pointerEvents: "none" }}>{buendelIds.length}</div>
                   ) : null}
                 </div>
-                <KopfIconButton icon="x" title="Bearbeiten beenden — Auswahl verwerfen"
-                  t={t} accent={accent} onClick={buendelReset}/>
+                <KopfIconButton icon="x"
+                  title={buendelZiel !== null
+                    ? "Formular schließen" : "Bearbeiten beenden — Auswahl verwerfen"}
+                  t={t} accent={accent}
+                  onClick={() => {
+                    // Zweistufiges Escape (26.07.): erst das offene Formular
+                    // zu (Auswahl bleibt), zweiter Tipp beendet den Modus.
+                    if (buendelZiel !== null) { setBuendelZiel(null); return; }
+                    buendelReset();
+                  }}/>
                 <KopfIconButton icon="check" title="Fertig"
                   t={t} accent={accent} onClick={buendelReset}/>
               </div>
@@ -2281,11 +2320,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                 label="Direkt beauftragen an (optional)" nurFirmen
                 t={t} accent={accent}
                 kontakte={pickerListe(kontakte)}/>
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                <button onClick={() => setBuendelZiel(null)} style={flowKnopf(t, accent, false)}>Zurück</button>
-                <button onClick={buendle} style={flowKnopf(t, accent, true)}>
-                  {buendelFirmaId ? "Anlegen + beauftragen" : "Vorgang anlegen"}</button>
-              </div>
+
             </div>
           ) : null}
           {buendelZiel === "bestehend" ? (
@@ -2298,10 +2333,7 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                   <option key={v.id} value={v.id}>{v.titel || "Vorgang"}</option>
                 ))}
               </select>
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                <button onClick={() => setBuendelZiel(null)} style={flowKnopf(t, accent, false)}>Zurück</button>
-                <button onClick={buendle} style={flowKnopf(t, accent, true)}>Zuordnen</button>
-              </div>
+
             </div>
           ) : null}
         </div>
