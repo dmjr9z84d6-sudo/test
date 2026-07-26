@@ -9,7 +9,7 @@ import { splitPlzOrt, fotoThumbnailVonRef, fotoKomprimieren, dateiLaden, dateiSp
 import {
   DEFAULT_SETTINGS, KONTAKTARTEN_KATEGORIEN, VERWALTUNGSARTEN,
   gruppiereDubletten, fuehreKontakteZusammen, kontaktInGruppe, normalisiereKontakte, normalisiereVes, objektInGruppe, objektOrt,
-  wendeKontaktZuweisungenAnAlle
+  wendeKontaktZuweisungenAnAlle, VORGANG_KATEGORIEN,
 } from "./datenmodell.js";
 import {
   I, STORAGE_SCHEMA_VERSION, SortierPfeile, exportiereJSON, filterEintragConf, importiereJSON,
@@ -3865,8 +3865,10 @@ function SektionEtvOrtAnfrageKarte({ settings, setSettings, t, accent }) {
 
 // ── Karte: Vorlagen (Textbausteine) je Arbeitsschritt ───────────────────────
 const VORLAGEN_SCHRITTE = [
+  { id: "auftrag_erfassen", label: "Auftrag erfassen (Was ist zu tun?)" }, // 26.07.
   { id: "angebotsanfrage", label: "Angebotsanfrage" },
   { id: "beauftragung", label: "Auftragsvergabe" },
+  { id: "angebot_freigabe", label: "Angebot-Freigabe" }, // 26.07.
   { id: "frei", label: "Frei / Sonstiges" },
 ];
 function SektionVorlagenKarte({ settings, setSettings, t, accent }) {
@@ -3877,23 +3879,45 @@ function SektionVorlagenKarte({ settings, setSettings, t, accent }) {
   const [fTitel, setFTitel] = useState("");
   const [fSchritt, setFSchritt] = useState("beauftragung");
   const [fText, setFText] = useState("");
+  // 26.07. (Benny): Kategorie-Bezug + Standard-Flag. kategorien = [] heißt
+  // „gilt für alle Vorgangs-Kategorien"; standard = im Formular vorbefüllt.
+  const [fKategorien, setFKategorien] = useState([]);
+  const [fStandard, setFStandard] = useState(false);
   const speichere = (liste) => setSettings(s2 => ({ ...s2, vorgangsVorlagen: liste }));
   const oeffneBearbeiten = (v) => {
     setOffenId(v.id); setNeuOffen(false);
     setFTitel(v.titel || ""); setFSchritt(v.schritt || "frei"); setFText(v.text || "");
+    setFKategorien(Array.isArray(v.kategorien) ? v.kategorien : []);
+    setFStandard(!!v.standard);
   };
   const oeffneNeu = () => {
     setNeuOffen(true); setOffenId(null);
     setFTitel(""); setFSchritt("beauftragung"); setFText("");
+    setFKategorien([]); setFStandard(false);
   };
   const uebernehmen = () => {
     if (!fText.trim()) return;
+    // Standard ist je Kontext (Schritt + Kategorie) eindeutig: beim Setzen
+    // wird er von anderen Vorlagen desselben Schritts mit überschneidenden
+    // Kategorien (oder beide „alle") entfernt.
+    const ueberschneidet = (a, b) => {
+      const ka = Array.isArray(a) ? a : [], kb = Array.isArray(b) ? b : [];
+      if (ka.length === 0 || kb.length === 0) return true;
+      return ka.some((x) => kb.indexOf(x) >= 0);
+    };
+    const putze = (liste) => fStandard
+      ? liste.map((v) => (v.id !== offenId && v.schritt === fSchritt
+          && v.standard && ueberschneidet(v.kategorien, fKategorien))
+          ? { ...v, standard: false } : v)
+      : liste;
     if (neuOffen) {
-      speichere([...vorlagen, { id: "vl_" + Date.now().toString(36),
-        schritt: fSchritt, titel: fTitel.trim() || "Vorlage", text: fText }]);
+      speichere(putze([...vorlagen, { id: "vl_" + Date.now().toString(36),
+        schritt: fSchritt, titel: fTitel.trim() || "Vorlage", text: fText,
+        kategorien: fKategorien, standard: fStandard }]));
     } else if (offenId) {
-      speichere(vorlagen.map(v => v.id === offenId
-        ? { ...v, schritt: fSchritt, titel: fTitel.trim() || v.titel, text: fText } : v));
+      speichere(putze(vorlagen.map(v => v.id === offenId
+        ? { ...v, schritt: fSchritt, titel: fTitel.trim() || v.titel, text: fText,
+            kategorien: fKategorien, standard: fStandard } : v)));
     }
     setOffenId(null); setNeuOffen(false);
   };
@@ -3912,6 +3936,35 @@ function SektionVorlagenKarte({ settings, setSettings, t, accent }) {
       <select value={fSchritt} onChange={e => setFSchritt(e.target.value)} style={eingabeStil}>
         {VORLAGEN_SCHRITTE.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
       </select>
+      {/* Kategorie-Bezug (26.07.): keine gewählt = gilt für alle. */}
+      <div>
+        <div style={{ fontSize: FS.xs, color: t.sub, marginBottom: 5 }}>
+          Gilt für Vorgangs-Kategorien (keine gewählt = alle):</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {VORGANG_KATEGORIEN.map((k) => {
+            const an = fKategorien.indexOf(k.id) >= 0;
+            return (
+              <button key={k.id} type="button"
+                onClick={() => setFKategorien(an
+                  ? fKategorien.filter((x) => x !== k.id)
+                  : fKategorien.concat([k.id]))}
+                style={{ padding: "5px 10px", borderRadius: RAD.pill,
+                  border: "1px solid " + (an ? accent : t.border),
+                  background: an ? accent + "18" : "transparent",
+                  color: an ? accent : t.sub, fontSize: FS.xs,
+                  fontWeight: FW.bold, cursor: "pointer", fontFamily: "inherit" }}>
+                {k.label}</button>
+            );
+          })}
+        </div>
+      </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8,
+        fontSize: FS.s, color: t.text, cursor: "pointer" }}>
+        <input type="checkbox" checked={fStandard}
+          onChange={(e) => setFStandard(e.target.checked)}
+          style={{ width: 18, height: 18 }}/>
+        Standard — im Formular vorausgefüllt (je Kontext nur eine)
+      </label>
       <textarea value={fText} onChange={e => setFText(e.target.value)} rows={4}
         placeholder={"Text mit Platzhaltern: {nummer} {titel} {objekt} {beschreibung} {firma} {frist}"}
         style={{ ...eingabeStil, resize: "vertical", minHeight: 90 }}/>
@@ -3946,7 +3999,17 @@ function SektionVorlagenKarte({ settings, setSettings, t, accent }) {
                 color: t.text, overflowWrap: "anywhere" }}>
                 {v.titel}
                 <span style={{ color: t.muted, fontWeight: FW.medium }}>
-                  {" · " + schrittLabel(v.schritt)}</span>
+                  {" · " + schrittLabel(v.schritt)
+                    + (Array.isArray(v.kategorien) && v.kategorien.length > 0
+                      ? " · " + v.kategorien.map((id) =>
+                          ((VORGANG_KATEGORIEN.find((k) => k.id === id) || {}).kurz || id))
+                          .join(", ")
+                      : " · alle Kategorien")}</span>
+                {v.standard ? (
+                  <span style={{ marginLeft: 6, fontSize: FS.xxs, fontWeight: FW.bold,
+                    color: accent, border: "1px solid " + accent + "55",
+                    borderRadius: RAD.pill, padding: "1px 7px" }}>Standard</span>
+                ) : null}
               </div>
               <button onClick={() => (offenId === v.id ? setOffenId(null) : oeffneBearbeiten(v))}
                 style={{ background: "none", border: `1px solid ${t.border}`, color: t.text,

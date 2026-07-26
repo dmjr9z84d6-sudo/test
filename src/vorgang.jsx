@@ -28,7 +28,7 @@ import {
   hinweiseFuerVorgang, kontaktAnzeigename, schreibtischEintraege,
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
-  vorlageFuerSchritt, fuelleVorlage, fotoStandorte, fotoFindeRaum, FOTO_RAUM_KATALOG,
+  vorlageFuerSchritt, vorlagenFuerKontext, standardVorlage, fuelleVorlage, fotoStandorte, fotoFindeRaum, FOTO_RAUM_KATALOG,
   einheitLageText,
   alleEinheitenVonVe, raeumeVonEinheit, findeRaumUeberall, raumWert, raumLabel,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
@@ -187,9 +187,44 @@ function BausteinKarte({ titel, anzahl, sub, punktFarbe, offen, onToggle, t, acc
 
 // ── AuftragNeuForm — Auftrag im Vorgang anlegen (§6b: an wen/was/bis wann) ──
 // „Womit" (zugrundeliegendes Angebot) kommt mit der Angebots-Verbreiterung.
+// ── VorlagenWahl — Vorlagen-Auswahl an Textfeldern (§76-Baustein, 26.07.) ──
+// Zeigt (nur wenn es für Kontext+Kategorie Vorlagen gibt) ein kompaktes
+// Select „Vorlage einfügen …" über dem Feld. Auswahl ÜBERSCHREIBT den
+// Feldtext (onUebernehmen) — danach frei editierbar. Der Standard ist
+// bereits vorbefüllt (standardVorlage an der Aufrufstelle); die Auswahl
+// dient dem Wechsel auf eine andere Vorlage. Texte: Einstellungen →
+// Vorgänge → „Vorlagen (Textbausteine)".
+function VorlagenWahl({ schritt, kategorieId = null, onUebernehmen, t, accent }) {
+  const vorlagen = useVorlagen();
+  const passend = vorlagenFuerKontext(vorlagen, schritt, kategorieId);
+  if (passend.length === 0) return null;
+  return (
+    <select value=""
+      onChange={(e) => {
+        const v = passend.filter((x) => x.id === e.target.value)[0];
+        if (v) onUebernehmen(v.text || "");
+      }}
+      style={Object.assign({}, selectStil(t, accent, false),
+        { marginBottom: 6, fontSize: FS.s })}>
+      <option value="">Vorlage einfügen …</option>
+      {passend.map((v) => (
+        <option key={v.id} value={v.id}>
+          {(v.titel || "Vorlage") + (v.standard ? " (Standard)" : "")}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // Ohne Firma bleibt er „erfasst" (Entwurf); mit Firma wird direkt beauftragt.
 function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt = null, t, accent, onWelt, DatumFeld, onFertig }) {
-  const [beschreibung, setBeschreibung] = useState("");
+  const vorlagenCtx = useVorlagen();
+  // Standard-Vorlage (26.07., Benny): Kontext „Auftrag erfassen" — vorbefüllt,
+  // frei überschreibbar; weitere Vorlagen über die Auswahl am Feld.
+  const [beschreibung, setBeschreibung] = useState(() => {
+    const st = standardVorlage(vorlagenCtx, "auftrag_erfassen", kategorieId);
+    return st ? (st.text || "") : "";
+  });
   const [firmaId, setFirmaId] = useState("");
   // §4.3: Ausführungsfrist-Default aus den Einstellungen — der am häufigsten
   // pro Fall überschriebene Wert, darum vorbelegt statt erzwungen.
@@ -223,6 +258,8 @@ function AuftragNeuForm({ vorgangId, kategorieId = null, firmen, kontakteObjekt 
   return (
     <div style={flowZeileStil(t)}>
       <label style={feldLabelStil(t)}>Was ist zu tun?</label>
+      <VorlagenWahl schritt="auftrag_erfassen" kategorieId={kategorieId}
+        t={t} accent={accent} onUebernehmen={setBeschreibung}/>
       <input value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)}
         placeholder="z. B. Dach decken (abgegrenzter Leistungsteil)"
         style={Object.assign({}, selectStil(t, accent, !!beschreibung), { marginBottom: 0 })}/>
@@ -1127,7 +1164,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
     { id: "angebote", iconName: "document", label: "Angebot", sub: "Eigener Tab — anfragen oder erfassen" },
     { id: "aufgaben", iconName: "check", label: "Aufgabe", sub: "Delegieren + nachhalten" },
     { id: "rechnungen", iconName: "calc", label: "Rechnung", sub: "Eigener Tab — Betrag + Prüfung" },
-    { id: "notiz", iconName: "pencil", label: "Notiz", sub: "Freier Text in die Akte" },
+    { id: "notiz", iconName: "pencil", label: "Akteneintrag", sub: "Freier Text in die Akte" }, // 26.07. umbenannt (Verlauf behält „Notiz:")
   ];
   if (!vs) {
     katalog.splice(4, 0, { id: "versicherung", iconName: "shield", label: "Versicherungsfall",
@@ -2753,7 +2790,12 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false
   const s = auftrag.status;
 
   const vorlagen = useVorlagen();
+  const [firmaFehler, setFirmaFehler] = useState(false); // 26.07.: Pflicht
   const beauftrage = () => {
+    // Beauftragung OHNE Empfänger gibt es nicht (Benny 26.07.) — vorher lief
+    // firma_kontakt_id: null still durch und der Auftrag hing „beauftragt"
+    // ohne Adressat in der Welt.
+    if (!firmaId) { setFirmaFehler(true); return; }
     onWelt((w) => {
       let neu = weltAuftragBeauftragen(w, auftrag.id,
         { firma_kontakt_id: firmaId || null, frist: frist || null,
@@ -2811,10 +2853,16 @@ function AuftragFlowAktionen({ auftrag, brauchtAbnahme, rechnungErwartet = false
       {formOffen === "beauftragen" ? (
         <div>
           <KontaktPickerMitAllen value={firmaId || null}
-            onChange={(id) => setFirmaId(id || "")}
-            label="Firma" t={t} accent={accent} nurFirmen
+            onChange={(id) => { setFirmaId(id || ""); if (id) setFirmaFehler(false); }}
+            label="Firma (Pflicht)" t={t} accent={accent} nurFirmen
             kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
             kontakteAlle={pickerListe(firmen)}/>
+          {firmaFehler ? (
+            <div style={{ fontSize: FS.xs, color: "#EF4444", marginTop: -4,
+              marginBottom: 6 }}>
+              Ohne Firma keine Beauftragung — bitte einen Empfänger wählen.
+            </div>
+          ) : null}
           {DatumFeld ? (
             <DatumFeld t={t} accent={accent} label="Zieldatum (optional)"
               value={frist} onChange={setFrist} iso defaultHeute={false}/>

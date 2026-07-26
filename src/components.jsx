@@ -1629,9 +1629,22 @@ function KontaktPickerMitAllen({ kontakteObjekt, kontakteAlle, t, accent, ...res
   );
 }
 
+// Gewerk-Namen einer Firma (Strings oder {name}-Objekte, §Kontakte).
+function kontaktGewerkNamen(k) {
+  return (k && Array.isArray(k.gewerke) ? k.gewerke : [])
+    .map((g) => typeof g === "string" ? g : ((g && g.name) || ""))
+    .filter((x) => x);
+}
+
 function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = true, nurFirmen = false, kontakte = [], setKontakte, onCreate, alleOption = null }) {
   const [offen, setOffen] = useState(false);
   const [suche, setSuche] = useState("");
+  // Gewerk-Filter (Benny 26.07., nurFirmen): aufklappender Mehrfach-Filter —
+  // ein Chip, Popover mit Häkchen (statt langer Chip-Zeile), §2.7-Popover.
+  const [gewerkFilter, setGewerkFilter] = useState([]);
+  const [gewerkAuf, setGewerkAuf] = useState(false);
+  const gewerkRef = useRef(null);
+  useOutsideClick(gewerkRef, () => setGewerkAuf(false), gewerkAuf);
   // Inline-Schnellanlage: kompaktes Mini-Formular im Picker, damit User nicht
   // erst zur Kontakte-Seite springen müssen, um z. B. einen Eigentümer
   // anzulegen, der noch nicht im System ist.
@@ -1664,11 +1677,20 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
   const liste = sortKontakte(kontakte.filter(k => nurFirmen ? k.typ === "firma" : true), sortierSettings);
   const gefunden = liste.find(k => k.id === value);
 
+  const verfuegbareGewerke = nurFirmen
+    ? Array.from(new Set(liste.flatMap((k) => kontaktGewerkNamen(k))))
+        .sort((a, b) => a.localeCompare(b, "de"))
+    : [];
+  const gewerkVor = liste.filter((k) => gewerkFilter.length === 0
+    || kontaktGewerkNamen(k).some((g) => gewerkFilter.indexOf(g) >= 0));
   const treffer = suche.trim().length > 0
-    ? liste.filter(k =>
+    ? gewerkVor.filter(k =>
         k.name.toLowerCase().includes(suche.toLowerCase()) ||
-        ((k.sub || "")).toLowerCase().includes(suche.toLowerCase()))
-    : liste;
+        ((k.sub || "")).toLowerCase().includes(suche.toLowerCase()) ||
+        // 26.07.: Suche matcht auch Gewerksnamen („Sanitär" findet Sanitär-Firmen)
+        kontaktGewerkNamen(k).some((g) =>
+          g.toLowerCase().includes(suche.toLowerCase())))
+    : gewerkVor;
 
   const personen = treffer.filter(k => k.typ === "person");
   const firmen   = treffer.filter(k => k.typ === "firma");
@@ -1828,6 +1850,66 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
                   {alleOption.label || "Alle Kontakte durchsuchen"}
                 </span>
               </button>
+            ) : null}
+            {/* Gewerk-Filter (26.07.): ein Chip, aufklappendes Popover mit
+                Mehrfach-Häkchen — nur nurFirmen und nur wenn Gewerke gepflegt. */}
+            {nurFirmen && verfuegbareGewerke.length > 0 ? (
+              <div ref={gewerkRef} style={{ position: "relative",
+                padding: "6px 12px", borderBottom: `1px solid ${t.border}` }}>
+                <button type="button" onClick={() => setGewerkAuf(!gewerkAuf)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "4px 10px", borderRadius: RAD.pill,
+                    border: "1px solid " + (gewerkFilter.length > 0 ? accent : t.border),
+                    background: gewerkFilter.length > 0 ? accent + "18" : "transparent",
+                    color: gewerkFilter.length > 0 ? accent : t.sub,
+                    fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer",
+                    fontFamily: "inherit" }}>
+                  {gewerkFilter.length === 0 ? "Gewerk"
+                    : "Gewerk: " + gewerkFilter[0]
+                      + (gewerkFilter.length > 1 ? " +" + (gewerkFilter.length - 1) : "")}
+                  <I name="chevD" size={11}/>
+                </button>
+                {gewerkAuf ? (
+                  <div style={{ position: "absolute", left: 12, top: "100%",
+                    zIndex: 20, minWidth: 200, maxHeight: 200, overflowY: "auto",
+                    background: t.card, border: `1px solid ${t.border}`,
+                    borderRadius: RAD.md, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                    padding: 4 }}>
+                    {verfuegbareGewerke.map((g) => {
+                      const an = gewerkFilter.indexOf(g) >= 0;
+                      return (
+                        <button key={g} type="button"
+                          onClick={() => setGewerkFilter(an
+                            ? gewerkFilter.filter((x) => x !== g)
+                            : gewerkFilter.concat([g]))}
+                          style={{ display: "flex", alignItems: "center", gap: 7,
+                            width: "100%", padding: "6px 8px", background: "none",
+                            border: "none", cursor: "pointer", textAlign: "left",
+                            fontFamily: "inherit", borderRadius: RAD.sm }}>
+                          <span style={{ width: 15, height: 15, flexShrink: 0,
+                            borderRadius: 4,
+                            border: `1.5px solid ${an ? accent : t.border}`,
+                            background: an ? accent : "transparent",
+                            display: "inline-flex", alignItems: "center",
+                            justifyContent: "center" }}>
+                            {an ? <I name="check" size={10}
+                              color={getContrastColor(accent)}/> : null}
+                          </span>
+                          <span style={{ fontSize: FS.s,
+                            color: an ? accent : t.text }}>{g}</span>
+                        </button>
+                      );
+                    })}
+                    {gewerkFilter.length > 0 ? (
+                      <button type="button" onClick={() => setGewerkFilter([])}
+                        style={{ width: "100%", padding: "6px 8px", marginTop: 2,
+                          background: "none", border: "none", cursor: "pointer",
+                          fontFamily: "inherit", fontSize: FS.xs, color: t.muted,
+                          textAlign: "left" }}>Zurücksetzen</button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             {/* Inline-Schnellanlage */}
             {neuOffen && setKontakte && (

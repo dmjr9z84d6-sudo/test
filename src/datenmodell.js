@@ -2963,6 +2963,21 @@ function etvOrtAnfrageVon(settings) {
 function vorlageFuerSchritt(vorlagen, schritt) {
   return (vorlagen || []).filter((v) => v.schritt === schritt)[0] || null;
 }
+// 26.07. (Benny): Vorlagen mit Kategorie-Bezug. kategorien leer/fehlend =
+// gilt für alle Vorgangs-Kategorien; sonst nur für die gelisteten.
+function vorlagenFuerKontext(vorlagen, schritt, kategorieId) {
+  return (vorlagen || []).filter((v) => v.schritt === schritt
+    && (!Array.isArray(v.kategorien) || v.kategorien.length === 0
+      || (kategorieId != null && v.kategorien.indexOf(kategorieId) >= 0)));
+}
+// Standard-Vorlage eines Kontexts: kategorie-spezifischer Standard schlägt
+// den allgemeinen („alle Kategorien").
+function standardVorlage(vorlagen, schritt, kategorieId) {
+  const passend = vorlagenFuerKontext(vorlagen, schritt, kategorieId);
+  const spezifisch = passend.filter((v) => v.standard
+    && Array.isArray(v.kategorien) && v.kategorien.length > 0)[0] || null;
+  return spezifisch || passend.filter((v) => !!v.standard)[0] || null;
+}
 function fuelleVorlage(text, ctx) {
   let out = String(text || "");
   const c = ctx || {};
@@ -4954,7 +4969,7 @@ export {
   neuerVorgang, neueBeteiligung, neueNachricht, neuesAngebot, neuerAuftrag,
   neueAbnahme, neueRechnung, neueAufgabe, neuerBeschluss,
   normalisiereVorgangsWelt, leereVorgangsWelt, fristenVon, isoInTagen,
-  vorlagenVon, vorlageFuerSchritt, fuelleVorlage,
+  vorlagenVon, vorlageFuerSchritt, vorlagenFuerKontext, standardVorlage, fuelleVorlage,
   vorgangsNummerNeu, auftragsNummerNeu, angebotsNummerNeu,
   AMPEL_RANG, AMPEL_REIHE, ampelAusRang,
   hinweiseFuerVorgang, ampelFarbe, ampelFarbeAuftrag, schreibtischEintraege,
