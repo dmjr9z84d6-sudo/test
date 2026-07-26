@@ -6524,12 +6524,15 @@ function NeueKarteMenu({ t, accent, onAdd, optionen,
             <div key={"trenner" + i} style={{ borderTop: `2px solid ${accent}35`,
               margin: "2px 0" }}/>
           ) : (
-            <button key={opt.id} onClick={() => { onAdd(opt.id); setOffen(false); }} style={{
+            <button key={opt.id} disabled={!!opt.disabled}
+              onClick={() => { if (opt.disabled) return; onAdd(opt.id); setOffen(false); }} style={{
               width: "100%", display: "flex", alignItems: "center", gap: 12,
               background: "transparent", border: "none",
               borderBottom: i < opts.length - 1 ? `1px solid ${accent}20` : "none",
-              padding: "10px 14px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
-              onMouseEnter={e => e.currentTarget.style.background = accent + "14"}
+              opacity: opt.disabled ? 0.5 : 1,
+              padding: "10px 14px", cursor: opt.disabled ? "not-allowed" : "pointer",
+              textAlign: "left", fontFamily: "inherit" }}
+              onMouseEnter={e => { if (!opt.disabled) e.currentTarget.style.background = accent + "14"; }}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               {zeigeIcons ? (opt.iconName
                 ? <I name={opt.iconName} size={17} color={accent}/>

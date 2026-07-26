@@ -405,7 +405,7 @@ const DEFAULT_SETTINGS = {
     { id:"objekte",       label:"Objekte",       icon:"building",  farbe:ACCENT,    aktiv:true,  reihenfolge:0 },
     { id:"kontakte",      label:"Kontakte",      icon:"users",     farbe:KONTAKTE_FARBE,        aktiv:true,  reihenfolge:1 },
     { id:"kalender",      label:"Kalender",      icon:"calendar",  farbe:"#F59E0B", aktiv:true,  reihenfolge:2 },
-    { id:"etv",           label:"ETV",           icon:"calendar",  farbe:"#8B5CF6", aktiv:true,  reihenfolge:3 },
+    { id:"etv",           label:"ETV",           icon:"badge",     farbe:"#8B5CF6", aktiv:true,  reihenfolge:3 }, // 26.07.: badge = DAS ETV-Icon überall (kollidierte mit Kalender)
     { id:"beschluss",     label:"Beschlusssammlung", icon:"document", farbe:"#F59E0B", aktiv:false, reihenfolge:4 },
     { id:"auftraege",     label:"Vorgänge",      icon:"ticket",    farbe:"#EF4444", aktiv:true,  reihenfolge:5 },
     { id:"kommunikation", label:"Kommunikation", icon:"mail",      farbe:"#0EA5E9", aktiv:true,  reihenfolge:6 },
@@ -2601,6 +2601,15 @@ export function raumWert(r) {
   if (!r) return "";
   if (r.id != null && String(r.id) !== "") return String(r.id);
   return r.name ? ("name:" + r.name) : "";
+}
+// Lage/Etage einer Einheit (Benny 26.07.): reine ANZEIGE-Info — kommt aus dem
+// vorhandenen Feld „Lage / Etage" der Einheit bzw. ihres ersten Gebäudeteils.
+// Keine neue Eingabe; leer = nichts anzeigen.
+export function einheitLageText(e) {
+  if (!e) return "";
+  if (e.lage != null && String(e.lage) !== "") return String(e.lage);
+  if (Array.isArray(e.teile) && e.teile[0] && e.teile[0].lage) return String(e.teile[0].lage);
+  return "";
 }
 // Anzeigename eines Raums — Import-Daten nutzen teils `bezeichnung`.
 export function raumLabel(r) {

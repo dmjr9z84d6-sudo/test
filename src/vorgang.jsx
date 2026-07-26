@@ -16,7 +16,7 @@
 //                       beiden Achsen der Vorgänge-Kachel (Objekte | Firmen)
 // ═══════════════════════════════════════════════════════════════════════════
 import React, { useEffect, useState } from "react";
-import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor } from "./constants.js";
+import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor, sichtbareFarbe } from "./constants.js";
 import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
 import { Avatar, HeaderZurueck, Inp, KontaktPicker, KontaktPickerMitAllen, KopfIconButton, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu, DateiViewerModal } from "./liegenschaft.jsx";
@@ -29,6 +29,7 @@ import {
   neuerAuftrag, neuesAngebot, neueNachricht, ANLASS_TYPEN, anlassTyp,
   BETEILIGUNG_ROLLEN, beteiligungRolle, neueBeteiligung,
   vorlageFuerSchritt, fuelleVorlage, fotoStandorte, fotoFindeRaum, FOTO_RAUM_KATALOG,
+  einheitLageText,
   alleEinheitenVonVe, raeumeVonEinheit, findeRaumUeberall, raumWert, raumLabel,
   vorgangKategorie, kategorieHatPhase, auftragBrauchtAbnahme, isoInTagen,
   auftragsNummerNeu, angebotsNummerNeu,
@@ -1006,7 +1007,8 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const [notizText, setNotizText] = useState("");
   const [menuConfirm, setMenuConfirm] = useState(null); // "loeschen"|"schliessen" (26.07.)
   const [verlaufEdit, setVerlaufEdit] = useState(null); // { id, feld, text } (26.07.)
-  const [verlaufLoeschId, setVerlaufLoeschId] = useState(null); // 2-Stufen (26.07.)
+  const [verlaufAuswahl, setVerlaufAuswahl] = useState([]); // gewählte nachrichtIds (26.07., Foto-Muster)
+  const [verlaufLoeschConfirm, setVerlaufLoeschConfirm] = useState(false); // 2-Stufen Leiste
   const [vorgangEditOffen, setVorgangEditOffen] = useState(false); // Stammdaten-Overlay (25.07.)
   const [kopfEdit, setKopfEdit] = useState(false); // Lese-/Bearbeiten-Modus (25.07., 3. Runde)
   const [ruhenFormOffen, setRuhenFormOffen] = useState(false);
@@ -1042,16 +1044,24 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const einheit = vorgang.einheit_id
     ? (einheiten.filter((e) => String(e.id) === String(vorgang.einheit_id))[0] || null) : null;
   const raum = ve && vorgang.raum_id ? findeRaum(ve, vorgang.raum_id) : null;
+  // Lage/Etage (Benny 26.07.): Einheits-Lage bevorzugt; ohne Einheit die
+  // Raum-Lage (Gemeinschaftsräume wie „Müll- und Wertstoffraum · 1.OG").
+  const ortsLage = einheit ? einheitLageText(einheit)
+    : ((raum && raum.lage) ? String(raum.lage) : "");
   const woText = (einheit
     ? (einheit.bezeichnung || einheit.nr || einheit.einheitLabel || "Einheit")
     : "Ganzes Objekt / Gemeinschaft")
-    + (raum ? " · " + (raum.name || raum.bezeichnung || "Raum") : "");
+    + (einheit && ortsLage ? " · " + ortsLage : "")
+    + (raum ? " · " + (raum.name || raum.bezeichnung || "Raum") : "")
+    + (!einheit && ortsLage ? " · " + ortsLage : "");
   // Akten-Titel-Ortszeile (25.07.): VE-Nr + Einheit + Raum — nur Gesetztes,
   // ohne "Ganzes Objekt"-Platzhalter (die reine Objekt-Akte zeigt nur VE-Nr).
   const aktenOrt = [
     ve ? (ve.nr || ve.name || "") : "",
     einheit ? (einheit.bezeichnung || einheit.nr || einheit.einheitLabel || "") : "",
+    einheit ? ortsLage : "", // Geschoss der Einheit (26.07.), z. B. „1.OG"
     raum ? (raum.name || raum.bezeichnung || "") : "",
+    !einheit ? ortsLage : "", // Gemeinschaftsraum: Lage hinter dem Raum
   ].filter((x) => x).join(" · ");
   const kannFlows = !!onWelt && vorgang.status !== "geschlossen";
   const auftraege = welt.auftraege.filter((a) => a.vorgang_id === vorgang.id);
@@ -1138,8 +1148,27 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
     aktionKatalog.push({ id: "aktion_oeffnen", iconName: "rotateLeft",
       label: "Wieder öffnen", sub: "Geschlossenen Vorgang wieder aufnehmen" });
   }
-  if (onWelt) aktionKatalog.push({ id: "aktion_loeschen", iconName: "trash",
-    label: "Vorgang löschen", sub: "Endgültig entfernen — nicht umkehrbar" });
+  // Lösch-Sperre (Benny 26.07., streng): sobald dokumentationswürdig
+  // gehandelt wurde, ist Löschen gesperrt — „Vorgang schließen" ist dann der
+  // richtige Weg. Notizen und bloß ERFASSTE Aufträge sperren nicht.
+  let loeschSperrGrund = null;
+  if (auftraege.some((a) => a.beauftragt_am || (a.status && a.status !== "erfasst"))) {
+    loeschSperrGrund = "es wurde bereits beauftragt";
+  } else if (angebote.length > 0) loeschSperrGrund = "es liegen Angebote vor";
+  else if (rechnungen.length > 0) loeschSperrGrund = "es liegen Rechnungen vor";
+  else if (welt.abnahmen.some((ab) => auftraege.some((a) => a.id === ab.auftrag_id))) {
+    loeschSperrGrund = "es gibt Abnahmen";
+  } else if (nachrichten.some((n) => n.richtung === "ausgehend")) {
+    loeschSperrGrund = "es gab ausgehende Kommunikation";
+  } else if (vorgang.wartet_auf_beschluss_id) {
+    loeschSperrGrund = "der Vorgang ist für die ETV vorgemerkt";
+  }
+  if (onWelt) aktionKatalog.push(loeschSperrGrund
+    ? { id: "aktion_loeschen", iconName: "trash", label: "Vorgang löschen",
+        disabled: true,
+        sub: "Gesperrt — " + loeschSperrGrund + ". Dokumentationspflicht: bitte stattdessen „Vorgang schließen“." }
+    : { id: "aktion_loeschen", iconName: "trash", label: "Vorgang löschen",
+        sub: "Endgültig entfernen — nicht umkehrbar" });
   const menueOptionen = (kannFlows ? katalog : [])
     .concat(aktionKatalog.length > 0 ? [{ trenner: true }] : [])
     .concat(aktionKatalog);
@@ -1267,7 +1296,71 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const datenKarte = (
     <div style={{ background: t.card, border: "1px solid " + t.border,
       borderRadius: RAD.lg, padding: "12px 14px" }}>
-      <div style={blockTitelStil(t)}>Akteneinträge</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={Object.assign({}, blockTitelStil(t), { flex: 1 })}>Akteneinträge</div>
+        {/* Schlanke Aktionsleiste (Benny 26.07., Foto-Muster „etwas kleiner"):
+            Zähler · Stift (nur bei genau 1) · Papierkorb (2-Stufen, alle
+            gewählten) · × (Auswahl aufheben). Nur im Bearbeiten-Modus. */}
+        {kopfEdit && onWelt ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+            <span title={verlaufAuswahl.length + " ausgewählt"} style={{ minWidth: 20,
+              height: 20, padding: "0 6px", borderRadius: RAD.pill,
+              background: verlaufAuswahl.length > 0 ? accent : t.border,
+              color: verlaufAuswahl.length > 0 ? getContrastColor(accent) : t.sub,
+              fontSize: FS.xs, fontWeight: FW.bold, display: "inline-flex",
+              alignItems: "center", justifyContent: "center" }}>
+              {verlaufAuswahl.length}</span>
+            <button title="Eintrag bearbeiten" disabled={verlaufAuswahl.length !== 1}
+              onClick={() => {
+                const eid = verlaufAuswahl[0];
+                const eintrag = verlauf.filter((x) => x.nachrichtId === eid)[0];
+                const n = welt.nachrichten.filter((x) => x.id === eid)[0];
+                if (!eintrag || !n) return;
+                setVerlaufLoeschConfirm(false);
+                setVerlaufEdit({ id: eid, feld: eintrag.feld, text: n[eintrag.feld] || "" });
+              }}
+              style={{ width: 28, height: 28, borderRadius: RAD.sm,
+                border: "1px solid " + t.border, background: t.card,
+                color: verlaufAuswahl.length === 1 ? t.sub : t.muted,
+                opacity: verlaufAuswahl.length === 1 ? 1 : 0.45,
+                cursor: verlaufAuswahl.length === 1 ? "pointer" : "not-allowed",
+                display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+              <I name="pencil" size={13}/>
+            </button>
+            <button disabled={verlaufAuswahl.length === 0}
+              title={verlaufLoeschConfirm ? "Nochmal tippen zum endgültigen Löschen"
+                : "Gewählte Einträge löschen"}
+              onClick={() => {
+                if (verlaufAuswahl.length === 0) return;
+                if (!verlaufLoeschConfirm) { setVerlaufLoeschConfirm(true); return; }
+                const ids = verlaufAuswahl.slice();
+                onWelt((w) => Object.assign({}, w, {
+                  nachrichten: w.nachrichten.filter((n) => ids.indexOf(n.id) < 0) }));
+                setVerlaufAuswahl([]); setVerlaufLoeschConfirm(false); setVerlaufEdit(null);
+              }}
+              style={{ width: 28, height: 28, borderRadius: RAD.sm,
+                border: "1px solid " + (verlaufLoeschConfirm ? "#EF4444" : "#EF444455"),
+                background: verlaufLoeschConfirm ? "#EF4444" : t.card,
+                color: verlaufLoeschConfirm ? "#FFFFFF"
+                  : sichtbareFarbe("#EF4444", t.card),
+                opacity: verlaufAuswahl.length === 0 ? 0.45 : 1,
+                cursor: verlaufAuswahl.length === 0 ? "not-allowed" : "pointer",
+                display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+              <I name="trash" size={13}/>
+            </button>
+            {verlaufAuswahl.length > 0 ? (
+              <button title="Auswahl aufheben"
+                onClick={() => { setVerlaufAuswahl([]); setVerlaufLoeschConfirm(false); }}
+                style={{ width: 28, height: 28, borderRadius: RAD.sm,
+                  border: "1px solid " + t.border, background: t.card, color: t.sub,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", padding: 0 }}>
+                <I name="x" size={13}/>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       <div style={{ fontSize: FS.s, color: t.text }}>
         {woText}
         <span style={{ color: t.muted }}>
@@ -1278,8 +1371,15 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
         marginTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
         {verlauf.map((e, i) => {
           const echt = !!e.nachrichtId && kopfEdit && !!onWelt;
+          const gewaehlt = echt && verlaufAuswahl.indexOf(e.nachrichtId) >= 0;
           const inEdit = echt && verlaufEdit && verlaufEdit.id === e.nachrichtId;
-          const loeschScharf = echt && verlaufLoeschId === e.nachrichtId;
+          const toggle = () => {
+            if (!echt) return;
+            setVerlaufLoeschConfirm(false);
+            setVerlaufAuswahl(gewaehlt
+              ? verlaufAuswahl.filter((id) => id !== e.nachrichtId)
+              : verlaufAuswahl.concat([e.nachrichtId]));
+          };
           if (inEdit) {
             return (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1287,50 +1387,46 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                   onChange={(ev) => setVerlaufEdit({ id: verlaufEdit.id,
                     feld: verlaufEdit.feld, text: ev.target.value })}
                   style={Object.assign({}, selectStil(t, accent, true), { flex: 1 })}/>
-                <AktionsButton rolle="abbrechen" size={30} t={t} accent={accent}
+                <AktionsButton rolle="abbrechen" size={28} t={t} accent={accent}
                   title="Abbrechen" onClick={() => setVerlaufEdit(null)}/>
-                <AktionsButton rolle="bestaetigen" size={30} t={t} accent={accent}
+                <AktionsButton rolle="bestaetigen" size={28} t={t} accent={accent}
                   title="Speichern" onClick={() => {
                     const eid = verlaufEdit.id, feld = verlaufEdit.feld,
                       txt = verlaufEdit.text;
                     onWelt((w) => Object.assign({}, w, {
                       nachrichten: w.nachrichten.map((n) => n.id === eid
                         ? Object.assign({}, n, { [feld]: txt }) : n) }));
-                    setVerlaufEdit(null);
+                    setVerlaufEdit(null); setVerlaufAuswahl([]);
                   }}/>
               </div>
             );
           }
           return (
-            <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <div key={i} onClick={echt ? toggle : undefined}
+              style={{ display: "flex", alignItems: "baseline", gap: 8,
+                cursor: echt ? "pointer" : "default",
+                background: gewaehlt ? accent + "14" : "transparent",
+                borderRadius: gewaehlt ? RAD.sm : 0,
+                margin: gewaehlt ? "0 -4px" : 0, padding: gewaehlt ? "0 4px" : 0 }}>
+              {/* Auswahl-Kreis (26.07., Foto-Muster): nur ECHTE Einträge
+                  (Notiz/Nachricht) sind wählbar — abgeleitete Zeilen bleiben
+                  ohne Kreis und werden in ihren Karten gepflegt. */}
+              {echt ? (
+                <span aria-label={gewaehlt ? "Abwählen" : "Auswählen"}
+                  style={{ width: 16, height: 16, borderRadius: RAD.pill,
+                    flexShrink: 0, alignSelf: "center",
+                    border: "1.5px solid " + (gewaehlt ? accent : t.border),
+                    background: gewaehlt ? accent : "transparent",
+                    display: "inline-flex", alignItems: "center",
+                    justifyContent: "center" }}>
+                  {gewaehlt ? <I name="check" size={10}
+                    color={getContrastColor(accent)}/> : null}
+                </span>
+              ) : null}
               <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
                 whiteSpace: "nowrap" }}>{datumDe(e.datum)}</span>
               <span style={{ fontSize: FS.s, color: t.text, minWidth: 0, flex: 1,
                 overflowWrap: "anywhere" }}>{e.text}</span>
-              {/* 26.07.: Nur ECHTE Einträge (Notiz/Nachricht) tragen Stift +
-                  Papierkorb (2-Stufen) — sichtbar nur im Bearbeiten-Modus. */}
-              {echt ? (
-                <span style={{ display: "inline-flex", gap: 4, flexShrink: 0,
-                  alignSelf: "center" }}>
-                  <AktionsButton rolle="bearbeiten" size={26} t={t} accent={accent}
-                    title="Eintrag bearbeiten" onClick={() => {
-                      const n = welt.nachrichten.filter((x) => x.id === e.nachrichtId)[0];
-                      setVerlaufLoeschId(null);
-                      setVerlaufEdit({ id: e.nachrichtId, feld: e.feld,
-                        text: (n && n[e.feld]) || "" });
-                    }}/>
-                  <AktionsButton rolle="loeschen" size={26} t={t} accent={accent}
-                    confirm={loeschScharf}
-                    title={loeschScharf ? "Nochmal tippen zum Löschen" : "Eintrag löschen"}
-                    onClick={() => {
-                      if (!loeschScharf) { setVerlaufLoeschId(e.nachrichtId); return; }
-                      const eid = e.nachrichtId;
-                      onWelt((w) => Object.assign({}, w, {
-                        nachrichten: w.nachrichten.filter((n) => n.id !== eid) }));
-                      setVerlaufLoeschId(null);
-                    }}/>
-                </span>
-              ) : null}
             </div>
           );
         })}
@@ -1348,7 +1444,8 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
       <KopfIconButton icon={kopfEdit ? "check" : "pencil"}
         title={kopfEdit ? "Bearbeiten beenden" : "Bearbeiten"}
         t={t} accent={accent}
-        onClick={() => { setKopfEdit(!kopfEdit); setMenuConfirm(null); }}/>
+        onClick={() => { setKopfEdit(!kopfEdit); setMenuConfirm(null);
+          setVerlaufAuswahl([]); setVerlaufLoeschConfirm(false); setVerlaufEdit(null); }}/>
     </div>
   ) : null;
 

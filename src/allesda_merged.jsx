@@ -1604,6 +1604,9 @@ export default function App() {
           // Bestands-User mit auftraege-Kachel: nur das veraltete Default-Label
           // „Aufträge" auf „Vorgänge" heben (eigene Umbenennungen NICHT anfassen).
           if (k.id === "auftraege" && k.label === "Aufträge") return { ...k, label: "Vorgänge" };
+          // 26.07.: ETV-Icon vereinheitlicht auf badge — Bestands-Settings mit
+          // dem alten Default calendar sanft heben (eigene Icon-Wahl bleibt).
+          if (k.id === "etv" && k.icon === "calendar") return { ...k, icon: "badge" };
           return k;
         });
         // Dedupe nach id: durch die tickets→auftraege-Umbenennung (oder doppelt
