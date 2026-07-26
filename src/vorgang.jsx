@@ -430,13 +430,20 @@ function baueVerlauf(vorgang, welt, kontakte) {
     const n = nachrichten[i];
     if (n.kanal === "notiz" && !n.von_kontakt_id && !n.an_kontakt_id && !n.betreff) {
       // Verwalter-Notiz (§96.10): kein Absender/Empfänger — der Inhalt IST die Zeile.
-      dazu(n.gesendet_am, "Notiz: " + (n.inhalt || ""));
+      // 26.07.: nachrichtId/feld markieren ECHTE Einträge (bearbeitbar/löschbar
+      // im Bearbeiten-Modus) — abgeleitete Zeilen (Angebot/Auftrag/Abnahme/
+      // Rechnung/"Vorgang angelegt") tragen keine id und werden in ihren
+      // Karten gepflegt (Bennys Entscheidung 26.07.).
+      E.push({ datum: n.gesendet_am || "", text: "Notiz: " + (n.inhalt || ""),
+        nachrichtId: n.id, feld: "inhalt" });
       continue;
     }
     const wer = nameVon(kontakte, n.richtung === "eingehend" ? n.von_kontakt_id : n.an_kontakt_id);
-    dazu(n.gesendet_am, (n.richtung === "eingehend" ? "Nachricht" : "Nachricht an")
-      + (wer ? (n.richtung === "eingehend" ? " von " + wer : " " + wer) : "")
-      + (n.betreff ? ": " + n.betreff : (n.inhalt ? ": " + n.inhalt : "")));
+    E.push({ datum: n.gesendet_am || "",
+      text: (n.richtung === "eingehend" ? "Nachricht" : "Nachricht an")
+        + (wer ? (n.richtung === "eingehend" ? " von " + wer : " " + wer) : "")
+        + (n.betreff ? ": " + n.betreff : (n.inhalt ? ": " + n.inhalt : "")),
+      nachrichtId: n.id, feld: n.betreff ? "betreff" : "inhalt" });
   }
   const angebote = welt.angebote.filter((a) => a.vorgang_id === vorgang.id);
   for (let i = 0; i < angebote.length; i++) {
@@ -997,8 +1004,9 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const [aufgabeTitel, setAufgabeTitel] = useState("");
   const [rechnungBetrag, setRechnungBetrag] = useState("");
   const [notizText, setNotizText] = useState("");
-  const [schliessConfirm, setSchliessConfirm] = useState(false);
-  const [loeschConfirm, setLoeschConfirm] = useState(false);
+  const [menuConfirm, setMenuConfirm] = useState(null); // "loeschen"|"schliessen" (26.07.)
+  const [verlaufEdit, setVerlaufEdit] = useState(null); // { id, feld, text } (26.07.)
+  const [verlaufLoeschId, setVerlaufLoeschId] = useState(null); // 2-Stufen (26.07.)
   const [vorgangEditOffen, setVorgangEditOffen] = useState(false); // Stammdaten-Overlay (25.07.)
   const [kopfEdit, setKopfEdit] = useState(false); // Lese-/Bearbeiten-Modus (25.07., 3. Runde)
   const [ruhenFormOffen, setRuhenFormOffen] = useState(false);
@@ -1100,18 +1108,49 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
 
   // Katalog (§6.2): Kommunikation ist jetzt Tab (raus); Angebot/Rechnung
   // erzeugen ihren Tab und springen hin — Wachstum auf Tab-Ebene.
+  // 26.07. (Benny): einheitliche App-Icons in Accent statt Emoji/Textzeichen-
+  // Mix (🛠/🛡 stachen heraus, §/✓/€/✎ gingen unter); Anzeige hängt am
+  // Schalter „Symbole an Karten" (NeueKarteMenu). Unter dem Trenner folgen
+  // die VORGANGS-AKTIONEN (aus dem Kopf hierher gewandert) mit Erklärung.
   const katalog = [
-    { id: "auftraege", icon: "🛠", label: "Auftrag", sub: "An wen · was · bis wann" },
-    { id: "angebote", icon: "§", label: "Angebot", sub: "Eigener Tab — anfragen oder erfassen" },
-    { id: "aufgaben", icon: "✓", label: "Aufgabe", sub: "Delegieren + nachhalten" },
-    { id: "rechnungen", icon: "€", label: "Rechnung", sub: "Eigener Tab — Betrag + Prüfung" },
-    { id: "notiz", icon: "✎", label: "Notiz", sub: "Freier Text in die Akte" },
+    { id: "auftraege", iconName: "wrench", label: "Auftrag", sub: "An wen · was · bis wann" },
+    { id: "angebote", iconName: "document", label: "Angebot", sub: "Eigener Tab — anfragen oder erfassen" },
+    { id: "aufgaben", iconName: "check", label: "Aufgabe", sub: "Delegieren + nachhalten" },
+    { id: "rechnungen", iconName: "calc", label: "Rechnung", sub: "Eigener Tab — Betrag + Prüfung" },
+    { id: "notiz", iconName: "pencil", label: "Notiz", sub: "Freier Text in die Akte" },
   ];
   if (!vs) {
-    katalog.splice(4, 0, { id: "versicherung", icon: "🛡", label: "Versicherungsfall",
+    katalog.splice(4, 0, { id: "versicherung", iconName: "shield", label: "Versicherungsfall",
       sub: "Schaden über die Versicherung — eigener Strang" });
   }
+  const aktionKatalog = [];
+  if (kannFlows) {
+    if (!vorgang.ruht_bis && !ruhenFormOffen) aktionKatalog.push({ id: "aktion_ruhen",
+      iconName: "zzz", label: "Ruhen bis …",
+      sub: "Vorgang pausieren — mit Wiedervorlage-Datum" });
+    if (!vorgang.wartet_auf_beschluss_id) aktionKatalog.push({ id: "aktion_etv",
+      iconName: "badge", label: "Auf ETV-Tagesordnung",
+      sub: "Für die nächste Eigentümerversammlung vormerken" });
+    aktionKatalog.push({ id: "aktion_schliessen", iconName: "x",
+      label: "Vorgang schließen", sub: "Akte abschließen — die Nummer bleibt vergeben" });
+  }
+  if (vorgang.status === "geschlossen" && onWelt) {
+    aktionKatalog.push({ id: "aktion_oeffnen", iconName: "rotateLeft",
+      label: "Wieder öffnen", sub: "Geschlossenen Vorgang wieder aufnehmen" });
+  }
+  if (onWelt) aktionKatalog.push({ id: "aktion_loeschen", iconName: "trash",
+    label: "Vorgang löschen", sub: "Endgültig entfernen — nicht umkehrbar" });
+  const menueOptionen = (kannFlows ? katalog : [])
+    .concat(aktionKatalog.length > 0 ? [{ trenner: true }] : [])
+    .concat(aktionKatalog);
   const bausteinAdd = (id) => {
+    if (id === "aktion_ruhen") { setTab("uebersicht"); setRuhenFormOffen(true); return; }
+    if (id === "aktion_etv") {
+      onWelt((w) => weltVorgangAufTagesordnung(w, vorgang.id)); return; }
+    if (id === "aktion_oeffnen") {
+      onWelt((w) => weltVorgangOeffnen(w, vorgang.id)); return; }
+    if (id === "aktion_schliessen") { setMenuConfirm("schliessen"); return; }
+    if (id === "aktion_loeschen") { setMenuConfirm("loeschen"); return; }
     if (id === "versicherung") {
       setTabZwang(Object.assign({}, tabZwang, { versicherung: true }));
       setTab("versicherung"); setVsForm(true);
@@ -1228,7 +1267,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const datenKarte = (
     <div style={{ background: t.card, border: "1px solid " + t.border,
       borderRadius: RAD.lg, padding: "12px 14px" }}>
-      <div style={blockTitelStil(t)}>Daten</div>
+      <div style={blockTitelStil(t)}>Akteneinträge</div>
       <div style={{ fontSize: FS.s, color: t.text }}>
         {woText}
         <span style={{ color: t.muted }}>
@@ -1237,70 +1276,79 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
       {/* Verlauf oben bei den Daten (Bennys Wahl D) */}
       <div style={{ borderTop: "1px solid " + t.border, paddingTop: 8,
         marginTop: 8, display: "flex", flexDirection: "column", gap: 5 }}>
-        {verlauf.map((e, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
-              whiteSpace: "nowrap" }}>{datumDe(e.datum)}</span>
-            <span style={{ fontSize: FS.s, color: t.text, minWidth: 0,
-              overflowWrap: "anywhere" }}>{e.text}</span>
-          </div>
-        ))}
+        {verlauf.map((e, i) => {
+          const echt = !!e.nachrichtId && kopfEdit && !!onWelt;
+          const inEdit = echt && verlaufEdit && verlaufEdit.id === e.nachrichtId;
+          const loeschScharf = echt && verlaufLoeschId === e.nachrichtId;
+          if (inEdit) {
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input value={verlaufEdit.text} autoFocus
+                  onChange={(ev) => setVerlaufEdit({ id: verlaufEdit.id,
+                    feld: verlaufEdit.feld, text: ev.target.value })}
+                  style={Object.assign({}, selectStil(t, accent, true), { flex: 1 })}/>
+                <AktionsButton rolle="abbrechen" size={30} t={t} accent={accent}
+                  title="Abbrechen" onClick={() => setVerlaufEdit(null)}/>
+                <AktionsButton rolle="bestaetigen" size={30} t={t} accent={accent}
+                  title="Speichern" onClick={() => {
+                    const eid = verlaufEdit.id, feld = verlaufEdit.feld,
+                      txt = verlaufEdit.text;
+                    onWelt((w) => Object.assign({}, w, {
+                      nachrichten: w.nachrichten.map((n) => n.id === eid
+                        ? Object.assign({}, n, { [feld]: txt }) : n) }));
+                    setVerlaufEdit(null);
+                  }}/>
+              </div>
+            );
+          }
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
+                whiteSpace: "nowrap" }}>{datumDe(e.datum)}</span>
+              <span style={{ fontSize: FS.s, color: t.text, minWidth: 0, flex: 1,
+                overflowWrap: "anywhere" }}>{e.text}</span>
+              {/* 26.07.: Nur ECHTE Einträge (Notiz/Nachricht) tragen Stift +
+                  Papierkorb (2-Stufen) — sichtbar nur im Bearbeiten-Modus. */}
+              {echt ? (
+                <span style={{ display: "inline-flex", gap: 4, flexShrink: 0,
+                  alignSelf: "center" }}>
+                  <AktionsButton rolle="bearbeiten" size={26} t={t} accent={accent}
+                    title="Eintrag bearbeiten" onClick={() => {
+                      const n = welt.nachrichten.filter((x) => x.id === e.nachrichtId)[0];
+                      setVerlaufLoeschId(null);
+                      setVerlaufEdit({ id: e.nachrichtId, feld: e.feld,
+                        text: (n && n[e.feld]) || "" });
+                    }}/>
+                  <AktionsButton rolle="loeschen" size={26} t={t} accent={accent}
+                    confirm={loeschScharf}
+                    title={loeschScharf ? "Nochmal tippen zum Löschen" : "Eintrag löschen"}
+                    onClick={() => {
+                      if (!loeschScharf) { setVerlaufLoeschId(e.nachrichtId); return; }
+                      const eid = e.nachrichtId;
+                      onWelt((w) => Object.assign({}, w, {
+                        nachrichten: w.nachrichten.filter((n) => n.id !== eid) }));
+                      setVerlaufLoeschId(null);
+                    }}/>
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 
-  // Kopf-Aktionen (Benny 25.07., 3. Runde — Lese-/Bearbeiten-Modus wie an der
-  // Objekt-Akte): LESEMODUS zeigt NUR den Stift. Stift schaltet den
-  // Bearbeiten-Modus (Stift↔Haken, Muster AuftraegeEdit) — erst dann
-  // erscheinen: Papierkorb (Ruhe wie alle, Confirm-Stufe rot — Rot als
-  // Dauerfarbe setzt sich vom roten Accent nicht ab) · ETV (kreisrund) ·
-  // zZz (weiß, Emoji ließe sich nicht einfärben) · × = Vorgang schließen
-  // (Sprache des alten Fußleisten-Buttons „× Vorgang schließen"; der Haken
-  // beendet jetzt den Modus) bzw. rotateLeft = Wieder öffnen. marginLeft:auto
-  // rückt die Gruppe beim Handy-Umbruch nach RECHTS (Benny-Screenshot).
+  // Kopf-Aktionen (Benny 26.07., 4. Runde): NUR noch Stift/Haken — alle
+  // Vorgangs-Aktionen leben jetzt als Zeilen im Menü „Nächste Aktion"
+  // (aktionKatalog oben) mit Erklärung; Schließen/Löschen mit
+  // Bestätigungszeile. marginLeft:auto = rechtsbündig beim Handy-Umbruch.
   const kopfAktionen = onWelt ? (
     <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
       marginLeft: "auto" }}>
-      {kopfEdit ? (
-        <KopfIconButton icon="trash" gefahr={loeschConfirm} confirm={loeschConfirm}
-          title={loeschConfirm ? "Wirklich löschen?" : "Vorgang löschen"}
-          t={t} accent={accent}
-          onClick={() => {
-            if (!loeschConfirm) { setLoeschConfirm(true); return; }
-            onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
-            onZurueck();
-          }}/>
-      ) : null}
-      {kopfEdit && kannFlows && !vorgang.wartet_auf_beschluss_id ? (
-        <KopfIconButton text="ETV" title="Auf ETV-Tagesordnung"
-          t={t} accent={accent}
-          onClick={() => onWelt((w) => weltVorgangAufTagesordnung(w, vorgang.id))}/>
-      ) : null}
-      {kopfEdit && kannFlows && !vorgang.ruht_bis && !ruhenFormOffen ? (
-        <KopfIconButton text="zZz" title="Ruhen bis …"
-          t={t} accent={accent}
-          onClick={() => { setTab("uebersicht"); setRuhenFormOffen(true); }}/>
-      ) : null}
-      {kopfEdit && vorgang.status === "geschlossen" ? (
-        <KopfIconButton icon="rotateLeft" title="Wieder öffnen"
-          t={t} accent={accent}
-          onClick={() => onWelt((w) => weltVorgangOeffnen(w, vorgang.id))}/>
-      ) : null}
-      {kopfEdit && vorgang.status !== "geschlossen" ? (
-        <KopfIconButton icon="x" gefahr={schliessConfirm} confirm={schliessConfirm}
-          title={schliessConfirm ? "Wirklich schließen?" : "Vorgang schließen"}
-          t={t} accent={accent}
-          onClick={() => {
-            if (!schliessConfirm) { setSchliessConfirm(true); return; }
-            onWelt((w) => weltVorgangSchliessen(w, vorgang.id));
-            setSchliessConfirm(false); setKopfEdit(false);
-          }}/>
-      ) : null}
       <KopfIconButton icon={kopfEdit ? "check" : "pencil"}
         title={kopfEdit ? "Bearbeiten beenden" : "Bearbeiten"}
         t={t} accent={accent}
-        onClick={() => { setKopfEdit(!kopfEdit);
-          setLoeschConfirm(false); setSchliessConfirm(false); }}/>
+        onClick={() => { setKopfEdit(!kopfEdit); setMenuConfirm(null); }}/>
     </div>
   ) : null;
 
@@ -1442,8 +1490,37 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                 </div>
               </BausteinKarte>
             ) : null}
-            {kannFlows && kopfEdit ? (
-              <NeueKarteMenu t={t} accent={accent} onAdd={bausteinAdd} optionen={katalog}/>
+            {onWelt && kopfEdit ? (
+              <NeueKarteMenu t={t} accent={accent} onAdd={bausteinAdd}
+                optionen={menueOptionen}
+                labelZu="Nächste Aktion" labelAuf="Aktion wählen…"/>
+            ) : null}
+            {/* Bestätigungszeile (26.07.): Schließen/Löschen aus dem Menü —
+                der kanonische 2-Stufen-Schutz, als Zeile statt Button-Umfärben. */}
+            {menuConfirm ? (
+              <div style={{ background: t.card, border: "1px solid #EF4444",
+                borderRadius: RAD.lg, padding: "12px 14px", display: "flex",
+                alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 180, fontSize: FS.s, color: t.text }}>
+                  {menuConfirm === "loeschen"
+                    ? "Diesen Vorgang endgültig löschen? Das kann nicht rückgängig gemacht werden."
+                    : "Diesen Vorgang schließen? Er wandert zu den geschlossenen Vorgängen."}
+                </div>
+                <AktionsButton rolle="abbrechen" variante="breit" t={t} accent={accent}
+                  icon={false} text="Abbrechen" onClick={() => setMenuConfirm(null)}/>
+                <AktionsButton rolle={menuConfirm === "loeschen" ? "loeschen" : "loesen"}
+                  variante="breit" t={t} accent={accent} confirm icon={false}
+                  text={menuConfirm === "loeschen" ? "Ja, endgültig löschen" : "Ja, schließen"}
+                  onClick={() => {
+                    if (menuConfirm === "loeschen") {
+                      onWelt((w) => weltVorgangLoeschen(w, vorgang.id));
+                      setMenuConfirm(null); onZurueck();
+                    } else {
+                      onWelt((w) => weltVorgangSchliessen(w, vorgang.id));
+                      setMenuConfirm(null); setKopfEdit(false);
+                    }
+                  }}/>
+              </div>
             ) : null}
             {kannFlows && ruhenFormOffen ? (
               <div style={flowZeileStil(t)}>

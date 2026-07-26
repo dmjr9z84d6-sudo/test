@@ -6467,9 +6467,17 @@ function KartenList({ karten, setKarten, t, accent, editMode, kontakte, setKonta
 }
 
 // ── NeueKarteMenu (oben fragwürdige IIFEs vermeiden) ────────────────────────
-function NeueKarteMenu({ t, accent, onAdd, optionen }) {
+// 26.07. (Benny, Vorgangs-Menü „Nächste Aktion"): labelZu/labelAuf machen die
+// Beschriftung pro Einsatzort einstellbar (Objekt-Akte bleibt unverändert).
+// Optionen können statt Emoji-`icon` ein `iconName` (App-Icon, Accent-Farbe)
+// tragen — einheitliche Optik statt Emoji/Textzeichen-Mix. Icon-Anzeige hängt
+// am globalen Schalter „Symbole an Karten" (useKartenIcons). `trenner: true`
+// rendert eine Trennlinie (Karten oben, Aktionen darunter — Bennys Wahl).
+function NeueKarteMenu({ t, accent, onAdd, optionen,
+  labelZu = "Neue Karte hinzufügen", labelAuf = "Kartentyp wählen…" }) {
   const [offen, setOffen] = useState(false);
   const dropdownRef = useRef(null);
+  const zeigeIcons = useKartenIcons();
   // Beim Aufklappen sicherstellen, dass die Auswahl sichtbar wird
   // (insbesondere wenn der Button am unteren Rand des scrollbaren Panes ist).
   useEffect(() => {
@@ -6506,13 +6514,16 @@ function NeueKarteMenu({ t, accent, onAdd, optionen }) {
         onMouseEnter={e => { if (!offen) e.currentTarget.style.background = accent + "28"; }}
         onMouseLeave={e => { if (!offen) e.currentTarget.style.background = accent + "18"; }}>
         <I name="plus" size={15} color={accent}/>
-        {offen ? "Kartentyp wählen…" : "Neue Karte hinzufügen"}
+        {offen ? labelAuf : labelZu}
       </button>
       {/* Optionen als zusammenhängender Teil des Buttons (gleicher Tint),
           nicht als separate Kartenliste. */}
       {offen && (
         <div ref={dropdownRef}>
-          {opts.map((opt, i) => (
+          {opts.map((opt, i) => opt.trenner ? (
+            <div key={"trenner" + i} style={{ borderTop: `2px solid ${accent}35`,
+              margin: "2px 0" }}/>
+          ) : (
             <button key={opt.id} onClick={() => { onAdd(opt.id); setOffen(false); }} style={{
               width: "100%", display: "flex", alignItems: "center", gap: 12,
               background: "transparent", border: "none",
@@ -6520,7 +6531,9 @@ function NeueKarteMenu({ t, accent, onAdd, optionen }) {
               padding: "10px 14px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
               onMouseEnter={e => e.currentTarget.style.background = accent + "14"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-              <span style={{ fontSize: FS.icon }}>{opt.icon}</span>
+              {zeigeIcons ? (opt.iconName
+                ? <I name={opt.iconName} size={17} color={accent}/>
+                : <span style={{ fontSize: FS.icon }}>{opt.icon}</span>) : null}
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>{opt.label}</div>
                 <div style={{ fontSize: FS.xs, color: t.sub }}>{opt.sub}</div>

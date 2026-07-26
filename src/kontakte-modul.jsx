@@ -158,6 +158,7 @@ function RolleDetailBox({ z, ves, kontakte, t, accent, typ = "person", embedded 
 //   title      — Tooltip.
 const AKTION_FARBEN = {
   bestaetigen: { icon: "check", iconFarbe: "akzent" },
+  bearbeiten:  { icon: "pencil", iconFarbe: "grau" }, // 26.07.: Zeilen-Stift (Akteneinträge)
   abbrechen:   { icon: "x",     iconFarbe: "rot"    },
   loesen:      { icon: "x",     iconFarbe: "rot", confirmBg: "#F59E0B" },
   loeschen:    { icon: "trash", iconFarbe: "rot", confirmBg: "#EF4444" },
