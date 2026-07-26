@@ -16,7 +16,7 @@ import {
   I, StickySectionHeader, belegungsRollenFuerKontakt, flacheZuweisungen,
   formatNameMitCtx, passendeMasterSpalten, useAlleVes, useAvatarIcons,
   useContentWidth, useFirmenRollen, useKartenIcons, useKategorien,
-  useKontaktAnzeige, useKontaktFarbe, useLeistungen, useOutsideClick, useRollen, useVerwendungen,
+  useKontaktAnzeige, useKontaktFarbe, useKontakteSet, useLeistungen, useOutsideClick, useRollen, useVerwendungen,
   useZeitPicker, zuweisungenFuerAvatar
 } from "./utils-icons.jsx";
 // ZYKLISCHER Import aus der Hauptdatei: diese 10 Namen leben (noch) in S5/S7.
@@ -1638,7 +1638,11 @@ function kontaktGewerkNamen(k) {
     .filter((x) => x);
 }
 
-function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = true, nurFirmen = false, kontakte = [], setKontakte, onCreate, alleOption = null, gewerkQuelle = null, onGewerkWahl = null }) {
+function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = true, nurFirmen = false, kontakte = [], setKontakte, onCreate, alleOption = null, gewerkQuelle = null, onGewerkWahl = null, mehrfach = false, werte = [], onWerte = null }) {
+  // Schreib-Fallback (26.07.): ohne setKontakte-Prop greift der App-weite
+  // Context — damit „+ Neu anlegen" überall funktioniert (Vorgangswelt!).
+  const setKontakteCtx = useKontakteSet();
+  const setKontakteEff = setKontakte || setKontakteCtx;
   const [offen, setOffen] = useState(false);
   const [suche, setSuche] = useState("");
   // Gewerk-Filter (Benny 26.07., nurFirmen; 2. Runde: „richtiges Dropdown"
@@ -1693,6 +1697,7 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
       cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
       onMouseEnter={e => e.currentTarget.style.background = `${accent}0C`}
       onMouseLeave={e => e.currentTarget.style.background = "none"}>
+      {mehrfach ? mehrfachHaken(k.id) : null}
       <Avatar name={k.name} size={26} accent={accent}
         zuweisungen={zuweisungenFuerAvatar(k)}/>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1713,6 +1718,7 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
       cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}
       onMouseEnter={e => e.currentTarget.style.background = `${farben.firma}0C`}
       onMouseLeave={e => e.currentTarget.style.background = "none"}>
+      {mehrfach ? mehrfachHaken(k.id) : null}
       <Avatar name={k.name} firma size={26} accent={farben.firma}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: FS.m, fontWeight: FW.medium, color: t.text }}>{k.name}</div>
@@ -1752,8 +1758,31 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
   const personen = treffer.filter(k => k.typ === "person");
   const firmen   = treffer.filter(k => k.typ === "firma");
 
-  const waehle = (k) => { onChange(k.id); setOffen(false); setSuche(""); };
+  // Mehrfach-Modus (Benny 26.07., Angebots-Anfrage): Haken je Zeile, Auswahl
+  // lebt in werte/onWerte, das Dropdown bleibt offen — „Fertig" schließt.
+  const waehle = (k) => {
+    if (mehrfach) {
+      if (!onWerte) return;
+      const w = (werte || []).slice();
+      const i = w.indexOf(k.id);
+      if (i >= 0) w.splice(i, 1); else w.push(k.id);
+      onWerte(w);
+      return;
+    }
+    onChange(k.id); setOffen(false); setSuche("");
+  };
   const loesche = (e) => { e.stopPropagation(); onChange(null); };
+  const mehrfachHaken = (id) => {
+    const an = (werte || []).indexOf(id) >= 0;
+    return (
+      <span style={{ width: 15, height: 15, flexShrink: 0, borderRadius: 4,
+        border: `1.5px solid ${an ? accent : t.border}`,
+        background: an ? accent : "transparent",
+        display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        {an ? <I name="check" size={10} color={getContrastColor(accent)}/> : null}
+      </span>
+    );
+  };
 
   // Schnellanlage darf nur bei gültigen Eingaben (Name vorhanden, Tel/E-Mail
   // sinnvoll bzw. leer). Nutzt dieselben Prüfungen wie die Kontaktkarte.
@@ -1771,7 +1800,7 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
   // und sofort als ausgewählten Wert zurückgeben.
   const neuAnlegen = () => {
     const name = neuName.trim();
-    if (!name || !setKontakte || !darfAnlegen) return;
+    if (!name || !setKontakteEff || !darfAnlegen) return;
 
     // Name parsen — bei Personen in Vorname/Nachname aufteilen.
     //   "Nachname, Vorname"  → comma-split
@@ -1823,10 +1852,16 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
           notizen: "", customFelder: [],
         };
 
-    setKontakte(arr => [...arr, neuerKontakt]);
-    onChange(neuerKontakt.id);
+    setKontakteEff(arr => [...arr, neuerKontakt]);
+    if (mehrfach) {
+      // Frisch angelegt = direkt angehakt; Dropdown bleibt für weitere offen.
+      if (onWerte) onWerte([...(werte || []), neuerKontakt.id]);
+    } else {
+      onChange(neuerKontakt.id);
+    }
     if (onCreate) onCreate(neuerKontakt);
-    setNeuOffen(false); setNeuName(""); setNeuTel(""); setNeuEmail(""); setOffen(false); setSuche("");
+    setNeuOffen(false); setNeuName(""); setNeuTel(""); setNeuEmail(""); setSuche("");
+    if (!mehrfach) setOffen(false);
   };
 
   return (
@@ -1835,7 +1870,40 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
         textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>{label}</div>}
 
       {/* Anzeige wenn geschlossen */}
-      {!offen && (
+      {!offen && mehrfach && (
+        <div onClick={() => editMode && setOffen(true)} style={{
+          display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+          cursor: editMode ? "pointer" : "default",
+          padding: editMode ? "5px 9px" : "2px 0", borderRadius: RAD.ms,
+          background: editMode ? ((werte || []).length > 0 ? accent + "0D" : t.surface) : "transparent",
+          border: editMode ? `1px solid ${(werte || []).length > 0 ? accent + "40" : t.border}` : "none",
+          minHeight: 32, transition: "all 0.15s",
+        }}>
+          {(werte || []).length === 0 ? (
+            <span style={{ fontSize: FS.m, color: t.muted }}>{editMode ? "Suchen…" : "—"}</span>
+          ) : (werte || []).map((id) => {
+            const k = (kontakte.find(x => x && x.id === id)
+              || (gewerkQuelle || []).find(x => x && x.id === id)) || null;
+            return (
+              <span key={id} style={{ display: "inline-flex", alignItems: "center",
+                gap: 5, fontSize: FS.s, color: t.text, background: t.card,
+                border: "1px solid " + t.border, borderRadius: RAD.pill,
+                padding: "3px 9px", maxWidth: "100%" }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis",
+                  whiteSpace: "nowrap", maxWidth: 150 }}>
+                  {k ? (formatNameMitCtx(k, anzeige) || k.name) : "Unbekannt"}</span>
+                {editMode && onWerte ? (
+                  <span onClick={(e) => { e.stopPropagation();
+                    onWerte((werte || []).filter((x) => x !== id)); }}
+                    style={{ cursor: "pointer", color: "#EF4444",
+                      fontWeight: FW.bold }}>×</span>
+                ) : null}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {!offen && !mehrfach && (
         <div onClick={() => editMode && setOffen(true)} style={{
           display: "flex", alignItems: "center", gap: 8,
           cursor: editMode ? "pointer" : "default",
@@ -1876,18 +1944,21 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
               position: "sticky", top: 0, background: t.card, zIndex: 5 }}>
               <button onClick={() => { setOffen(false); setSuche(""); setNeuOffen(false); }} style={{
                 flex: 1, padding: "7px 0", background: "none", border: "none", cursor: "pointer",
-                fontSize: FS.s, color: t.muted, borderRight: `1px solid ${t.border}`, fontFamily: "inherit" }}>Abbrechen</button>
+                fontSize: FS.s, color: mehrfach ? accent : t.muted,
+                fontWeight: mehrfach ? FW.bold : FW.normal,
+                borderRight: `1px solid ${t.border}`, fontFamily: "inherit" }}>
+                {mehrfach ? "Fertig" + ((werte || []).length > 0 ? " (" + werte.length + ")" : "") : "Abbrechen"}</button>
               <button onClick={() => {
                   // Schnellanlage öffnen — wenn bereits gesucht wurde, den
                   // Suchtext als Vorschlag in den Name übernehmen.
-                  if (setKontakte) {
+                  if (setKontakteEff) {
                     setNeuOffen(true);
                     if (suche.trim() && !neuName) setNeuName(suche.trim());
                   }
                 }} style={{
                 flex: 1, padding: "7px 0", background: "none", border: "none",
-                cursor: setKontakte ? "pointer" : "not-allowed",
-                fontSize: FS.s, color: setKontakte ? accent : t.muted, fontWeight: FW.bold, fontFamily: "inherit" }}>+ Neu anlegen</button>
+                cursor: setKontakteEff ? "pointer" : "not-allowed",
+                fontSize: FS.s, color: setKontakteEff ? accent : t.muted, fontWeight: FW.bold, fontFamily: "inherit" }}>+ Neu anlegen</button>
             </div>
             {/* §Picker-Umbau (19.07.): Umschalter Objekt-Kontakte ⇄ alle —
                 lebt IM Picker (vorher Checkbox unterm Feld). */}
@@ -1930,7 +2001,7 @@ function KontaktPicker({ value, onChange, label, t, accent = ACCENT, editMode = 
               </div>
             ) : null}
             {/* Inline-Schnellanlage */}
-            {neuOffen && setKontakte && (
+            {neuOffen && setKontakteEff && (
               <div style={{ padding: "10px 12px", background: accent + "08",
                 borderBottom: `1px solid ${t.border}` }}>
                 {!nurFirmen && (

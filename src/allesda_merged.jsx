@@ -250,6 +250,7 @@ import {
   KontaktAnzeigeContext,
   KontaktFarbeContext,
   KontakteContext,
+  KontakteSetContext,
   LeistungenContext,
   LoeschenErlaubtContext,
   ObjektTabsContext,
@@ -2630,6 +2631,7 @@ export default function App() {
   return (
     <TipProvider>
     <KontakteContext.Provider value={kontakte}>
+    <KontakteSetContext.Provider value={setKontakte}>
     <VesContext.Provider value={ves}>
     <RollenContext.Provider value={effectiveSettings.rollen || DEFAULT_ROLLEN}>
     <FirmenRollenContext.Provider value={effectiveSettings.firmenRollen || DEFAULT_GEWERKE_LISTE}>
@@ -4336,6 +4338,7 @@ export default function App() {
     </FirmenRollenContext.Provider>
     </RollenContext.Provider>
     </VesContext.Provider>
+    </KontakteSetContext.Provider>
     </KontakteContext.Provider>
     </TipProvider>
   );

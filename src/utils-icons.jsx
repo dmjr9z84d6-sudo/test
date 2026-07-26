@@ -1972,6 +1972,15 @@ const RollenContext = createContext(DEFAULT_ROLLEN);
 const KontakteContext = createContext([]);
 function useAlleKontakte() { return useContext(KontakteContext); }
 
+// SCHREIB-Seite der Kontakte als Context (Benny 26.07.): der KontaktPicker
+// braucht setKontakte für „+ Neu anlegen" — in der Vorgangswelt war der
+// Button überall tot, weil niemand die Funktion durch die vielen Zwischen-
+// komponenten fädelte. Provider im App-Rumpf; Picker fällt auf den Context
+// zurück, wenn ihm kein setKontakte-Prop gegeben wird. Fallback null =
+// Anlegen bleibt aus (z. B. Isotests ohne Provider).
+const KontakteSetContext = createContext(null);
+function useKontakteSet() { return useContext(KontakteSetContext); }
+
 // Volle Objektliste als Context — nötig, um die LIVE aus Belegungen abgeleiteten
 // Avatar-Badges (Mieter/Pächter/…) ohne Prop-Threading zu berechnen. Analog zu
 // KontakteContext. Wird im App-Rumpf mit `ves` befüllt.
@@ -2209,6 +2218,7 @@ export {
   sidebarModus,
   RollenContext,
   KontakteContext,
+  KontakteSetContext, useKontakteSet,
   useAlleKontakte,
   VesContext,
   useAlleVes,

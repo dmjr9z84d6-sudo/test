@@ -486,6 +486,53 @@ function nameVon(kontakte, id) {
   return k ? kontaktAnzeigename(k) : "";
 }
 
+// E-Mail eines Kontakts: Firma = .email, Person = erste emails[]-Adresse.
+function emailVon(kontakte, id) {
+  if (!id) return "";
+  const k = (kontakte || []).filter((x) => x && x.id === id)[0];
+  if (!k) return "";
+  if (k.email) return String(k.email);
+  const e = Array.isArray(k.emails) && k.emails[0] && k.emails[0].email;
+  return e ? String(e) : "";
+}
+
+// „Als E-Mail öffnen" (Benny 26.07., ETV-mailto-Muster): Entwurf im Mail-
+// Programm — Betreff aus dem Betreff-Feld, sonst erste Inhaltszeile.
+function oeffneMailEntwurf(email, nachricht) {
+  const inhalt = (nachricht && nachricht.inhalt) || "";
+  const betreff = (nachricht && nachricht.betreff)
+    || inhalt.split("\n")[0].slice(0, 78);
+  window.location.href = "mailto:" + email
+    + "?subject=" + encodeURIComponent(betreff)
+    + "&body=" + encodeURIComponent(inhalt);
+}
+
+// Angebotsanfrage → Kommunikation (Benny 26.07., Muster logBeauftragung):
+// je angefragter Firma EIN ausgehender Eintrag — Vorlage „Angebotsanfrage",
+// Antwort (das Angebot) erwartet bis zur Abgabefrist.
+function logAngebotsanfrage(w, args) {
+  const v = w.vorgaenge.filter((x) => x.id === args.vorgangId)[0] || null;
+  const vorlage = vorlageFuerSchritt(args.vorlagen, "angebotsanfrage");
+  const text = fuelleVorlage(vorlage ? vorlage.text
+    : "Angebotsanfrage {nummer}: {titel}. Abgabe bis {frist}.", {
+    nummer: args.nummer || "",
+    titel: v ? v.titel : "",
+    objekt: args.objektText || "",
+    beschreibung: v ? v.titel : "",
+    firma: args.firmaName || "",
+    frist: args.frist ? datumDe(args.frist) : "",
+  });
+  return Object.assign({}, w, {
+    nachrichten: [...w.nachrichten, neueNachricht({
+      vorgang_id: args.vorgangId, richtung: "ausgehend",
+      an_kontakt_id: args.firmaId || null, kanal: "notiz",
+      anlass: "angebotsanfrage", inhalt: text,
+      antwort_erwartet: true,
+      rueckmeldung_bis: args.frist || null,
+    })],
+  });
+}
+
 // ── AmpelPunkt ───────────────────────────────────────────────────────────────
 // Exakt die Optik des Objekt-Status-Punkts (VEListenZeile: 9×9, radius 5).
 function AmpelPunkt({ farbe, title }) {
@@ -1045,6 +1092,10 @@ function KommunikationsBlock({ vorgang, nachrichten, kontakte, kontakteObjekt = 
 
   const zeile = (n) => {
     const wer = nameVon(kontakte, nachrichtGegenueber(n));
+    // „Als E-Mail öffnen" (26.07.): nur ausgehende Einträge mit bekannter
+    // Empfänger-Adresse — der Eintrag IST der Entwurf (Betreff + Text).
+    const mailAdr = n.richtung === "ausgehend"
+      ? emailVon(kontakte, n.an_kontakt_id) : "";
     return (
       <div key={n.id} style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{ fontSize: FS.xs, color: t.muted, flexShrink: 0,
@@ -1057,6 +1108,16 @@ function KommunikationsBlock({ vorgang, nachrichten, kontakte, kontakteObjekt = 
           overflowWrap: "anywhere", flex: 1 }}>
           {(wer ? wer + ": " : "") + (n.inhalt || n.betreff || "")}
         </span>
+        {mailAdr ? (
+          <button title={"Als E-Mail öffnen an " + mailAdr}
+            onClick={() => oeffneMailEntwurf(mailAdr, n)}
+            style={{ width: 26, height: 26, borderRadius: RAD.sm, flexShrink: 0,
+              border: "1px solid " + t.border, background: t.card, color: t.sub,
+              cursor: "pointer", display: "inline-flex", alignItems: "center",
+              justifyContent: "center", padding: 0, alignSelf: "center" }}>
+            <I name="mail" size={13}/>
+          </button>
+        ) : null}
         {istOffen(n) ? (
           kannFlows ? (
             <button onClick={() => setAntwortAuf(n)}
@@ -1072,6 +1133,7 @@ function KommunikationsBlock({ vorgang, nachrichten, kontakte, kontakteObjekt = 
   };
   const blase = (n) => {
     const aus = n.richtung === "ausgehend";
+    const mailAdr = aus ? emailVon(kontakte, n.an_kontakt_id) : "";
     return (
       <div key={n.id} style={{ display: "flex",
         justifyContent: aus ? "flex-end" : "flex-start" }}>
@@ -1084,6 +1146,14 @@ function KommunikationsBlock({ vorgang, nachrichten, kontakte, kontakteObjekt = 
             display: "flex", gap: 6, justifyContent: aus ? "flex-end" : "flex-start" }}>
             <span>{kanalSymbol(n.kanal)}</span>
             <span>{datumDe(n.gesendet_am)}</span>
+            {mailAdr ? (
+              <span title={"Als E-Mail öffnen an " + mailAdr}
+                onClick={() => oeffneMailEntwurf(mailAdr, n)}
+                style={{ cursor: "pointer", color: accent,
+                  display: "inline-flex", alignItems: "center" }}>
+                <I name="mail" size={12}/>
+              </span>
+            ) : null}
             {istOffen(n) ? <span style={{ color: AMPEL_FARBEN.gelb,
               fontWeight: FW.bold }}>Antwort erwartet</span> : null}
           </div>
@@ -1182,7 +1252,8 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
   const [formBaustein, setFormBaustein] = useState(null);
   // Aufträge-Bearbeiten-Modus (Benny 19.07., Muster wie Erfasst-Bereich):
   // Stift im „Aufträge"-Kartenkopf → Zeilen-Tap öffnet das Formular.
-  const [auftraegeEdit, setAuftraegeEdit] = useState(false);
+  // EIN Bearbeiten (Benny 26.07.): der Kopf-Stift (kopfEdit) schaltet ALLES
+  // frei — der frühere zweite Stift an der Aufträge-Karte ist raus.
   const [mehrOffen, setMehrOffen] = useState(false);
   const [informierenKontakt, setInformierenKontakt] = useState(null);
   const [aufgabeTitel, setAufgabeTitel] = useState("");
@@ -1693,13 +1764,8 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                   : (auftraegeOffen > 0 ? auftraegeOffen + " offen" : "alle fertig")}
                 offen={offenerBaustein === "auftraege"}
                 onToggle={() => toggleBaustein("auftraege")}
-                kopfAktion={kannFlows && offenerBaustein === "auftraege" && auftraege.length > 0 ? (
-                  <KopfIconButton icon={auftraegeEdit ? "check" : "pencil"}
-                    title={auftraegeEdit ? "Bearbeiten beenden" : "Aufträge bearbeiten"}
-                    t={t} accent={accent}
-                    onClick={() => setAuftraegeEdit(!auftraegeEdit)}/>
-                ) : null}>
-                {auftraegeEdit && kannFlows ? (
+                kopfAktion={null}>
+                {kopfEdit && kannFlows && auftraege.length > 0 ? (
                   <div style={{ fontSize: FS.s, color: t.muted }}>
                     Auftrag antippen, um ihn zu bearbeiten oder zurück zu
                     Erfasst zu lösen.
@@ -1712,7 +1778,7 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
                     abnahmen={abnahmenAlle.filter((ab) => ab.auftrag_id === a.id)}
                     kontakte={kontakte} t={t} accent={accent}
                     onWelt={onWelt} DatumFeld={DatumFeld}
-                    editModus={auftraegeEdit && kannFlows}
+                    editModus={kopfEdit && kannFlows}
                     ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}/>
                 ))}
                 {kannFlows && formBaustein === "auftraege" ? (
@@ -3473,37 +3539,63 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
 // §4); mit Summe = „liegt vor". Die ausgehende Angebotsanfrage-Nachricht
 // (Anlass-Typ) dockt mit der Kommunikations-Karte an.
 function AngebotNeuForm({ vorgangId, firmen, kontakteObjekt = null, t, accent, onWelt, onFertig }) {
-  const [firmaId, setFirmaId] = useState("");
+  // Mehrfach-Anfrage (Benny 26.07.): mehrere Firmen per Haken im Picker —
+  // je Firma EIN Angebot „angefragt" + EIN Kommunikations-Eintrag (Vorlage
+  // „Angebotsanfrage", von dort per Mail-Knopf als E-Mail zu öffnen). Die
+  // Summe ergibt nur bei EINER Firma Sinn (liegt-vor-Fall) und verschwindet
+  // bei Mehrfachauswahl — Summen werden später je Angebot nachgetragen.
+  const [firmaIds, setFirmaIds] = useState([]);
   const [summe, setSumme] = useState("");
   const [notiz, setNotiz] = useState("");
   const fristen = useFristen();
+  const vorlagen = useVorlagen();
+  const mehrere = firmaIds.length > 1;
   const legeAn = () => {
-    if (!firmaId) return;
-    const p = parseFloat(String(summe).replace(",", "."));
-    onWelt((w) => Object.assign({}, w, {
-      angebote: [...w.angebote, neuesAngebot({
-        vorgang_id: vorgangId, nummer: angebotsNummerNeu(w, vorgangId),
-        firma_kontakt_id: firmaId,
-        preis: isNaN(p) ? null : p, notiz: notiz.trim(),
-        // §4.3: angefragt → Abgabefrist aus den Einstellungen; liegt es schon
-        // vor, braucht es keine.
-        abgabe_bis: isNaN(p) ? isoInTagen(fristen.angebotsabgabe_tage) : null,
-      })],
-    }));
+    if (firmaIds.length === 0) return;
+    const p = mehrere ? NaN : parseFloat(String(summe).replace(",", "."));
+    const ids = firmaIds.slice();
+    const notizT = notiz.trim();
+    onWelt((w) => {
+      let neu = w;
+      for (let i = 0; i < ids.length; i++) {
+        const angefragt = isNaN(p);
+        const abgabe = angefragt ? isoInTagen(fristen.angebotsabgabe_tage) : null;
+        const a = neuesAngebot({
+          vorgang_id: vorgangId, nummer: angebotsNummerNeu(neu, vorgangId),
+          firma_kontakt_id: ids[i],
+          preis: angefragt ? null : p, notiz: notizT,
+          // §4.3: angefragt → Abgabefrist aus den Einstellungen; liegt es
+          // schon vor, braucht es keine.
+          abgabe_bis: abgabe,
+        });
+        neu = Object.assign({}, neu, { angebote: [...neu.angebote, a] });
+        if (angefragt) {
+          neu = logAngebotsanfrage(neu, { vorgangId: vorgangId,
+            nummer: a.nummer, firmaId: ids[i],
+            firmaName: nameVon(firmen, ids[i]),
+            frist: abgabe, vorlagen: vorlagen });
+        }
+      }
+      return neu;
+    });
     onFertig();
   };
   return (
     <div style={flowZeileStil(t)}>
-      <KontaktPickerMitAllen value={firmaId || null}
-        onChange={(id) => setFirmaId(id || "")}
-        label="Von welcher Firma?" t={t} accent={accent} nurFirmen
+      <KontaktPickerMitAllen mehrfach werte={firmaIds} onWerte={setFirmaIds}
+        value={null} onChange={() => {}}
+        label="Von welchen Firmen? (mehrere möglich)" t={t} accent={accent} nurFirmen
         kontakteObjekt={kontakteObjekt ? pickerListe(kontakteObjekt) : null}
         kontakteAlle={pickerListe(firmen)}/>
-      <label style={feldLabelStil(t)}>Summe (€) — leer = erst angefragt</label>
-      <input value={summe} inputMode="decimal"
-        onChange={(e) => setSumme(e.target.value)}
-        placeholder="z. B. 4200"
-        style={Object.assign({}, selectStil(t, accent, !!summe), { marginBottom: 0 })}/>
+      {!mehrere ? (
+        <div>
+          <label style={feldLabelStil(t)}>Summe (€) — leer = erst angefragt</label>
+          <input value={summe} inputMode="decimal"
+            onChange={(e) => setSumme(e.target.value)}
+            placeholder="z. B. 4200"
+            style={Object.assign({}, selectStil(t, accent, !!summe), { marginBottom: 0 })}/>
+        </div>
+      ) : null}
       <label style={feldLabelStil(t)}>Notiz (optional)</label>
       <input value={notiz} onChange={(e) => setNotiz(e.target.value)}
         placeholder="z. B. inkl. Gerüst"
@@ -3511,7 +3603,8 @@ function AngebotNeuForm({ vorgangId, firmen, kontakteObjekt = null, t, accent, o
       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
         <button onClick={onFertig} style={flowKnopf(t, accent, false)}>Abbrechen</button>
         <button onClick={legeAn} style={flowKnopf(t, accent, true)}>
-          {summe ? "Liegt vor" : "Anfragen"}</button>
+          {mehrere ? "Anfragen (" + firmaIds.length + ")"
+            : (summe ? "Liegt vor" : "Anfragen")}</button>
       </div>
     </div>
   );
@@ -4230,7 +4323,7 @@ export {
   VorgangsBereichFuerObjekt, VorgangsBereichFuerFirma,
   vorgangAnzahlFuerObjekt,
   SchreibtischBereich, schreibtischBadgeInfo, VorgangNeuOverlay, AuftragFlowAktionen,
-  logBeauftragung, fristMinusTage, nameVon,
+  logBeauftragung, logAngebotsanfrage, fristMinusTage, nameVon,
   TimelineBereich, DemoHinweis,
   VORGANG_STATUS_LABEL, AUFTRAG_STATUS_LABEL,
 };
