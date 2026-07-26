@@ -3869,7 +3869,7 @@ function SektionEtvOrtAnfrageKarte({ settings, setSettings, t, accent }) {
 // Anschreiben (komplette Nachrichtentexte, die die App füllt und als
 // ausgehende Kommunikation in die Akte schreibt).
 const VORLAGEN_SCHRITTE = [
-  { id: "auftrag_erfassen", label: "Was ist Sache / Was ist zu tun", gruppe: "Formular-Felder" }, // 26.07.: EIN Kontext für beide Feldarten
+  { id: "auftrag_erfassen", label: "Was ist zu tun (Auftrag)", gruppe: "Formular-Felder" }, // 26.07. geschärft: die HANDLUNG — „Was ist Sache" (das Problem) ist etwas anderes
   { id: "angebotsanfrage", label: "Angebotsanfrage", gruppe: "Anschreiben (Kommunikation)" },
   { id: "beauftragung", label: "Auftragsvergabe", gruppe: "Anschreiben (Kommunikation)" },
   { id: "angebot_freigabe", label: "Angebot-Freigabe", gruppe: "Anschreiben (Kommunikation)" },

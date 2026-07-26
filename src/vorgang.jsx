@@ -3485,11 +3485,15 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
   const [kategorie, setKategorie] = useState("instandhaltung");
   const [notiz, setNotiz] = useState("");
   // Direkt beauftragen (Benny 26.07.): Haken gibt die Beauftragungs-Felder
-  // frei — Vorgang + Auftrag + Vergabe in EINEM Rutsch. „Was ist zu tun"
-  // leer = Titel („Was ist Sache") wird übernommen (nichts doppelt sagen).
+  // frei — Vorgang + Auftrag + Vergabe in EINEM Rutsch. WICHTIG (Benny,
+  // Korrektur 2. Runde): „Was ist Sache" (das PROBLEM) ist NICHT „Was ist
+  // zu tun" (die HANDLUNG) — kein Titel-Fallback. Beim Anhaken wird die
+  // Standard-Vorlage vorbefüllt; leer = Pflicht.
   const fristenOv = useFristen();
+  const vorlagenOv = useVorlagen();
   const [direktBeauftragen, setDirektBeauftragen] = useState(false);
   const [dbBeschreibung, setDbBeschreibung] = useState("");
+  const [dbTextFehler, setDbTextFehler] = useState(false);
   const [dbFirmaId, setDbFirmaId] = useState("");
   const [dbFirmaFehler, setDbFirmaFehler] = useState(false);
   const [dbFrist, setDbFrist] = useState(isoInTagen(fristenOv.ausfuehrung_tage));
@@ -3530,6 +3534,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
 
   const legeVorgangAn = () => {
     if (!titel.trim()) { setFehler(true); return; }
+    if (direktBeauftragen && !dbBeschreibung.trim()) { setDbTextFehler(true); return; }
     if (direktBeauftragen && !dbFirmaId) { setDbFirmaFehler(true); return; }
     onAnlegenVorgang({
       titel: titel.trim(), kategorie: kategorie,
@@ -3537,7 +3542,7 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
       notiz: notiz.trim(),
       melder_kontakt_id: melderId || null,
       auftrag: direktBeauftragen ? {
-        beschreibung: (dbBeschreibung.trim() || titel.trim()),
+        beschreibung: dbBeschreibung.trim(),
         firma_kontakt_id: dbFirmaId, frist: dbFrist || null,
         abnahme_noetig: dbAbnahme,
       } : null,
@@ -3656,9 +3661,15 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
                 <input type="checkbox" checked={direktBeauftragen}
                   onChange={(e) => {
                     setDirektBeauftragen(e.target.checked);
-                    setDbFirmaFehler(false);
+                    setDbFirmaFehler(false); setDbTextFehler(false);
                     if (e.target.checked) {
                       setDbAbnahme(kategorieHatPhase(kategorie, "abnahme"));
+                      // Handlung vorschlagen (nicht das Problem): Standard-
+                      // Vorlage des Kontexts, nur wenn noch nichts getippt.
+                      if (!dbBeschreibung.trim()) {
+                        const st = standardVorlage(vorlagenOv, "auftrag_erfassen", kategorie);
+                        if (st && st.text) setDbBeschreibung(st.text);
+                      }
                     }
                   }}
                   style={{ width: 18, height: 18 }}/>
@@ -3667,11 +3678,19 @@ function VorgangNeuOverlay({ ve, t, accent, onClose, onAnlegenVorgang,
               {direktBeauftragen ? (
                 <div style={{ border: "1px solid " + accent + "40",
                   borderRadius: RAD.md, padding: "10px 12px", marginBottom: 8 }}>
-                  <label style={feldLabelStil(t)}>Was ist zu tun? (leer = wie „Was ist Sache")</label>
+                  <label style={feldLabelStil(t)}>Was ist zu tun?</label>
                   <VorlagenFeld schritt="auftrag_erfassen" kategorieId={kategorie}
-                    value={dbBeschreibung} onChange={setDbBeschreibung}
-                    placeholder={titel.trim() || "z. B. Meldung prüfen und instandsetzen"}
+                    value={dbBeschreibung}
+                    onChange={(v) => { setDbBeschreibung(v); if (v.trim()) setDbTextFehler(false); }}
+                    placeholder="z. B. Meldung prüfen und instandsetzen"
                     t={t} accent={accent}/>
+                  {dbTextFehler ? (
+                    <div style={{ fontSize: FS.xs, color: "#EF4444",
+                      margin: "4px 0 2px" }}>
+                      Bitte beschreiben, was zu tun ist — die Sache ist nicht
+                      der Auftrag.
+                    </div>
+                  ) : null}
                   <div style={{ height: 8 }}/>
                   <KontaktPickerMitAllen value={dbFirmaId || null}
                     onChange={(id) => { setDbFirmaId(id || ""); if (id) setDbFirmaFehler(false); }}
