@@ -4756,18 +4756,32 @@ function weltAuftraegeBuendeln(welt, auftragIds, ziel) {
   if (!vorgang) return welt;
   // Lose Funde bekommen ihre Nummer bei der Zuordnung (Bennys Regel B):
   // erst mit Vorgang gibt es das Bezugszeichen.
-  // ziel.beauftragen (18.07.): { firma_kontakt_id } — „Direkt beauftragen":
+  // ziel.beauftragen (18.07., voll ausgebaut 26.07.): „Direkt beauftragen" —
   // alle gebündelten Punkte gehen sofort an die Firma (status beauftragt).
+  // Seit 26.07. zusätzlich frist / nachfass_ab / abnahme_noetig je Punkt —
+  // vorher lief das Nachfass-System leer (frist=null) und die Abnahme blieb
+  // beim Kategorie-Default statt bewusster Wahl. Felder nur anfassen, wenn
+  // der Aufrufer sie mitgibt (alte Aufrufer bleiben gültig).
   const beauftragen = ziel.beauftragen && ziel.beauftragen.firma_kontakt_id
     ? ziel.beauftragen : null;
+  const beauftragtFelder = beauftragen
+    ? Object.assign(
+        { firma_kontakt_id: beauftragen.firma_kontakt_id,
+          status: "beauftragt", beauftragt_am: isoHeute() },
+        beauftragen.frist !== undefined
+          ? { frist: beauftragen.frist || null } : {},
+        beauftragen.nachfass_ab !== undefined
+          ? { nachfass_ab: beauftragen.nachfass_ab || null } : {},
+        beauftragen.abnahme_noetig !== undefined
+          ? { abnahme_noetig: !!beauftragen.abnahme_noetig } : {})
+    : {};
   let ergebnis = neu;
   for (let i = 0; i < ids.length; i++) {
     ergebnis = Object.assign({}, ergebnis, {
       auftraege: ergebnis.auftraege.map((a) => a.id === ids[i]
         ? Object.assign({}, a, { vorgang_id: vorgangId,
             nummer: a.nummer || auftragsNummerNeu(ergebnis, vorgangId) },
-            beauftragen ? { firma_kontakt_id: beauftragen.firma_kontakt_id,
-              status: "beauftragt", beauftragt_am: isoHeute() } : {})
+            beauftragtFelder)
         : a),
     });
   }

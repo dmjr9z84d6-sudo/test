@@ -2245,6 +2245,17 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const [buendelKategorie, setBuendelKategorie] = useState("bewirtschaftung");
   const [buendelVorgangId, setBuendelVorgangId] = useState("");
   const [buendelFirmaId, setBuendelFirmaId] = useState("");   // Direkt beauftragen (18.07.)
+  // Direkt beauftragen VOLL (Benny 26.07.): Firma allein reichte nicht —
+  // es fehlten „Was ist zu tun" (Handlung ≠ Sache), Frist (→ Nachfass lief
+  // leer), Abnahme-Wahl und das Anschreiben in der Kommunikation. Bennys
+  // Entscheidung: EIN Handlungstext für alle Punkte (die Punkte behalten
+  // ihre Sache) + EIN Sammel-Anschreiben mit allen Punkten.
+  const fristenBd = useFristen();
+  const vorlagenBd = useVorlagen();
+  const [buendelWasTun, setBuendelWasTun] = useState("");
+  const [buendelWasTunFehler, setBuendelWasTunFehler] = useState(false);
+  const [buendelFrist, setBuendelFrist] = useState(isoInTagen(fristenBd.ausfuehrung_tage));
+  const [buendelAbnahme, setBuendelAbnahme] = useState(true);
   const [loeschAlleConfirm, setLoeschAlleConfirm] = useState(false); // Bulk-Löschen 2-Stufen (19.07.)
   const alleVorgaenge = sortiereVorgaenge(
     welt.vorgaenge.filter((v) => v.objekt_id === veId), welt);
@@ -2279,25 +2290,114 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const buendelReset = () => {
     setBuendelModus(false); setBuendelIds([]); setBuendelZiel(null);
     setBuendelTitel(""); setBuendelVorgangId(""); setBuendelFirmaId("");
+    setBuendelWasTun(""); setBuendelWasTunFehler(false);
+    setBuendelFrist(isoInTagen(fristenBd.ausfuehrung_tage)); setBuendelAbnahme(true);
     setLoeschAlleConfirm(false);
+  };
+  // Effektive Kategorie fürs Beauftragen: im Neu-Formular die gewählte, beim
+  // Zuordnen die des Ziel-Vorgangs (speist Vorlagen-Vorschlag + Abnahme-Default).
+  const buendelBestehendV = offeneVorgaenge.filter((x) => x.id === buendelVorgangId)[0] || null;
+  const buendelKatEff = buendelZiel === "bestehend"
+    ? (buendelBestehendV ? vorgangKategorie(buendelBestehendV.kategorie).id : "bewirtschaftung")
+    : buendelKategorie;
+  // Firma wählen füllt „Was ist zu tun" vor (Standard-Vorlage des Kontexts,
+  // nie Getipptes überschreiben) und setzt den Abnahme-Default der Kategorie —
+  // gleiches Muster wie der Direkt-Haken im VorgangNeuOverlay (26.07.).
+  const buendelFirmaWaehle = (id) => {
+    setBuendelFirmaId(id || "");
+    setBuendelWasTunFehler(false);
+    if (id) {
+      setBuendelAbnahme(kategorieHatPhase(buendelKatEff, "abnahme"));
+      if (!buendelWasTun.trim()) {
+        const st = standardVorlage(vorlagenBd, "auftrag_erfassen", buendelKatEff);
+        if (st && st.text) setBuendelWasTun(st.text);
+      }
+    }
   };
   const buendle = () => {
     if (buendelIds.length === 0 || !onWelt) return;
-    // Direkt beauftragen (18.07.): Firma gewählt → gebündelte Punkte sofort
-    // beauftragt (status, Datum, Firma) — z. B. drei Punkte an den Hausmeister.
-    const beauftragen = buendelFirmaId ? { firma_kontakt_id: buendelFirmaId } : null;
+    // Direkt beauftragen VOLL (26.07.): mit Firma ist der Handlungstext
+    // Pflicht — „Was ist Sache" (Problem) ist NICHT „Was ist zu tun".
+    if (buendelFirmaId && !buendelWasTun.trim()) { setBuendelWasTunFehler(true); return; }
+    const beauftragen = buendelFirmaId ? {
+      firma_kontakt_id: buendelFirmaId,
+      frist: buendelFrist || null,
+      nachfass_ab: fristMinusTage(buendelFrist, fristenBd.nachfass_vorlauf_tage),
+      abnahme_noetig: buendelAbnahme,
+    } : null;
+    const ids = buendelIds.slice();
+    const wasTun = buendelWasTun.trim();
+    // EIN Sammel-Anschreiben (Bennys Entscheidung 26.07.): Handlung oben,
+    // darunter die Punkte mit ihren frisch vergebenen Nummern — läuft NACH
+    // dem Bündeln auf derselben Welt (Nummern existieren dann schon).
+    const anschreiben = (w) => {
+      if (!beauftragen) return w;
+      const gebuendelt = w.auftraege.filter((a) => ids.indexOf(a.id) >= 0);
+      const vId = gebuendelt.length > 0 ? gebuendelt[0].vorgang_id : null;
+      if (!vId) return w;
+      const punkte = gebuendelt.map((a) =>
+        "– " + (a.nummer ? a.nummer + " · " : "") + (a.beschreibung || "")).join("\n");
+      return logBeauftragung(w, { vorgangId: vId, nummer: null,
+        beschreibung: wasTun + (punkte ? "\n" + punkte : ""),
+        firmaId: buendelFirmaId, firmaName: nameVon(kontakte, buendelFirmaId),
+        frist: buendelFrist || null, vorlagen: vorlagenBd,
+        rueckmeldungTage: fristenBd.rueckmeldung_tage });
+    };
     if (buendelZiel === "neu") {
       if (!buendelTitel.trim()) { setBuendelTitelFehler(true); return; }
-      onWelt((w) => weltAuftraegeBuendeln(w, buendelIds,
+      onWelt((w) => anschreiben(weltAuftraegeBuendeln(w, ids,
         { neu: { titel: buendelTitel.trim(), kategorie: buendelKategorie, objekt_id: veId },
-          beauftragen }));
+          beauftragen })));
     } else {
       if (!buendelVorgangId) return;
-      onWelt((w) => weltAuftraegeBuendeln(w, buendelIds,
-        { vorgang_id: buendelVorgangId, beauftragen }));
+      onWelt((w) => anschreiben(weltAuftraegeBuendeln(w, ids,
+        { vorgang_id: buendelVorgangId, beauftragen })));
     }
     buendelReset();
   };
+  // Geteilter Beauftragungs-Block (26.07.) für BEIDE Bündel-Formulare (neu +
+  // bestehend): Firma-Picker; sobald eine Firma gewählt ist, klappen darunter
+  // die Beauftragungs-Felder auf — gleiche Optik/Bausteine wie der Direkt-
+  // Block im VorgangNeuOverlay (Rahmen accent+40, VorlagenFeld, DatumFeld,
+  // Abnahme-Haken). §76: kein Neubau, dieselben Bausteine.
+  const buendelBeauftragenBlock = (
+    <div>
+      <KontaktPicker value={buendelFirmaId || null}
+        onChange={buendelFirmaWaehle}
+        label="Direkt beauftragen an (optional)" nurFirmen
+        t={t} accent={accent}
+        kontakte={pickerListe(kontakte)}/>
+      {buendelFirmaId ? (
+        <div style={{ border: "1px solid " + accent + "40",
+          borderRadius: RAD.md, padding: "10px 12px", margin: "4px 0 8px" }}>
+          <label style={feldLabelStil(t)}>Was ist zu tun?</label>
+          <VorlagenFeld schritt="auftrag_erfassen" kategorieId={buendelKatEff}
+            value={buendelWasTun}
+            onChange={(v) => { setBuendelWasTun(v); if (v.trim()) setBuendelWasTunFehler(false); }}
+            placeholder="z. B. Meldung prüfen und instandsetzen"
+            t={t} accent={accent}/>
+          {buendelWasTunFehler ? (
+            <div style={{ fontSize: FS.xs, color: "#EF4444",
+              margin: "4px 0 2px" }}>
+              Bitte beschreiben, was zu tun ist — die Sache ist nicht
+              der Auftrag.
+            </div>
+          ) : null}
+          {DatumFeld ? (
+            <DatumFeld t={t} accent={accent} label="Bis wann (Ausführungsfrist)"
+              value={buendelFrist} onChange={setBuendelFrist} iso defaultHeute={false}/>
+          ) : null}
+          <label style={{ display: "flex", alignItems: "center", gap: 8,
+            fontSize: FS.s, color: t.text, cursor: "pointer", marginTop: 4 }}>
+            <input type="checkbox" checked={buendelAbnahme}
+              onChange={(e) => setBuendelAbnahme(e.target.checked)}
+              style={{ width: 18, height: 18 }}/>
+            Abnahme erforderlich
+          </label>
+        </div>
+      ) : null}
+    </div>
+  );
   const liste = (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {zeigeTabs ? (
@@ -2368,7 +2468,9 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                       setBuendelZiel("bestehend");
                     }}
                     text={buendelZiel === "bestehend"
-                      ? "Zuordnen (" + buendelIds.length + ")"
+                      ? (buendelFirmaId
+                        ? "Zuordnen + beauftragen (" + buendelIds.length + ")"
+                        : "Zuordnen (" + buendelIds.length + ")")
                       : "+ zum Vorgang (" + buendelIds.length + ")"}/>
                 ) : null}
                 <div style={{ position: "relative", flexShrink: 0 }}>
@@ -2444,16 +2546,12 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                   ? "Bitte einen Titel für den neuen Vorgang vergeben." : ""}/>
               <KategorieWahl value={buendelKategorie}
                 onChange={setBuendelKategorie} t={t} accent={accent}/>
-              {/* Direkt beauftragen (Benny 18.07./19.07.): Firma über den
-                  Kontakte-Picker wählen (kein Dropdown) → die gebündelten
-                  Punkte gehen SOFORT beauftragt raus. Ohne Firma: nur als
-                  Vorgang anlegen. */}
-              <KontaktPicker value={buendelFirmaId || null}
-                onChange={(id) => setBuendelFirmaId(id || "")}
-                label="Direkt beauftragen an (optional)" nurFirmen
-                t={t} accent={accent}
-                kontakte={pickerListe(kontakte)}/>
-
+              {/* Direkt beauftragen (18.07., voll 26.07.): Firma wählen →
+                  Beauftragungs-Felder klappen auf (Was ist zu tun · Frist ·
+                  Abnahme); die gebündelten Punkte gehen SOFORT beauftragt
+                  raus, EIN Sammel-Anschreiben dokumentiert die Vergabe.
+                  Ohne Firma: nur als Vorgang anlegen. */}
+              {buendelBeauftragenBlock}
             </div>
           ) : null}
           {buendelZiel === "bestehend" ? (
@@ -2466,7 +2564,10 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
                   <option key={v.id} value={v.id}>{v.titel || "Vorgang"}</option>
                 ))}
               </select>
-
+              {/* Direkt beauftragen auch beim Zuordnen (26.07.): buendle()
+                  gab beauftragen hier schon immer mit — nur das Formular
+                  hatte die Felder nie. Gleicher Block wie im Neu-Formular. */}
+              {buendelBeauftragenBlock}
             </div>
           ) : null}
         </div>
