@@ -3066,7 +3066,13 @@ function neuesAngebot(init) {
     notiz: "",                   // kurze Notiz zum Angebot (§6a: Summe + PDF + Notiz)
     abgabe_bis: null,            // §4.3: bis wann das Angebot erwartet wird → treibt „Angebot überfällig"
     gueltig_bis: null,           // treibt „Angebot veraltet"-Frist am Schreibtisch
-    eingeholt_am: isoHeute(),
+    eingeholt_am: isoHeute(),    // = angefragt am (Anlage der Anfrage)
+    // Erhalt (Benny 26.07.): das Angebot ist DA — gesetzt vom ERSTEN Ereignis,
+    // das den Erhalt belegt (PDF hinterlegt ODER Summe eingetragen). Treibt
+    // den Akteneintrag „Angebot erhalten von …" — vorher gibt es KEINE
+    // Angebots-Zeile in der Akte (die Anfrage-Nachricht deckt das ab).
+    erhalten_am: null,
+    tags: [],                    // Schlagworte für Suche/Filter im Angebote-Ordner
     wurde_zu_auftrag_id: null,   // die Verwandlung: gewähltes Angebot → Auftrag (nachvollziehbar)
     dateien: [],
     demo: false,

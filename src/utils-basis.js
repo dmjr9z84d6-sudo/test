@@ -339,6 +339,14 @@ function neueDateiId() {
 
 // Speichert ein File/Blob. Liefert ein Promise mit dem Metadaten-Objekt
 // { id, name, typ, groesse, angelegt } — id ist die dateiRef für das Dokument.
+// Euro-Anzeige (26.07. zentralisiert): lebte lokal in vorgang.jsx — der
+// Angebote-Ordner in liegenschaft.jsx braucht dieselbe Formatierung, und
+// liegenschaft darf nicht aus vorgang importieren (Zyklus). Also hierher.
+export function eur(n) {
+  if (n == null || isNaN(Number(n))) return "";
+  return Number(n).toLocaleString("de-DE") + " €";
+}
+
 export function dateiSpeichern(file) {
   return new Promise(function (resolve, reject) {
     if (!file) { reject(new Error("keine Datei")); return; }

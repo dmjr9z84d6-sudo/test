@@ -220,7 +220,7 @@ import {
   neueBeteiligung,
   neueNachricht,
   neuerAuftrag, auftragsNummerNeu, weltAuftragBeauftragen,
-  weltAuftragFotoRefs, weltAuftragFotoRefEntfernen
+  weltAuftragFotoRefs, vorgangKategorie, weltAuftragFotoRefEntfernen
 } from "./datenmodell.js";
 
 import {
@@ -3254,6 +3254,10 @@ export default function App() {
           // objekt-if war er dort unsichtbar (ReferenceError → Schwarz-Screen).
           let auftragFotoHinzu = null;
           let auftragFotoEntfernen = null;
+          // Gleiche Scope-Lehre wie oben (Fix 11.07.): auch die Akten-Ebene
+          // unten braucht die Angebots-Datei-Callbacks.
+          let angebotDateiHinzu = null;
+          let angebotDateiEntfernen = null;
           if (auftragView === "objekt" && auftragViewVEId) {
             const vo = (vesSichtbar || []).find(v => v.id === auftragViewVEId);
             detailKopf = vo ? (vo.nr || "Objekt") : "";
@@ -3308,6 +3312,68 @@ export default function App() {
                   : v));
               }
             };
+            // Angebots-Dateien (Benny 26.07.): PDF auf die Anfrage ziehen →
+            // Datei in IndexedDB, EINDEUTIG umbenannt (Angebotsnummer ·
+            // Firma · Datum — wie bei Fotos sprechend statt "scan_01.pdf"),
+            // mit Tags für Suche/Filter im Angebote-Ordner. Der Vorgang hält
+            // nur die Verlinkung; der Ordner im Objekt zeigt dieselbe Datei
+            // (eine Quelle, kein Duplikat). Erster Erhalt setzt erhalten_am.
+            angebotDateiHinzu = (angebot, files) => {
+              if (!angebot || !files || files.length === 0) return Promise.resolve();
+              const vg = vorgangsWelt.vorgaenge.find(x => x.id === angebot.vorgang_id) || null;
+              const firma = kontakteSichtbar.find(k => k && k.id === angebot.firma_kontakt_id);
+              const firmaName = (firma && (firma.name || "")) || "";
+              const p2 = (n) => String(n).padStart(2, "0");
+              const h = new Date();
+              const heuteIso = h.getFullYear() + "-" + p2(h.getMonth() + 1) + "-" + p2(h.getDate());
+              const sauber = (x) => String(x || "").replace(/[^\wÄÖÜäöüß -]/g, "")
+                .trim().replace(/\s+/g, "-").slice(0, 40);
+              const tags = [];
+              const zuTag = (x) => { const v = String(x || "").trim();
+                if (v && tags.indexOf(v) < 0) tags.push(v); };
+              zuTag("Angebot");
+              zuTag(firmaName);
+              if (vg) { zuTag(vg.nummer); zuTag(vorgangKategorie(vg.kategorie).label); }
+              zuTag(String(h.getFullYear()));
+              const metas = [];
+              let kette = Promise.resolve();
+              files.forEach((f, i) => {
+                kette = kette.then(() => dateiSpeichern(f).then(meta => {
+                  const endung = (meta.name && meta.name.indexOf(".") > 0)
+                    ? meta.name.slice(meta.name.lastIndexOf(".")) : "";
+                  const teile = ["Angebot", angebot.nummer || (vg && vg.nummer) || "",
+                    sauber(firmaName), heuteIso].filter(Boolean);
+                  const name = teile.join("_")
+                    + (files.length > 1 ? "_" + (i + 1) : "") + endung;
+                  metas.push(Object.assign({}, meta, { name: name, tags: tags }));
+                }));
+              });
+              return kette.then(() => {
+                if (metas.length === 0) return;
+                setVorgangsWelt(prev => Object.assign({}, prev, {
+                  angebote: prev.angebote.map(a => a.id === angebot.id
+                    ? Object.assign({}, a, {
+                        dateien: [...(Array.isArray(a.dateien) ? a.dateien : []), ...metas],
+                        tags: tags,
+                        erhalten_am: a.erhalten_am || heuteIso })
+                    : a),
+                }));
+              }).catch(() => {});
+            };
+            // Verknüpfung lösen: Referenz am Angebot weg UND Blob löschen —
+            // die Datei lebt nur hier (der Ordner im Objekt liest dieselbe
+            // Referenz), ein verwaister Blob wäre unauffindbarer Ballast.
+            angebotDateiEntfernen = (angebot, datei) => {
+              if (!angebot || !datei) return;
+              if (datei.id) dateiLoeschen(datei.id);
+              setVorgangsWelt(prev => Object.assign({}, prev, {
+                angebote: prev.angebote.map(a => a.id === angebot.id
+                  ? Object.assign({}, a, {
+                      dateien: (Array.isArray(a.dateien) ? a.dateien : [])
+                        .filter(d => d && d.id !== datei.id) })
+                  : a),
+              }));
+            };
             // Echte Quelle (§96): Vorgänge dieses Objekts + „Erfasst"-Ecke
             // (vorgangslose Begehungsfunde). key=veId → frischer Klapp-State
             // je Objekt (React-Key-Lehre).
@@ -3318,7 +3384,9 @@ export default function App() {
                 offeneIdCtrl={vorgangAkteId} onOeffneId={setVorgangAkteId}
                 onWelt={(fn) => setVorgangsWelt(prev => fn(prev))}
                 DatumFeld={DatumFeld}
-                ve={vo} onFotoHinzu={auftragFotoHinzu} onFotoEntfernen={auftragFotoEntfernen}/>
+                ve={vo} onFotoHinzu={auftragFotoHinzu} onFotoEntfernen={auftragFotoEntfernen}
+                onAngebotDatei={angebotDateiHinzu}
+                onAngebotDateiEntfernen={angebotDateiEntfernen}/>
             );
           } else if (auftragView === "firma" && auftragFirmaId) {
             const fk = firmen.find(f => f.id === auftragFirmaId);

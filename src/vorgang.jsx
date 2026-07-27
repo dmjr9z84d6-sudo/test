@@ -17,7 +17,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import React, { useEffect, useRef, useState } from "react";
 import { AMPEL_FARBEN, FS, FW, RAD, getContrastColor, sichtbareFarbe } from "./constants.js";
-import { datumDe, isoHeute, dateiBlobUrl } from "./utils-basis.js";
+import { datumDe, isoHeute, dateiBlobUrl, eur } from "./utils-basis.js";
 import { Avatar, HeaderZurueck, Inp, KontaktPicker, KontaktPickerMitAllen, KopfIconButton, KopfPille, SegmentControl, TabLeiste, overlayBackdrop, overlayPanel, OverlayKopf, overlayBody } from "./components.jsx";
 import { NeueKarteMenu, DateiViewerModal } from "./liegenschaft.jsx";
 import { KontaktDetailKarte, KontaktZeile, objektBezugInfo } from "./kontakte.jsx";
@@ -476,10 +476,6 @@ function fristMinusTage(iso, tage) {
   return d.toISOString().slice(0, 10);
 }
 
-function eur(n) {
-  if (n == null || isNaN(Number(n))) return "";
-  return Number(n).toLocaleString("de-DE") + " €";
-}
 function nameVon(kontakte, id) {
   if (!id) return "";
   const k = (kontakte || []).filter((x) => x && x.id === id)[0];
@@ -576,20 +572,37 @@ function baueVerlauf(vorgang, welt, kontakte) {
         nachrichtId: n.id, feld: "inhalt" });
       continue;
     }
+    // Akteneintrag-Grammatik (Benny 26.07.): AKTION zuerst, dann an wen, dann
+    // womit — „Angebotsanfrage an Elektro Bauer GmbH — Bitte um Angebot für …"
+    // statt „Nachricht an …: Anfrage …". Die Aktion ist der Anlass-Typ; nur
+    // „frei" (kein echter Anlass) bleibt die neutrale „Nachricht".
     const wer = nameVon(kontakte, n.richtung === "eingehend" ? n.von_kontakt_id : n.an_kontakt_id);
+    const anlassL = (n.anlass && n.anlass !== "frei") ? anlassTyp(n.anlass).label : "Nachricht";
+    const womit = n.betreff || n.inhalt || "";
     E.push({ datum: n.gesendet_am || "",
-      text: (n.richtung === "eingehend" ? "Nachricht" : "Nachricht an")
-        + (wer ? (n.richtung === "eingehend" ? " von " + wer : " " + wer) : "")
-        + (n.betreff ? ": " + n.betreff : (n.inhalt ? ": " + n.inhalt : "")),
+      text: anlassL
+        + (wer ? (n.richtung === "eingehend" ? " von " + wer : " an " + wer) : "")
+        + (womit ? " — " + womit : ""),
       nachrichtId: n.id, feld: n.betreff ? "betreff" : "inhalt" });
   }
   const angebote = welt.angebote.filter((a) => a.vorgang_id === vorgang.id);
   for (let i = 0; i < angebote.length; i++) {
     const a = angebote[i];
     const wer = nameVon(kontakte, a.firma_kontakt_id);
-    dazu(a.eingeholt_am, "Angebot" + (wer ? " " + wer : "")
-      + (a.preis != null ? " · " + eur(a.preis) : "")
-      + (a.wurde_zu_auftrag_id ? " → beauftragt" : ""));
+    // 26.07. (Benny): Das ANFRAGEN steht schon als Nachricht in der Akte —
+    // eine zweite Zeile „Angebot Firma xy" direkt danach war irreführend.
+    // Hier erscheint nur noch der echte zweite Vorgang: das Angebot ist DA.
+    const erhalten = a.erhalten_am
+      || ((a.preis != null || (Array.isArray(a.dateien) && a.dateien.length > 0))
+        ? a.eingeholt_am : null);
+    if (erhalten) {
+      const dateiN = Array.isArray(a.dateien) ? a.dateien.length : 0;
+      dazu(erhalten, "Angebot erhalten" + (wer ? " von " + wer : "")
+        + (a.nummer ? " — " + a.nummer : "")
+        + (a.preis != null ? " · " + eur(a.preis) : "")
+        + (dateiN > 0 ? " · " + (dateiN === 1 ? "PDF hinterlegt"
+          : dateiN + " Dateien hinterlegt") : ""));
+    }
   }
   const auftraege = welt.auftraege.filter((a) => a.vorgang_id === vorgang.id);
   for (let i = 0; i < auftraege.length; i++) {
@@ -617,9 +630,16 @@ function baueVerlauf(vorgang, welt, kontakte) {
   const rechnungen = welt.rechnungen.filter((r) => r.vorgang_id === vorgang.id);
   for (let i = 0; i < rechnungen.length; i++) {
     const r = rechnungen[i];
-    dazu(r.eingegangen_am, "Rechnung eingegangen"
+    // Aktion zuerst (26.07.): „Rechnung erhalten von …" nennt die Firma über
+    // den zugehörigen Auftrag — die Rechnung selbst trägt keine Firma.
+    const auf = r.auftrag_id
+      ? welt.auftraege.filter((x) => x.id === r.auftrag_id)[0] : null;
+    const rWer = auf ? nameVon(kontakte, auf.firma_kontakt_id) : "";
+    dazu(r.eingegangen_am, "Rechnung erhalten" + (rWer ? " von " + rWer : "")
       + (r.betrag != null ? " · " + eur(r.betrag) : ""));
-    if (r.bezahlt_am) dazu(r.bezahlt_am, "Rechnung bezahlt");
+    if (r.bezahlt_am) dazu(r.bezahlt_am, "Rechnung bezahlt"
+      + (rWer ? " an " + rWer : "")
+      + (r.betrag != null ? " · " + eur(r.betrag) : ""));
   }
   const aufgaben = welt.aufgaben.filter((a) => a.vorgang_id === vorgang.id);
   for (let i = 0; i < aufgaben.length; i++) {
@@ -1244,8 +1264,11 @@ function VorgangKarte({ vorgang, welt, kontakte, t, accent, offen, onToggle }) {
 // Übersicht: Stand-Karte (Phasen-Linie + nächster Schritt) oben, dann Daten
 // (inkl. Verlauf — Bennys Wahl D), dann Aufträge/Aufgaben/Notiz wie gehabt.
 // ═════════════════════════════════════════════════════════════════════════
-function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null, zurueckKnopf = true }) {
+function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null, onAngebotDatei = null, onAngebotDateiEntfernen = null, zurueckKnopf = true }) {
   const [tab, setTab] = useState("uebersicht");
+  // Vorschau der verlinkten Angebots-Datei (26.07.) — die Datei selbst liegt
+  // im Angebote-Ordner des Objekts, hier nur ansehen.
+  const [angebotViewer, setAngebotViewer] = useState(null);
   const kontakteObjekt = useObjektKontakte(kontakte, ve);
   const [tabZwang, setTabZwang] = useState({}); // Katalog erzwingt Tab vor erstem Inhalt
   const [offenerBaustein, setOffenerBaustein] = useState(null);
@@ -1923,7 +1946,11 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
             ) : null}
             {angebote.map((a) => (
               <AngebotFlowZeile key={a.id} angebot={a} kontakte={kontakte}
-                keinsGewaehlt={keinsGewaehlt} t={t} accent={accent} onWelt={onWelt}/>
+                keinsGewaehlt={keinsGewaehlt} t={t} accent={accent} onWelt={onWelt}
+                onDatei={kannFlows ? onAngebotDatei : null}
+                onDateiEntfernen={kannFlows ? onAngebotDateiEntfernen : null}
+                onDateiAnsehen={(d) => setAngebotViewer({ id: d.dateiRef || d.id,
+                  name: d.name || "Angebot" })}/>
             ))}
             {kannFlows && formBaustein === "angebote" ? (
               <AngebotNeuForm vorgangId={vorgang.id} firmen={firmen}
@@ -2036,6 +2063,12 @@ function VorgangDetail({ vorgang, welt, kontakte, t, accent, onZurueck, onWelt =
           </div>
         ) : null}
       </div>
+      {/* Vorschau verlinkter Angebots-Dateien (26.07.) — gleicher Viewer wie
+          im Dokumente-Tab des Objekts, die Datei liegt dort. */}
+      {angebotViewer ? (
+        <DateiViewerModal t={t} accent={accent} datei={angebotViewer}
+          onClose={() => setAngebotViewer(null)}/>
+      ) : null}
     </div>
   );
 }
@@ -2290,7 +2323,7 @@ const leerText = (t, text) => (
 // lose Aufträge (Begehungsfunde) dieses Objekts. Klapp-State lebt hier; der
 // Aufrufer instanziiert per key={veId} neu (React-Key-Lehre: kein Recycling
 // über Objekt-Wechsel hinweg).
-function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null, offeneIdCtrl = null, onOeffneId = null }) {
+function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOffeneId = null, onWelt = null, DatumFeld = null, ve = null, onFotoHinzu = null, onFotoEntfernen = null, onAngebotDatei = null, onAngebotDateiEntfernen = null, offeneIdCtrl = null, onOeffneId = null }) {
   // GESTEUERTER Modus (Feinschliff 11.07., Skizze Spalten 2/3): der Screen
   // (allesda_merged) hält die Akten-Auswahl und baut das Master-Detail
   // selbst — dieser Bereich ist dann NUR die Liste (Spalte 2). Ungesteuert
@@ -2658,7 +2691,8 @@ function VorgangsBereichFuerObjekt({ veId, welt, kontakte, t, accent, initialOff
   const detail = offenerVorgang ? (
     <VorgangDetail vorgang={offenerVorgang} welt={welt} kontakte={kontakte}
       t={t} accent={accent} onZurueck={() => setOffeneId(null)}
-      onWelt={onWelt} DatumFeld={DatumFeld} ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}/>
+      onWelt={onWelt} DatumFeld={DatumFeld} ve={ve} onFotoHinzu={onFotoHinzu} onFotoEntfernen={onFotoEntfernen}
+      onAngebotDatei={onAngebotDatei} onAngebotDateiEntfernen={onAngebotDateiEntfernen}/>
   ) : null;
   if (gesteuert) return liste;
   if (offenerVorgang && !istDesktop) return detail;
@@ -3445,22 +3479,42 @@ function AufgabeFlowZeile({ aufgabe, t, accent, onWelt }) {
     </div>
   );
 }
-function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt }) {
+function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt,
+  onDatei = null, onDateiEntfernen = null, onDateiAnsehen = null }) {
   const fristenAB = useFristen();
   const vorlagenAB = useVorlagen();
   const [confirm, setConfirm] = useState(false);
   const [summeFormOffen, setSummeFormOffen] = useState(false);
   const [summe, setSumme] = useState("");
+  // Angebots-PDF (Benny 26.07.): auf die ANFRAGE ziehen → Datei liegt im
+  // Objekt (Angebote-Ordner, eindeutig benannt + Tags), der Vorgang hält nur
+  // die Verlinkung + Vorschau. Später liest die KI Positionen/Beträge aus.
+  const [ueberZone, setUeberZone] = useState(false);
+  const [laedt, setLaedt] = useState(false);
+  const dateiRef = useRef(null);
+  const dateien = Array.isArray(angebot.dateien) ? angebot.dateien : [];
   const wer = nameVon(kontakte, angebot.firma_kontakt_id) || "ohne Firma";
+  // „Erhalten" = das ERSTE Ereignis, das es belegt: PDF ODER Summe (Bennys
+  // Entscheidung 26.07.) — beides setzt erhalten_am, wenn es noch fehlt.
   const liegtVor = angebot.preis != null;
+  const erhalten = !!angebot.erhalten_am || liegtVor || dateien.length > 0;
   const erfasseSumme = () => {
     const p = parseFloat(String(summe).replace(",", "."));
     if (isNaN(p)) return;
     onWelt((w) => Object.assign({}, w, {
       angebote: w.angebote.map((x) => x.id === angebot.id
-        ? Object.assign({}, x, { preis: p }) : x),
+        ? Object.assign({}, x, { preis: p,
+            erhalten_am: x.erhalten_am || isoHeute() }) : x),
     }));
     setSumme(""); setSummeFormOffen(false);
+  };
+  const nimmDateien = (liste) => {
+    const files = Array.prototype.slice.call(liste || []);
+    if (files.length === 0 || !onDatei) return;
+    setLaedt(true);
+    Promise.resolve(onDatei(angebot, files))
+      .then(() => setLaedt(false))
+      .catch(() => setLaedt(false));
   };
   return (
     <div style={flowZeileStil(t)}>
@@ -3471,12 +3525,16 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
             <span style={{ color: t.muted, fontWeight: FW.bold }}>{angebot.nummer + " · "}</span>
           ) : null}
           {wer + (liegtVor ? " · " + eur(angebot.preis)
-            : (angebot.abgabe_bis ? " · erwartet bis " + datumDe(angebot.abgabe_bis) : ""))}
+            : (erhalten ? " · erhalten"
+              : (angebot.abgabe_bis ? " · erwartet bis " + datumDe(angebot.abgabe_bis) : "")))}
         </div>
         {angebot.wurde_zu_auftrag_id ? (
           <StatusPille t={t} farbe={AMPEL_FARBEN.gruen} text="Beauftragt"/>
-        ) : !liegtVor ? (
+        ) : !erhalten ? (
           <StatusPille t={t} farbe={AMPEL_FARBEN.blau} text="Angefragt"/>
+        ) : !liegtVor ? (
+          // Erhalten (PDF da), aber Summe fehlt noch — beauftragen erst mit Summe.
+          <StatusPille t={t} farbe={AMPEL_FARBEN.gelb} text="Erhalten · Summe fehlt"/>
         ) : keinsGewaehlt ? (
           <button style={flowKnopf(t, accent, confirm)}
             onClick={() => {
@@ -3529,6 +3587,63 @@ function AngebotFlowZeile({ angebot, kontakte, keinsGewaehlt, t, accent, onWelt 
               style={flowKnopf(t, accent, false)}>Summe erfassen</button>
           </div>
         )
+      ) : null}
+      {/* Angebots-Dateien (26.07.): Drop-Zone auf der Anfrage. Die Datei
+          wandert in den Angebote-Ordner des Objekts (eindeutig benannt +
+          Tags), hier steht nur die Verlinkung mit Vorschau. */}
+      {onDatei ? (
+        <div
+          onDragOver={(e) => { e.preventDefault(); if (!ueberZone) setUeberZone(true); }}
+          onDragLeave={() => setUeberZone(false)}
+          onDrop={(e) => { e.preventDefault(); setUeberZone(false);
+            nimmDateien(e.dataTransfer && e.dataTransfer.files); }}
+          onClick={() => { if (dateiRef.current) dateiRef.current.click(); }}
+          style={{ border: "1px dashed " + (ueberZone ? accent : t.border),
+            background: ueberZone ? accent + "14" : "transparent",
+            borderRadius: RAD.md, padding: "9px 11px", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 8 }}>
+          <I name="document" size={14} color={ueberZone ? accent : t.muted}/>
+          <span style={{ fontSize: FS.xs, color: ueberZone ? accent : t.muted }}>
+            {laedt ? "Wird abgelegt…"
+              : "Angebot hierher ziehen oder tippen (PDF, Bild)"}
+          </span>
+          <input ref={dateiRef} type="file" multiple
+            accept="application/pdf,image/*"
+            onChange={(e) => { nimmDateien(e.target.files); e.target.value = ""; }}
+            style={{ display: "none" }}/>
+        </div>
+      ) : null}
+      {dateien.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {dateien.map((d) => (
+            <div key={d.id || d.dateiRef} style={{ display: "flex",
+              alignItems: "center", gap: 7 }}>
+              <I name="document" size={12} color={t.sub}/>
+              <span style={{ flex: 1, minWidth: 0, fontSize: FS.xs, color: t.text,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {d.name || "Angebot"}</span>
+              {onDateiAnsehen ? (
+                <button title="Ansehen" onClick={() => onDateiAnsehen(d)}
+                  style={{ width: 26, height: 26, borderRadius: RAD.sm, flexShrink: 0,
+                    border: "1px solid " + t.border, background: t.card, color: t.sub,
+                    cursor: "pointer", display: "inline-flex", alignItems: "center",
+                    justifyContent: "center", padding: 0 }}>
+                  <I name="eye" size={13}/>
+                </button>
+              ) : null}
+              {onDateiEntfernen ? (
+                <button title="Verknüpfung lösen"
+                  onClick={() => onDateiEntfernen(angebot, d)}
+                  style={{ width: 26, height: 26, borderRadius: RAD.sm, flexShrink: 0,
+                    border: "1px solid " + t.border, background: t.card, color: t.sub,
+                    cursor: "pointer", display: "inline-flex", alignItems: "center",
+                    justifyContent: "center", padding: 0 }}>
+                  <I name="trash" size={12}/>
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
       ) : null}
     </div>
   );

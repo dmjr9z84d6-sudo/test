@@ -3,7 +3,7 @@ import {
   FS, FW, KONTAKTE_FARBE, RAD, feldInput, feldLabel, getContrastColor
 } from "./constants.js";
 import { datumDe, isoHeute, joinPlzOrt, splitPlzOrt, zuIsoDatum,
-  dateiSpeichern, dateiOeffnen, dateiLoeschen, dateiBlobUrl } from "./utils-basis.js";
+  dateiSpeichern, dateiOeffnen, dateiLoeschen, dateiBlobUrl, eur } from "./utils-basis.js";
 import {
   BELEGUNG_LABEL, BELEGUNG_VERWENDUNGEN, BEWOHNER_RECHTE, RAUM_ART_OPTIONEN, VS_BASEN,
   ZAEHLER_ARTEN, abgeleiteterBelegungstyp, aktiveBelegung, belegungsPhase, belegungsVerwendungen,
@@ -8173,7 +8173,112 @@ function EtvOrdnerKarte({ etvWelt, ve, t, accent, onDateiAnsehen }) {
   );
 }
 
-function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null, etvWelt = null }) {
+// ── AngeboteOrdnerKarte (Benny 26.07.) — der Angebote-Ordner des Objekts ────
+// Ein Ort für ALLE Angebots-Dateien des Objekts, quer über die Vorgänge. Die
+// Dateien werden im Vorgang auf die Anfrage gezogen und wandern hierher; hier
+// werden sie gefunden. Bei 10 Angeboten reicht Blättern, bei 150 nicht — daher
+// Volltext-Suche (Name · Firma · Vorgang · Tags) + Tag-Chips zum Filtern.
+// Quelle ist die Vorgangswelt (welt.angebote), KEIN zweiter Datenbestand —
+// gleiches Referenz-Prinzip wie die EtvOrdnerKarte.
+function AngeboteOrdnerKarte({ welt, ve, kontakte = [], t, accent, onDateiAnsehen }) {
+  const [offen, setOffen] = useState(false);
+  const [suche, setSuche] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const veId = ve && ve.id;
+  const vorgaengeVe = ((welt && welt.vorgaenge) || []).filter((v) => v && v.objekt_id === veId);
+  const vIds = vorgaengeVe.map((v) => v.id);
+  const eintraege = [];
+  ((welt && welt.angebote) || []).forEach((a) => {
+    if (!a || vIds.indexOf(a.vorgang_id) < 0) return;
+    const v = vorgaengeVe.filter((x) => x.id === a.vorgang_id)[0] || null;
+    const firma = (kontakte || []).filter((k) => k && k.id === a.firma_kontakt_id)[0];
+    (Array.isArray(a.dateien) ? a.dateien : []).forEach((d) => {
+      eintraege.push({ datei: d, angebot: a, vorgang: v,
+        firmaName: (firma && (firma.name || "")) || "",
+        tags: Array.isArray(d.tags) ? d.tags : (Array.isArray(a.tags) ? a.tags : []) });
+    });
+  });
+  if (eintraege.length === 0) return null;
+  eintraege.sort((x, y) => String((y.datei && y.datei.angelegt) || "")
+    .localeCompare(String((x.datei && x.datei.angelegt) || "")));
+  const alleTags = [];
+  eintraege.forEach((e) => e.tags.forEach((g) => {
+    if (g && alleTags.indexOf(g) < 0) alleTags.push(g); }));
+  alleTags.sort((a, b) => String(a).localeCompare(String(b), "de"));
+  const q = suche.trim().toLowerCase();
+  const treffer = eintraege.filter((e) => {
+    if (tagFilter && e.tags.indexOf(tagFilter) < 0) return false;
+    if (!q) return true;
+    const heu = [(e.datei && e.datei.name) || "", e.firmaName,
+      (e.vorgang && e.vorgang.nummer) || "", (e.vorgang && e.vorgang.titel) || "",
+      (e.angebot && e.angebot.nummer) || "", e.tags.join(" ")].join(" ").toLowerCase();
+    return heu.indexOf(q) >= 0;
+  });
+  const chip = (label, aktiv, onClick) => (
+    <button key={label} onClick={onClick} style={{
+      fontSize: FS.xs, padding: "4px 10px", borderRadius: RAD.pill,
+      border: "1px solid " + (aktiv ? accent : t.border),
+      background: aktiv ? accent + "1C" : "transparent",
+      color: aktiv ? accent : t.sub, cursor: "pointer", fontFamily: "inherit",
+      whiteSpace: "nowrap" }}>{label}</button>
+  );
+  return (
+    <div style={{ background: t.card, border: "1px solid " + t.border,
+      borderRadius: RAD.lg, marginBottom: 12, minWidth: 0 }}>
+      <div onClick={() => setOffen(!offen)}
+        style={{ padding: "11px 14px", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 8 }}>
+        <I name="document" size={15} color={accent}/>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: FS.m, fontWeight: FW.bold, color: t.text }}>
+            Angebote</div>
+          <div style={{ fontSize: FS.xs, color: t.muted }}>
+            {eintraege.length === 1 ? "1 Datei" : eintraege.length + " Dateien"}</div>
+        </div>
+      </div>
+      {offen ? (
+        <div style={{ padding: "0 14px 12px 14px", display: "flex",
+          flexDirection: "column", gap: 8 }}>
+          <input value={suche} onChange={(e) => setSuche(e.target.value)}
+            placeholder="Suchen — Firma, Vorgang, Nummer, Tag…"
+            style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px",
+              fontSize: 16, fontFamily: "inherit", color: t.text,
+              background: t.surface, borderRadius: RAD.md,
+              border: "1px solid " + (suche ? accent : t.border) }}/>
+          {alleTags.length > 0 ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {chip("Alle", !tagFilter, () => setTagFilter(""))}
+              {alleTags.map((g) => chip(g, tagFilter === g,
+                () => setTagFilter(tagFilter === g ? "" : g)))}
+            </div>
+          ) : null}
+          {treffer.length === 0 ? (
+            <div style={{ fontSize: FS.s, color: t.muted }}>Kein Treffer.</div>
+          ) : treffer.map((e) => (
+            <div key={(e.datei && (e.datei.id || e.datei.dateiRef)) + ":" + e.angebot.id}
+              onClick={() => onDateiAnsehen({ id: (e.datei && (e.datei.dateiRef || e.datei.id)),
+                name: (e.datei && e.datei.name) || "Angebot" })}
+              style={{ display: "flex", alignItems: "center", gap: 8,
+                padding: "5px 0", cursor: "pointer" }}>
+              <I name="document" size={13} color={t.sub}/>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: FS.s, color: t.text, overflowWrap: "anywhere" }}>
+                  {(e.datei && e.datei.name) || "Angebot"}</div>
+                <div style={{ fontSize: FS.xs, color: t.muted, overflowWrap: "anywhere" }}>
+                  {[e.firmaName, (e.vorgang && e.vorgang.nummer) || "",
+                    (e.vorgang && e.vorgang.titel) || "",
+                    e.angebot.preis != null ? eur(e.angebot.preis) : ""]
+                    .filter(Boolean).join(" · ")}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMode = false, onKontaktClick, ves = [], sprungKarte = null, etvWelt = null, vorgangsWelt = null }) {
   const karten = (ve && Array.isArray(ve.dokumenteKarten)) ? ve.dokumenteKarten : [];
   // EIN Viewer-State für den ganzen Dokumente-Tab (Checkliste + Karten teilen ihn)
   const [viewerDatei, setViewerDatei] = useState(null);
@@ -8225,6 +8330,17 @@ function DokumenteAnsicht({ ve, setVes, t, accent, kontakte, setKontakte, editMo
       {etvWelt ? (
         <EtvOrdnerKarte etvWelt={etvWelt} ve={ve} t={t} accent={accent}
           onDateiAnsehen={setViewerDatei}/>
+      ) : null}
+
+      {/* Angebote-Ordner (26.07.): Referenz auf die Angebots-Dateien der
+          Vorgänge dieses Objekts — Suche + Tag-Filter, damit auch 150
+          Angebote auffindbar bleiben. */}
+      {/* Quelle: ETV- und Vorgangswelt sind in AllesDa EINE Welt (alle
+          Aufrufer setzen etvWelt={vorgangsWelt}) — der explizite Prop steht
+          bereit, falls sich das je trennt. */}
+      {(vorgangsWelt || etvWelt) ? (
+        <AngeboteOrdnerKarte welt={vorgangsWelt || etvWelt} ve={ve} kontakte={kontakte}
+          t={t} accent={accent} onDateiAnsehen={setViewerDatei}/>
       ) : null}
 
       {/* Dokument-Karten (aus der Checkliste + eigene) — nur wenn aktiviert
